@@ -15,7 +15,7 @@ The sercet of FLRE speed is that FLRE uses multiple subengines with automatic se
 * **Bit state NFA** This subengine is quite still fast. But it can process short regexs only with less than 512 regex VM bytecode instructions. It's a backtracker with a manual stack in general, but it members the already visited (state, string position) pairs in a bitmap. The base idea is even from the re2 regex engine from Google.
 * **Parallel threaded NFA** (aka Thompson NFA / Pike VM). This subengine supports the most 08/15 regular expression syntax features _except_ backtracking-stuff as backreferences and so on. And this subengine is also still fast, but not so fast like the onepass NFA subengine.
 
-And as an addon, FLRE features prefix presearching. So for example the prefix for the example regex `{{{/\bHel(?:lo|loop) [A-Za-z]+\b/}}}` is `Hello`.
+And as an addon, FLRE features prefix presearching. So for example the prefix for the example regex `Hel(?:lo|loop) [A-Za-z]+` is `Hello`.
 
 And FLRE can process 0-based null terminated C/C++ and 1-based (Object-)Pascal strings.
 
