@@ -1,6 +1,4 @@
-# flre
- FLRE - Fast Light Regular Expressions - A fast light regular expression library
-
+FLRE - Fast Light Regular Expressions - A fast light regular expression library
 
 FLRE ( **F** ast **L** ight **R** egular **E** xpressions) is a fast, safe and efficient regular expression library, which is implemented in Object Pascal (Delphi and Free Pascal). 
 
