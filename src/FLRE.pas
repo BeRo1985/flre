@@ -4135,7 +4135,7 @@ begin
    end;
   end;
  end;
- if Position>=InputLength then begin
+ if Position>=(InputLength-1) then begin
   result:=result or (sfEmptyEndText or sfEmptyEndLine);
  end else begin
   case CurrentChar of
