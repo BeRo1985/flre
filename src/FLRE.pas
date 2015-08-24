@@ -147,6 +147,7 @@ type EFLRE=class(Exception);
 
      TFLREFlags=set of TFLREFlag;
 
+     PPFLRENode=^PFLRENode;
      PFLRENode=^TFLRENode;
      TFLRENode=record
       NodeType:longint;
@@ -156,6 +157,7 @@ type EFLRE=class(Exception);
       MaxCount:longint;
       Left:PFLRENode;
       Right:PFLRENode;
+      Extra:PFLRENode;
       Index:longint;
      end;
 
@@ -446,7 +448,19 @@ type EFLRE=class(Exception);
        NamedGroupStringList:TStringList;
        NamedGroupStringIntegerPairHashMap:TFLREStringIntegerPairHashMap;
 
+       function NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
        procedure FreeNode(var Node:PFLRENode);
+       function AreNodesEqual(NodeA,NodeB:PFLRENode):boolean;
+       function AreNodesEqualSafe(NodeA,NodeB:PFLRENode):boolean;
+       function Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
+       function NewAlt(NodeLeft,NodeRight:PFLRENode):PFLRENode;
+       function NewPlus(Node:PFLRENode;Kind:longint):PFLRENode;
+       function NewStar(Node:PFLRENode;Kind:longint):PFLRENode;
+       function NewQuest(Node:PFLRENode;Kind:longint):PFLRENode;
+
+       function IsStarNullable(Node:PFLRENode):boolean;
+       function StarDenull(Node:PFLRENode):PFLRENode;
+       function OptimizeNode(NodeEx:PPFLRENode):boolean;
        procedure Parse;
        procedure Compile;
        procedure CompilePrefix;
@@ -547,6 +561,10 @@ const MaxDFAStates=16384;
       opEOL=8;
       opBRK=9;
       opNBRK=10;
+
+      // Qualifier kind
+      qkGREEDY=0;
+      qkLAZY=1;
 
       // DFA result return values
       DFAError=-1;
@@ -1673,9 +1691,13 @@ var Index:longint;
     Flags:longword;
 begin
 
- if assigned(UnanchoredRootNode) then begin
+{if assigned(UnanchoredRootNode) then begin
   FreeNode(UnanchoredRootNode);
   UnanchoredRootNode:=nil;
+ end;{}
+
+ for Index:=0 to Nodes.Count-1 do begin
+  FreeMem(Nodes[Index]);
  end;
  FreeAndNil(Nodes);
 
@@ -1757,6 +1779,18 @@ begin
  inherited Destroy;
 end;
 
+function TFLRE.NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
+begin
+ GetMem(result,SizeOf(TFLRENode));
+ FillChar(result^,SizeOf(TFLRENode),#0);
+ result^.NodeType:=NodeType;
+ result^.Left:=Left;
+ result^.Right:=Right;
+ result^.Extra:=Extra;
+ result^.Value:=Value;
+ result^.Index:=Nodes.Add(result);
+end;
+
 procedure TFLRE.FreeNode(var Node:PFLRENode);
 begin
  if assigned(Node) then begin
@@ -1766,8 +1800,470 @@ begin
   if assigned(Node^.Right) then begin
    FreeNode(Node^.Right);
   end;
+  if assigned(Node^.Extra) then begin
+   FreeNode(Node^.Extra);
+  end;
   FreeMem(Node);
   Node:=nil;
+ end;
+end;
+
+function TFLRE.AreNodesEqual(NodeA,NodeB:PFLRENode):boolean;
+begin
+ result:=(NodeA=NodeB) or
+         ((((assigned(NodeA) and assigned(NodeB))) and ((NodeA^.NodeType=NodeB^.NodeType) and ((NodeA^.Value=NodeB^.Value) and ((AreNodesEqual(NodeA^.Left,NodeB^.Left) and AreNodesEqual(NodeA^.Right,NodeB^.Right)) and AreNodesEqual(NodeA^.Extra,NodeB^.Extra))))) or
+          not (assigned(NodeA) or assigned(NodeB)));
+end;
+
+function TFLRE.AreNodesEqualSafe(NodeA,NodeB:PFLRENode):boolean;
+begin
+ result:=(NodeA=NodeB) or
+         ((((assigned(NodeA) and assigned(NodeB))) and (((NodeA^.NodeType=NodeB^.NodeType) and not (NodeB^.NodeType in [ntPAREN])) and ((NodeA^.Value=NodeB^.Value) and ((AreNodesEqualSafe(NodeA^.Left,NodeB^.Left) and AreNodesEqualSafe(NodeA^.Right,NodeB^.Right)) and AreNodesEqualSafe(NodeA^.Extra,NodeB^.Extra))))) or
+          not (assigned(NodeA) or assigned(NodeB)));
+end;
+
+function TFLRE.Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
+var NodeTemp:PFLRENode;
+begin
+ if assigned(NodeLeft) and assigned(NodeRight) then begin
+  if ((NodeLeft^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (NodeRight^.NodeType=ntPLUS)) and AreNodesEqualSafe(NodeLeft^.Left,NodeRight^.Left) and (NodeLeft^.Value=0) and (NodeRight^.Value=0) then begin
+   result:=NodeRight;
+  end else if ((NodeLeft^.NodeType in [ntSTAR,ntPLUS]) and (NodeRight^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(NodeLeft^.Left,NodeRight^.Left) and (NodeLeft^.Value=0) and (NodeRight^.Value=0) then begin
+   result:=NodeLeft;
+  end else if (NodeLeft^.NodeType=ntCAT) and assigned(NodeLeft^.Left) and assigned(NodeLeft^.Right) then begin
+   if ((NodeLeft^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (NodeRight^.NodeType=ntPLUS)) and AreNodesEqualSafe(NodeLeft^.Right^.Left,NodeRight^.Left) and (NodeLeft^.Right^.Value=0) and (NodeRight^.Value=0) then begin
+    NodeLeft^.Right:=NodeRight;
+    result:=NodeLeft;
+   end else if ((NodeLeft^.Right^.NodeType in [ntSTAR,ntPLUS]) and (NodeRight^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(NodeLeft^.Right^.Left,NodeRight^.Left) and (NodeLeft^.Right^.Value=0) and (NodeRight^.Value=0) then begin
+    result:=NodeLeft;
+   end else begin
+    result:=NewNode(ntCAT,NodeLeft,NodeRight,nil,0);
+   end;
+  end else begin
+   result:=NewNode(ntCAT,NodeLeft,NodeRight,nil,0);
+  end;
+ end else begin
+  if assigned(NodeLeft) then begin
+   result:=NodeLeft;
+  end else if assigned(NodeRight) then begin
+   result:=NodeRight;
+  end else begin
+   result:=nil;
+  end;
+ end;
+ while (assigned(result) and (result^.NodeType=ntCAT)) and (assigned(result^.Left) and assigned(result^.Right)) do begin
+  if (result^.Left^.NodeType=ntCAT) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and assigned(result^.Left^.Right) and (result^.Right^.Value=0) then begin
+   if ((result^.Left^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Right^.Left,result^.Right^.Left) then begin
+    result^.Left^.Right:=result^.Right;
+    result:=result^.Left;
+    continue;
+   end else if ((result^.Left^.Right^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Right^.Left,result^.Right^.Left) then begin
+    result:=result^.Left;
+    continue;
+   end;
+  end else if (result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntCAT) and assigned(result^.Right^.Left) and (result^.Left^.Value=0) then begin
+   if ((result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.Left^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left^.Left) and (result^.Right^.Left^.Value=0) then begin
+    result:=result^.Right;
+    continue;
+   end else if ((result^.Left^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.Left^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left^.Left) and (result^.Right^.Left^.Value=0) then begin
+    result^.Right^.Left:=result^.Left;
+    result:=result^.Right;
+    continue;
+   end;
+  end else if (result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Left^.Value=0) and (result^.Right^.Value=0) then begin
+   if ((result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left) then begin
+    result:=result^.Right;
+    continue;
+   end else if ((result^.Left^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left) then begin
+    result:=result^.Left;
+    continue;
+   end;
+  end;
+  break;
+ end;
+end;
+
+function TFLRE.NewAlt(NodeLeft,NodeRight:PFLRENode):PFLRENode;
+var NodeEx,pl,pr:PPFLRENode;
+    Node,l,r:PFLRENode;
+    c:TFLRECharClass;
+begin
+ if assigned(NodeLeft) and assigned(NodeRight) then begin
+  if (NodeLeft^.NodeType=ntCAT) and (NodeRight^.NodeType=ntCAT) then begin
+   result:=NewNode(ntALT,NodeLeft,NodeRight,nil,0);
+   NodeEx:=@result;
+   while (((assigned(NodeEx) and assigned(NodeEx^)) and (NodeEx^^.NodeType=ntALT)) and (assigned(NodeEx^^.Left) and assigned(NodeEx^^.Right))) and ((NodeEx^^.Left^.NodeType=ntCAT) and (NodeEx^^.Right^.NodeType=ntCAT)) do begin
+    Node:=NodeEx^;
+    pl:=@Node^.Left;
+    l:=Node^.Left;
+    while (assigned(l) and assigned(l^.Left)) and (l^.Left^.NodeType=ntCAT) do begin
+     pl:=@l^.Left;
+     l:=l^.Left;
+    end;
+    pr:=@Node^.Right;
+    r:=Node^.Right;
+    while (assigned(r) and assigned(r^.Left)) and (r^.Left^.NodeType=ntCAT) do begin
+     pr:=@r^.Left;
+     r:=r^.Left;
+    end;
+    if ((assigned(l^.Left) and assigned(l^.Right)) and (assigned(r^.Left) and assigned(r^.Right))) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+     NodeEx^:=l;
+     pl^:=l^.Right;
+     pr^:=r^.Right;
+     l^.Right:=Node;
+     NodeEx:=@l^.Right;
+     continue;
+    end;
+    break;
+   end;
+  end else if AreNodesEqualSafe(NodeLeft,NodeRight) then begin
+   result:=NodeLeft;
+  end else if (NodeLeft^.NodeType=ntCHAR) and (NodeRight^.NodeType=ntCHAR) then begin
+   result:=NewNode(ntCHAR,nil,nil,nil,0);
+   result^.CharClass:=NodeLeft^.CharClass+NodeRight^.CharClass;
+// result:=ConvertUTF8CharClassNode(NewNode(ntCHAR,nil,nil,nil,RegExp.AddCharClass(c)));
+  end else begin
+   result:=NewNode(ntALT,NodeLeft,NodeRight,nil,0);
+  end;
+ end else begin
+  if assigned(NodeLeft) then begin
+   result:=NodeLeft;
+  end else if assigned(NodeRight) then begin
+   result:=NodeRight;
+  end else begin
+   result:=nil;
+  end;
+ end;
+end;
+
+{ * (a*)* equals a*
+  * (a+)+ equals a+
+  * (a?)? equals a?
+  * (a*)+ equals (a+)* equals a*
+  * (a*)? equals (a?)* equals a*
+  * (a+)? equals (a?)+ equals a*
+}
+function TFLRE.NewPlus(Node:PFLRENode;Kind:longint):PFLRENode;
+begin
+ if (Kind=qkGREEDY) and ((assigned(Node) and (Node^.NodeType=ntPAREN)) and ((assigned(Node^.Left) and (Node^.Left^.NodeType in [ntPLUS,ntSTAR])) and (Node^.Left^.Value=qkGREEDY))) then begin
+  result:=Node;
+ end else if (Kind=qkGREEDY) and ((assigned(Node) and (Node^.NodeType=ntPLUS)) and (Node^.Value=qkGREEDY)) then begin
+  result:=Node;
+ end else if (Kind=qkGREEDY) and ((assigned(Node) and (Node^.NodeType in [ntSTAR,ntQUEST])) and (Node^.Value=qkGREEDY)) then begin
+  result:=Node;
+  result^.NodeType:=ntSTAR;
+ end else begin
+  result:=NewNode(ntPLUS,Node,nil,nil,Kind);
+ end;
+end;
+
+function TFLRE.NewStar(Node:PFLRENode;Kind:longint):PFLRENode;
+begin
+  if (Kind=qkGREEDY) and ((assigned(Node) and (Node^.NodeType=ntPAREN)) and ((assigned(Node^.Left) and (Node^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and (Node^.Left^.Value=qkGREEDY))) then begin
+  result:=Node;
+  result^.Left^.NodeType:=ntSTAR;
+ end else if (Kind=qkGREEDY) and ((assigned(Node) and (Node^.NodeType in [ntPLUS,ntQUEST,ntSTAR])) and (Node^.Value=qkGREEDY)) then begin
+  result:=Node;
+  result^.NodeType:=ntSTAR;
+ end else begin
+  result:=NewNode(ntSTAR,Node,nil,nil,Kind);
+ end;
+end;
+
+function TFLRE.NewQuest(Node:PFLRENode;Kind:longint):PFLRENode;
+begin
+ if (Kind=qkGREEDY) and ((assigned(Node) and (Node^.NodeType=ntPAREN)) and ((assigned(Node^.Left) and (Node^.Left^.NodeType=ntQUEST)) and (Node^.Left^.Value=qkGREEDY))) then begin
+  result:=Node;
+ end else if (Kind=qkGREEDY) and ((assigned(Node) and (Node^.NodeType=ntPAREN)) and ((assigned(Node^.Left) and (Node^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and (Node^.Left^.Value=qkGREEDY))) then begin
+  result:=Node;
+  result^.Left^.NodeType:=ntSTAR;
+ end else if (Kind=qkGREEDY) and ((assigned(Node) and (Node^.NodeType=ntQUEST)) and (Node^.Value=qkGREEDY)) then begin
+  result:=Node;
+ end else if (Kind=qkGREEDY) and ((assigned(Node) and (Node^.NodeType in [ntPLUS,ntSTAR])) and (Node^.Value=qkGREEDY)) then begin
+  result:=Node;
+  result^.NodeType:=ntSTAR;
+ end else begin
+  result:=NewNode(ntQUEST,Node,nil,nil,Kind);
+ end;
+end;
+
+function TFLRE.IsStarNullable(Node:PFLRENode):boolean;
+begin
+ if assigned(Node) then begin
+  case Node^.NodeType of
+   ntSTAR:begin
+    result:=Node^.Value=qkGREEDY;
+   end;
+   ntALT:begin
+    result:=(IsStarNullable(Node^.Left) or IsStarNullable(Node^.Right)) or not (assigned(Node^.Left) and assigned(Node^.Right));
+   end;
+   ntCAT:begin
+    result:=IsStarNullable(Node^.Left) and IsStarNullable(Node^.Right);
+   end;
+   else begin
+    result:=false;
+   end;
+  end;
+ end else begin
+  result:=false;
+ end;
+end;
+
+function TFLRE.StarDenull(Node:PFLRENode):PFLRENode;
+begin
+ result:=Node;
+ if IsStarNullable(result) then begin
+  case result^.NodeType of
+   ntSTAR:begin
+    result:=result^.Left;
+   end;
+   ntCAT:begin
+    result:=NewAlt(StarDenull(result^.Left),StarDenull(result^.Right));
+{   result^.NodeType:=ntALT;
+    result^.Left:=StarDenull(result^.Left);
+    result^.Right:=StarDenull(result^.Right);}
+   end;
+   ntALT:begin
+    result:=NewAlt(StarDenull(result^.Left),StarDenull(result^.Right));
+{   result^.Left:=StarDenull(result^.Left);
+    result^.Right:=StarDenull(result^.Right);}
+   end;
+  end;
+ end;
+end;
+
+function TFLRE.OptimizeNode(NodeEx:PPFLRENode):boolean;
+ procedure ParseNodes(NodeList:TList;n:PFLRENode);
+ begin
+  while assigned(n) do begin
+   if n^.NodeType=ntCAT then begin
+    if assigned(n^.Right) then begin
+     if n^.Right^.NodeType=ntCAT then begin
+      ParseNodes(NodeList,n^.Right);
+     end else begin
+      NodeList.Add(n^.Right);
+     end;
+    end;
+    if assigned(n^.Left) then begin
+     if n^.Left^.NodeType=ntCAT then begin
+      n:=n^.Left;
+     end else begin
+      NodeList.Add(n^.Left);
+      break;
+     end;
+    end else begin
+     break;
+    end;
+   end else begin
+    NodeList.Add(n);
+    break;
+   end;
+  end;
+ end;
+var Node,l,r:PFLRENode;
+    pr,pl:PPFLRENode;
+    DoContinue,Optimized:boolean;
+    NodeList:TList;
+    NodeIndex:longint;
+    c:TFLRECharClass;
+begin
+ result:=false;
+ DoContinue:=true;
+ while DoContinue and (assigned(NodeEx) and assigned(NodeEx^)) do begin
+  DoContinue:=false;
+  Node:=NodeEx^;
+  if assigned(Node) then begin
+   case Node^.NodeType of
+    ntCHAR,ntDOT,ntBOL,ntEOL,ntBRK,ntNBRK:begin
+    end;
+    ntPAREN,ntEXACT:begin
+     NodeEx:=@Node^.Left;
+     DoContinue:=true;
+    end;
+    ntPLUS:begin
+     if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntPLUS,ntSTAR])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+      NodeEx^:=Node^.Left;
+      DoContinue:=true;
+      result:=true;
+     end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPLUS)) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+      NodeEx^:=Node^.Left;
+      DoContinue:=true;
+      result:=true;
+     end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntSTAR,ntQUEST])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+      NodeEx^:=Node^.Left;
+      NodeEx^^.NodeType:=ntSTAR;
+      DoContinue:=true;
+      result:=true;
+     end else begin
+      NodeEx:=@Node^.Left;
+      DoContinue:=true;
+     end;
+    end;
+    ntSTAR:begin
+     if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+      NodeEx^:=Node^.Left;
+      NodeEx^^.Left^.NodeType:=ntSTAR;
+      DoContinue:=true;
+      result:=true;
+     end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntPLUS,ntQUEST,ntSTAR])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+      NodeEx^:=Node^.Left;
+      NodeEx^^.NodeType:=ntSTAR;
+      DoContinue:=true;
+      result:=true;
+     end else begin
+      if IsStarNullable(Node^.Left) then begin
+       Node:=StarDenull(Node^.Left);
+       result:=true;
+      end;
+      NodeEx:=@Node^.Left;
+      DoContinue:=true;
+     end;
+    end;
+    ntQUEST:begin
+     if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType=ntQUEST)) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+      NodeEx^:=Node^.Left;
+      DoContinue:=true;
+      result:=true;
+     end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+      NodeEx^:=Node^.Left;
+      NodeEx^^.Left^.NodeType:=ntSTAR;
+      DoContinue:=true;
+      result:=true;
+     end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntQUEST)) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+      NodeEx^:=Node^.Left;
+      DoContinue:=true;
+      result:=true;
+     end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntPLUS,ntSTAR])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+      NodeEx^:=Node^.Left;
+      NodeEx^^.NodeType:=ntSTAR;
+      DoContinue:=true;
+      result:=true;
+     end else begin
+      NodeEx:=@Node^.Left;
+      DoContinue:=true;
+     end;
+    end;
+    ntCAT:begin
+     if assigned(Node^.Left) and assigned(Node^.Right) then begin
+      if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (Node^.Right^.NodeType=ntPLUS)) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
+       NodeEx^:=Node^.Right;
+       DoContinue:=true;
+       result:=true;
+      end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS]) and (Node^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
+       NodeEx^:=Node^.Left;
+       DoContinue:=true;
+       result:=true;
+      end else begin
+       NodeList:=TList.Create;
+       try
+        ParseNodes(NodeList,Node);
+        Optimized:=false;
+        DoContinue:=true;
+        while DoContinue do begin
+         DoContinue:=false;
+         NodeIndex:=NodeList.Count-1;
+         while NodeIndex>0 do begin
+          l:=PFLRENode(NodeList[NodeIndex]);
+          r:=PFLRENode(NodeList[NodeIndex-1]);
+          if ((l^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (r^.NodeType=ntPLUS)) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+           NodeList.Delete(NodeIndex);
+           if NodeIndex>=NodeList.Count then begin
+            NodeIndex:=NodeList.Count-1;
+           end;
+           DoContinue:=true;
+           Optimized:=true;
+          end else if ((l^.NodeType in [ntSTAR,ntPLUS]) and (r^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+           NodeList.Delete(NodeIndex-1);
+           if NodeIndex>=NodeList.Count then begin
+            NodeIndex:=NodeList.Count-1;
+           end;
+           DoContinue:=true;
+           Optimized:=true;
+          end else begin
+           dec(NodeIndex);
+          end;
+         end;
+        end;
+        if Optimized and (NodeList.Count>0) then begin
+         NodeEx^:=NodeList[NodeList.Count-1];
+         for NodeIndex:=NodeList.Count-2 downto 0 do begin
+          NodeEx^:=NewNode(ntCAT,NodeEx^,NodeList[NodeIndex],nil,0);
+         end;
+         DoContinue:=true;
+         result:=true;
+        end;
+       finally
+        FreeAndNil(NodeList);
+       end;
+       if not Optimized then begin
+        if OptimizeNode(@Node^.Right) then begin
+         result:=true;
+        end;
+        NodeEx:=@Node^.Left;
+        DoContinue:=true;
+       end;
+      end;
+     end else begin
+      if assigned(Node^.Left) then begin
+       NodeEx:=@Node^.Left;
+      end else begin
+       NodeEx:=@Node^.Right;
+      end;
+      DoContinue:=true;
+     end;
+    end;
+    ntALT:begin
+     if assigned(Node^.Left) and assigned(Node^.Right) then begin
+      if (Node^.Left^.NodeType=ntCAT) and (Node^.Right^.NodeType=ntCAT) then begin
+       pl:=@Node^.Left;
+       l:=Node^.Left;
+       while (assigned(l) and assigned(l^.Left)) and (l^.Left^.NodeType=ntCAT) do begin
+        pl:=@l^.Left;
+        l:=l^.Left;
+       end;
+       pr:=@Node^.Right;
+       r:=Node^.Right;
+       while (assigned(r) and assigned(r^.Left)) and (r^.Left^.NodeType=ntCAT) do begin
+        pr:=@r^.Left;
+        r:=r^.Left;
+       end;
+       if ((assigned(l^.Left) and assigned(l^.Right)) and (assigned(r^.Left) and assigned(r^.Right))) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+        NodeEx^:=l;
+        pl^:=l^.Right;
+        pr^:=r^.Right;
+        l^.Right:=Node;
+        DoContinue:=true;
+        result:=true;
+       end;
+      end else if AreNodesEqualSafe(Node^.Left,Node^.Right) then begin
+       NodeEx^:=Node^.Left;
+       DoContinue:=true;
+       result:=true;
+      end else if (Node^.Left^.NodeType=ntCHAR) and (Node^.Right^.NodeType=ntCHAR) then begin
+       Node^.NodeType:=ntCHAR;
+       Node^.CharClass:=Node^.Left^.CharClass+Node^.Right^.CharClass;
+       Node^.Left:=nil;
+       Node^.Right:=nil;
+       DoContinue:=true;
+       result:=true;
+      end else begin
+       if OptimizeNode(@Node^.Right) then begin
+        result:=true;
+       end;
+       NodeEx:=@Node^.Left;
+       DoContinue:=true;
+      end;
+     end else begin
+      if assigned(Node^.Left) then begin
+       NodeEx:=@Node^.Left;
+      end else begin
+       NodeEx:=@Node^.Right;
+      end;
+      DoContinue:=true;
+     end;
+    end;
+   end;
+  end;
  end;
 end;
 
@@ -1791,16 +2287,6 @@ var SourcePosition,SourceLength:longint;
     result:=0;
    end;
   end;
- end;
- function NewNode(const NodeType:longint;const Left,Right:PFLRENode;const Value:longint=0):PFLRENode;
- begin
-  GetMem(result,SizeOf(TFLRENode));
-  FillChar(result^,SizeOf(TFLRENode),#0);
-  result^.NodeType:=NodeType;
-  result^.Left:=Left;
-  result^.Right:=Right;
-  result^.Index:=Nodes.Add(result);
-  result^.Value:=Value;
  end;
  function ParseDisjunction:PFLRENode; forward;
  function GetCharClass(const CurrentChar:ansichar;out IsSingle:boolean;out SingleChar:ansichar):TFLRECharClass;
@@ -2012,7 +2498,7 @@ var SourcePosition,SourceLength:longint;
           if NamedGroupStringList.IndexOf(Name)<0 then begin
            NamedGroupStringList.Add(Name);
           end;
-          result:=NewNode(ntPAREN,ParseDisjunction,nil);
+          result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
           result^.Value:=Value;
          end;
          '<':begin
@@ -2036,7 +2522,7 @@ var SourcePosition,SourceLength:longint;
            if NamedGroupStringList.IndexOf(Name)<0 then begin
             NamedGroupStringList.Add(Name);
            end;
-           result:=NewNode(ntPAREN,ParseDisjunction,nil);
+           result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
            result^.Value:=Value;
           end;
          end;
@@ -2060,7 +2546,7 @@ var SourcePosition,SourceLength:longint;
            if NamedGroupStringList.IndexOf(Name)<0 then begin
             NamedGroupStringList.Add(Name);
            end;
-           result:=NewNode(ntPAREN,ParseDisjunction,nil);
+           result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
            result^.Value:=Value;
           end else begin
            raise EFLRE.Create('Syntax error');
@@ -2076,7 +2562,7 @@ var SourcePosition,SourceLength:longint;
       end else begin
        Value:=CountParens;
        inc(CountParens);
-       result:=NewNode(ntPAREN,ParseDisjunction,nil);
+       result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
        result^.Value:=Value;
       end;
       if (SourcePosition<=SourceLength) and (Source[SourcePosition]=')') then begin
@@ -2090,11 +2576,11 @@ var SourcePosition,SourceLength:longint;
       if SourcePosition<=SourceLength then begin
        case Source[SourcePosition] of
         'b':begin
-         result:=NewNode(ntBRK,nil,nil);
+         result:=NewNode(ntBRK,nil,nil,nil,0);
          inc(SourcePosition);
         end;
         'B':begin
-         result:=NewNode(ntNBRK,nil,nil);
+         result:=NewNode(ntNBRK,nil,nil,nil,0);
          inc(SourcePosition);
         end;
         'x','X':begin
@@ -2102,7 +2588,7 @@ var SourcePosition,SourceLength:longint;
          if ((SourcePosition+1)<=SourceLength) and
             (Source[SourcePosition+0] in ['0'..'9','a'..'f','A'..'F']) and
             (Source[SourcePosition+1] in ['0'..'9','a'..'f','A'..'F']) then begin
-          result:=NewNode(ntCHAR,nil,nil);
+          result:=NewNode(ntCHAR,nil,nil,nil,0);
           result^.CharClass:=[ansichar(byte(longword((Hex2Value(Source[SourcePosition+0]) shl 8) or Hex2Value(Source[SourcePosition+1]))))];
           inc(SourcePosition,2);
          end else begin
@@ -2110,7 +2596,7 @@ var SourcePosition,SourceLength:longint;
          end;
         end;
         else begin
-         result:=NewNode(ntCHAR,nil,nil);
+         result:=NewNode(ntCHAR,nil,nil,nil,0);
          result^.CharClass:=GetCharClass(Source[SourcePosition],IsSingle,StartChar);
          inc(SourcePosition);
         end;
@@ -2120,15 +2606,15 @@ var SourcePosition,SourceLength:longint;
       end;
      end;
      '.':begin
-      result:=NewNode(ntDOT,nil,nil);
+      result:=NewNode(ntDOT,nil,nil,nil,0);
       inc(SourcePosition);
      end;
      '^':begin
-      result:=NewNode(ntBOL,nil,nil);
+      result:=NewNode(ntBOL,nil,nil,nil,0);
       inc(SourcePosition);
      end;
      '$':begin
-      result:=NewNode(ntEOL,nil,nil);
+      result:=NewNode(ntEOL,nil,nil,nil,0);
       inc(SourcePosition);
      end;
      '[':begin
@@ -2142,13 +2628,13 @@ var SourcePosition,SourceLength:longint;
        end;
        if ((SourcePosition+1)<=SourceLength) and ((Source[SourcePosition]=':') and (Source[SourcePosition+1]=']')) then begin
         inc(SourcePosition,2);
-        result:=NewNode(ntCHAR,nil,nil);
+        result:=NewNode(ntCHAR,nil,nil,nil,0);
         result^.CharClass:=GetCharClassPerName(Name);
        end else begin
         raise EFLRE.Create('Syntax error');
        end;
       end else begin
-       result:=NewNode(ntCHAR,nil,nil);
+       result:=NewNode(ntCHAR,nil,nil,nil,0);
        result^.CharClass:=[];
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]='^') then begin
         inc(SourcePosition);
@@ -2283,7 +2769,7 @@ var SourcePosition,SourceLength:longint;
       end;
      end;
      else begin
-      result:=NewNode(ntCHAR,nil,nil);
+      result:=NewNode(ntCHAR,nil,nil,nil,0);
       result^.CharClass:=[Source[SourcePosition]];
       inc(SourcePosition);
      end;
@@ -2304,53 +2790,50 @@ var SourcePosition,SourceLength:longint;
     if SourcePosition<=SourceLength then begin
      case Source[SourcePosition] of
       '*':begin
-       result:=NewNode(ntSTAR,result,nil);
        inc(SourcePosition);
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]='?') then begin
         inc(SourcePosition);
-        result^.Value:=1;
+        result:=NewStar(result,qkLAZY);
         if rfLONGEST in Flags then begin
          raise EFLRE.Create('Syntax error');
         end;
        end else begin
         if rfLONGEST in Flags then begin
-         result^.Value:=1;
+         result:=NewStar(result,qkLAZY);
         end else begin
-         result^.Value:=0;
+         result:=NewStar(result,qkGREEDY);
         end;
        end;
       end;
       '+':begin
-       result:=NewNode(ntPLUS,result,nil);
        inc(SourcePosition);
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]='?') then begin
         inc(SourcePosition);
-        result^.Value:=1;
+        result:=NewPlus(result,qkLAZY);
         if rfLONGEST in Flags then begin
          raise EFLRE.Create('Syntax error');
         end;
        end else begin
         if rfLONGEST in Flags then begin
-         result^.Value:=1;
+         result:=NewPlus(result,qkLAZY);
         end else begin
-         result^.Value:=0;
+         result:=NewPlus(result,qkGREEDY);
         end;
        end;
       end;
       '?':begin
-       result:=NewNode(ntQUEST,result,nil);
        inc(SourcePosition);
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]='?') then begin
         inc(SourcePosition);
-        result^.Value:=1;
+        result:=NewQuest(result,qkLAZY);
         if rfLONGEST in Flags then begin
          raise EFLRE.Create('Syntax error');
         end;
        end else begin
         if rfLONGEST in Flags then begin
-         result^.Value:=1;
+         result:=NewQuest(result,qkLAZY);
         end else begin
-         result^.Value:=0;
+         result:=NewQuest(result,qkGREEDY);
         end;
        end;
       end;
@@ -2385,7 +2868,7 @@ var SourcePosition,SourceLength:longint;
        end;
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]='}') then begin
         inc(SourcePosition);
-        result:=NewNode(ntEXACT,result,nil);
+        result:=NewNode(ntEXACT,result,nil,nil,0);
         if (SourcePosition<=SourceLength) and (Source[SourcePosition]='?') then begin
          inc(SourcePosition);
          result^.Value:=1;
@@ -2421,7 +2904,7 @@ var SourcePosition,SourceLength:longint;
    while SourcePosition<=SourceLength do begin
     Node:=ParseTerm;
     if assigned(result) then begin
-     result:=NewNode(ntCAT,result,Node);
+     result:=Concat(result,Node);
     end else begin
      result:=Node;
     end;
@@ -2448,7 +2931,7 @@ var SourcePosition,SourceLength:longint;
    while SourcePosition<=SourceLength do begin
     Node:=ParseAlternative;
     if assigned(result) then begin
-     result:=NewNode(ntALT,result,Node);
+     result:=NewAlt(result,Node);
     end else begin
      result:=Node;
     end;
@@ -2479,11 +2962,13 @@ begin
  SourceLength:=length(Source);
  if SourcePosition<=SourceLength then begin
   CountParens:=1;
-  AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,0);
+  AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
+  while OptimizeNode(@AnchoredRootNode) do begin
+  end;
   if rfLONGEST in Flags then begin
-   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntDOT,nil,nil,0),nil,0),AnchoredRootNode,0);
+   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntDOT,nil,nil,nil,0),nil,nil,qkGREEDY),AnchoredRootNode,nil,0);
   end else begin
-   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntDOT,nil,nil,0),nil,1),AnchoredRootNode,0);
+   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntDOT,nil,nil,nil,0),nil,nil,qkLAZY),AnchoredRootNode,nil,0);
   end;
   DFANeedVerification:=false;
   BeginningAnchor:=false;
