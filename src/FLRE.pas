@@ -99,7 +99,7 @@ unit FLRE;
 
 interface
 
-uses SysUtils,Classes,Math,FLREUnicode;
+uses SysUtils,Classes,Math,SyncObjs,FLREUnicode;
 
 const FLREVersionStr='1.00.2015.08.24.1633';
 
@@ -352,6 +352,18 @@ type EFLRE=class(Exception);
        property Values[const Key:ansistring]:TFLREStringIntegerPairHashMapData read GetValue write SetValue; default;
      end;
 
+     TFLREThreadLocalState=class
+      private
+       AllNext:TFLREThreadLocalState;
+       FreeNext:TFLREThreadLocalState;
+      public
+       Instance:TFLRE;
+       Input:pansichar;
+       InputLength:longint;
+       constructor Create(AInstance:TFLRE);
+       destructor Destroy; override;
+     end;
+
      TFLRE=class
       private
 
@@ -454,6 +466,11 @@ type EFLRE=class(Exception);
 
        NamedGroupStringList:TStringList;
        NamedGroupStringIntegerPairHashMap:TFLREStringIntegerPairHashMap;
+
+       ThreadLocalStateCriticalSection:TCriticalSection;
+
+       ThreadLocalStates:TFLREThreadLocalState;
+       FreeThreadLocalStates:TFLREThreadLocalState;
 
        function NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
        procedure FreeNode(var Node:PFLRENode);
@@ -4018,6 +4035,21 @@ begin
  result:=CompareCharClasses(self,TFLREUnicodeCharClass(OtherObject))=0;
 end;
 
+constructor TFLREThreadLocalState.Create(AInstance:TFLRE);
+begin
+ inherited Create;
+ AllNext:=nil;
+ FreeNext:=nil;
+ Instance:=AInstance;
+ Input:=nil;
+ InputLength:=0;
+end;
+
+destructor TFLREThreadLocalState.Destroy;
+begin
+ inherited Destroy;
+end;
+
 constructor TFLRE.Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[]);
 var FLREDFAStateCreateTempDFAState:TFLREDFAState;
 begin
@@ -4097,6 +4129,11 @@ begin
 
  NamedGroupStringList:=TStringList.Create;
  NamedGroupStringIntegerPairHashMap:=TFLREStringIntegerPairHashMap.Create;
+
+ ThreadLocalStateCriticalSection:=TCriticalSection.Create;
+
+ ThreadLocalStates:=nil;
+ FreeThreadLocalStates:=nil;
 
  try
 
@@ -4213,7 +4250,16 @@ var Index:longint;
     SubMatches:PFLRESubMatches;
     NextCharClassAction:PFLREOnePassNFAStateCharClassAction;
     Flags:longword;
+    ThreadLocalState,NextThreadLocalState:TFLREThreadLocalState;
 begin
+
+ ThreadLocalState:=ThreadLocalStates;
+ ThreadLocalStates:=nil;
+ while assigned(ThreadLocalState) do begin
+  NextThreadLocalState:=ThreadLocalState.AllNext;
+  ThreadLocalState.Free;
+  ThreadLocalState:=NextThreadLocalState;
+ end;
 
  for Index:=0 to Nodes.Count-1 do begin
   FreeMem(Nodes[Index]);
@@ -4294,6 +4340,8 @@ begin
 
  NamedGroupStringList.Free;
  NamedGroupStringIntegerPairHashMap.Free;
+
+ ThreadLocalStateCriticalSection.Free;
 
  inherited Destroy;
 end;
@@ -8843,75 +8891,104 @@ end;
 
 function TFLRE.SearchMatch(var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
 var MatchBegin,MatchEnd:longint;
+    HaveResult:boolean;
+    ThreadLocalState:TFLREThreadLocalState;
 begin
- case SearchMatchDFA(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
-  DFAMatch:begin
-   if UnanchoredStart then begin
-    // For unanchored searchs, we must do also a "backward" DFA search
-    case SearchMatchReversedDFA(MatchEnd,StartPosition,MatchBegin) of
-     DFAMatch:begin
-      if MatchBegin<StartPosition then begin
-       MatchBegin:=StartPosition;
+ result:=false;
+ ThreadLocalStateCriticalSection.Enter;
+ try
+  ThreadLocalState:=FreeThreadLocalStates;
+  if assigned(ThreadLocalState) then begin
+   FreeThreadLocalStates:=ThreadLocalState.FreeNext;
+  end else begin
+   ThreadLocalState:=TFLREThreadLocalState.Create(self);
+   ThreadLocalState.AllNext:=ThreadLocalStates;
+   ThreadLocalStates:=ThreadLocalState;
+  end;
+ finally
+  ThreadLocalStateCriticalSection.Leave;
+ end;
+ try
+  repeat
+   case SearchMatchDFA(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
+    DFAMatch:begin
+     if UnanchoredStart then begin
+      // For unanchored searchs, we must do also a "backward" DFA search
+      case SearchMatchReversedDFA(MatchEnd,StartPosition,MatchBegin) of
+       DFAMatch:begin
+        if MatchBegin<StartPosition then begin
+         MatchBegin:=StartPosition;
+        end;
+        if (CountParens=1) and not DFANeedVerification then begin
+         // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
+         SetLength(Captures,1);
+         Captures[0].Start:=MatchBegin;
+         Captures[0].Length:=(MatchEnd-MatchBegin)+1;
+         result:=true;
+         break;
+        end else begin
+         // Otherwise if we have group captures or if we do need verify the found, set the new stat position *NFA algorithms
+         StartPosition:=MatchBegin;
+         UnanchoredStart:=true;
+        end;
+       end;
       end;
-      if (CountParens=1) and not DFANeedVerification then begin
-       // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-       SetLength(Captures,1);
-       Captures[0].Start:=MatchBegin;
-       Captures[0].Length:=(MatchEnd-MatchBegin)+1;
-       result:=true;
-       exit;
-      end else begin
-       // Otherwise if we have group captures or if we do need verify the found, set the new stat position *NFA algorithms
-       StartPosition:=MatchBegin;
-       UnanchoredStart:=true;
+     end;
+     if (CountParens=1) and not (DFANeedVerification or UnanchoredStart) then begin
+      // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
+      SetLength(Captures,1);
+      Captures[0].Start:=StartPosition;
+      Captures[0].Length:=(MatchEnd-StartPosition)+1;
+      result:=true;
+      break;
+     end else begin
+      // Otherwise if we have group captures or if we do need verify the found, limit search length for the slower *NFA algorithms
+      if UntilExcludingPosition>(MatchEnd+1) then begin
+       UntilExcludingPosition:=MatchEnd+1;
       end;
      end;
     end;
-   end;
-   if (CountParens=1) and not (DFANeedVerification or UnanchoredStart) then begin
-    // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-    SetLength(Captures,1);
-    Captures[0].Start:=StartPosition;
-    Captures[0].Length:=(MatchEnd-StartPosition)+1;
-    result:=true;
-    exit;
-   end else begin
-    // Otherwise if we have group captures or if we do need verify the found, limit search length for the slower *NFA algorithms
-    if UntilExcludingPosition>(MatchEnd+1) then begin
-     UntilExcludingPosition:=MatchEnd+1;
-    end;
-   end;
-  end;
-  DFAFail:begin
-   // No DFA match => stop
-   result:=false;
-   exit;
-  end;
-  else {DFAError:}begin
-   // Internal error?
-{$ifdef debug}
-   Assert(false,'Internal error in DFA code');
-{$endif}
-  end;
- end;
- if OnePassNFAReady and not UnanchoredStart then begin
-  result:=SearchMatchOnePassNFA(Captures,StartPosition,UntilExcludingPosition);
- end else begin
-  if BitStateNFAReady then begin
-   case SearchMatchBitStateNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
-    BitStateNFAFail:begin
+    DFAFail:begin
+     // No DFA match => stop
      result:=false;
-     exit;
+     break;
     end;
-    BitStateNFAMatch:begin
-     result:=true;
-     exit;
+    else {DFAError:}begin
+     // Internal error?
+{$ifdef debug}
+     Assert(false,'Internal error in DFA code');
+{$endif}
     end;
-  (*else{BitStateNFAError:}begin
-    end;*)
    end;
+   if OnePassNFAReady and not UnanchoredStart then begin
+    result:=SearchMatchOnePassNFA(Captures,StartPosition,UntilExcludingPosition);
+   end else begin
+    if BitStateNFAReady then begin
+     case SearchMatchBitStateNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
+      BitStateNFAFail:begin
+       result:=false;
+       break;
+      end;
+      BitStateNFAMatch:begin
+       result:=true;
+       break;
+      end;
+(*    else{BitStateNFAError:}begin
+      end;*)
+     end;
+    end;
+    result:=SearchMatchParallelNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart);
+   end;
+   break;
+  until true;
+ finally
+  ThreadLocalStateCriticalSection.Enter;
+  try
+   ThreadLocalState.FreeNext:=FreeThreadLocalStates;
+   FreeThreadLocalStates:=ThreadLocalState;
+  finally
+   ThreadLocalStateCriticalSection.Leave;
   end;
-  result:=SearchMatchParallelNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart);
  end;
 end;
 
