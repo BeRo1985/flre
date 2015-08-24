@@ -7364,6 +7364,14 @@ var SourcePosition,SourceLength:longint;
                Include(Flags,rfLONGEST);
               end;
              end;
+             'U':begin
+              inc(SourcePosition);
+              if IsNegative then begin
+               Exclude(Flags,rfUNGREEDY);
+              end else begin
+               Include(Flags,rfUNGREEDY);
+              end;
+             end;
              ':':begin
               inc(SourcePosition);
               result:=ParseDisjunction;
@@ -7467,10 +7475,14 @@ var SourcePosition,SourceLength:longint;
          raise EFLRE.Create('Syntax error');
         end;
        end else begin
-        Value:=CountParens;
-        inc(CountParens);
-        result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
-        result^.Value:=Value;
+        if rfNAMED in Flags then begin
+         result:=ParseDisjunction;
+        end else begin
+         Value:=CountParens;
+         inc(CountParens);
+         result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
+         result^.Value:=Value;
+        end;
        end;
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]=')') then begin
         inc(SourcePosition);
