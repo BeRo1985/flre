@@ -135,6 +135,8 @@ type EFLRE=class(Exception);
 {$ifend}
 {$endif}
 
+     TFLRE=class;
+
      PFLREFlag=^TFLREFlag;
      TFLREFlag=(rfCASEINSENSITIVE,
                 rfSINGLELINE,
@@ -315,7 +317,7 @@ type EFLRE=class(Exception);
 
      TFLREPrefixCharClasses=array[0..MaxPrefixCharClasses-1] of TFLRECharClass;
     
-     TFLREStringIntegerPairHashMapData=longint;
+     TFLREStringIntegerPairHashMapData=int64;
 
      PFLREStringIntegerPairHashMapEntity=^TFLREStringIntegerPairHashMapEntity;
      TFLREStringIntegerPairHashMapEntity=record
@@ -3141,6 +3143,881 @@ begin
  Add(Key,Value);
 end;
 
+type TFLREUnicodeCharClass=class;
+
+     TFLREUnicodeCharClassRange=class
+      public
+       CharClass:TFLREUnicodeCharClass;
+       Previous,Next,Left,Right:TFLREUnicodeCharClassRange;
+       Lo,Hi:longword;
+       constructor Create(ACharClass:TFLREUnicodeCharClass;ALo,AHi:longword);
+       constructor CreateBefore(ACharClass:TFLREUnicodeCharClass;ABefore:TFLREUnicodeCharClassRange;ALo,AHi:longword);
+       constructor CreateAfter(ACharClass:TFLREUnicodeCharClass;AAfter:TFLREUnicodeCharClassRange;ALo,AHi:longword);
+       destructor Destroy; override;
+     end;
+
+     TFLREUnicodeCharClassCharSet=set of ansichar;
+
+     TFLREUnicodeCharClassRanges=array of TFLREUnicodeCharClassRange;
+
+     TFLREUnicodeCharClass=class
+      public
+       RegExp:TFLRE;
+       Previous,Next:TFLREUnicodeCharClass;
+       First,Last,Root:TFLREUnicodeCharClassRange;
+       CharSet:TFLREUnicodeCharClassCharSet;
+       Inverted:longbool;
+       Canonicalized:longbool;
+       constructor Create(ARegExp:TFLRE);
+       destructor Destroy; override;
+       procedure Clear;
+       procedure Dump;
+       procedure DebugDump;
+       procedure Optimize;
+       procedure AddRange(Lo,Hi:longword;IgnoreCase:boolean=false);
+       procedure AddChar(c:longword;IgnoreCase:boolean=false);
+       procedure AddUnicodeCategory(CategoryFlags:longword;IgnoreCase:boolean=false);
+       procedure AddUnicodeScript(Script:longword;IgnoreCase:boolean=false);
+       procedure AddUnicodeBlock(Block:longword;IgnoreCase:boolean=false);
+       procedure Combine(From:TFLREUnicodeCharClass);
+       function Subtraction(From,SubtractWith:TFLREUnicodeCharClass):boolean;
+       function Intersection(From,IntersectWith:TFLREUnicodeCharClass):boolean;
+       procedure TakeoverCombine(From:TFLREUnicodeCharClass);
+       procedure TakeoverDirtyCombine(From:TFLREUnicodeCharClass);
+       procedure Assign(From:TFLREUnicodeCharClass);
+       procedure Append(From:TFLREUnicodeCharClass);
+       procedure Invert;
+       procedure Canonicalize;
+       procedure CompileBinarySearchTree;
+       procedure CompileCharset;
+       procedure Finalize;
+       function Count:longword;
+       function Contains(c:longword):boolean;
+       function Intersects(Other:TFLREUnicodeCharClass):boolean;
+       function IsSingle:boolean;
+       function HashCode:longword;
+       function EqualsTo(OtherObject:TFLREUnicodeCharClass):boolean;
+     end;
+
+constructor TFLREUnicodeCharClassRange.Create(ACharClass:TFLREUnicodeCharClass;ALo,AHi:longword);
+begin
+ inherited Create;
+ CharClass:=ACharClass;
+ Lo:=ALo;
+ Hi:=AHi;
+ if assigned(CharClass.Last) then begin
+  Previous:=CharClass.Last;
+  CharClass.Last:=self;
+  Previous.Next:=self;
+  Next:=nil;
+ end else begin
+  CharClass.First:=self;
+  CharClass.Last:=self;
+  Previous:=nil;
+  Next:=nil;
+ end;
+ Left:=nil;
+ Right:=nil;
+end;
+
+constructor TFLREUnicodeCharClassRange.CreateBefore(ACharClass:TFLREUnicodeCharClass;ABefore:TFLREUnicodeCharClassRange;ALo,AHi:longword);
+begin
+ inherited Create;
+ CharClass:=ACharClass;
+ Lo:=ALo;
+ Hi:=AHi;
+ Previous:=ABefore.Previous;
+ Next:=ABefore;
+ ABefore.Previous:=self;
+ if assigned(Previous) then begin
+  Previous.Next:=self;
+ end else begin
+  CharClass.First:=self;
+ end;
+end;
+
+constructor TFLREUnicodeCharClassRange.CreateAfter(ACharClass:TFLREUnicodeCharClass;AAfter:TFLREUnicodeCharClassRange;ALo,AHi:longword);
+begin
+ inherited Create;
+ CharClass:=ACharClass;
+ Lo:=ALo;
+ Hi:=AHi;
+ Previous:=AAfter;
+ Next:=AAfter.Next;
+ AAfter.Next:=self;
+ if assigned(Next) then begin
+  Next.Previous:=self;
+ end else begin
+  CharClass.Last:=self;
+ end;
+end;
+
+destructor TFLREUnicodeCharClassRange.Destroy;
+begin
+ if assigned(Previous) then begin
+  Previous.Next:=Next;
+ end else if CharClass.First=self then begin
+  CharClass.First:=Next;
+ end;
+ if assigned(Next) then begin
+  Next.Previous:=Previous;
+ end else if CharClass.Last=self then begin
+  CharClass.Last:=Previous;
+ end;
+ Previous:=nil;
+ Next:=nil;
+ inherited Destroy;
+end;
+
+constructor TFLREUnicodeCharClass.Create(ARegExp:TFLRE);
+begin
+ inherited Create;
+ RegExp:=ARegExp;
+{if assigned(RegExp.LastCharClass) then begin
+  Previous:=RegExp.LastCharClass;
+  RegExp.LastCharClass:=self;
+  Previous.Next:=self;
+  Next:=nil;
+ end else begin
+  RegExp.FirstCharClass:=self;
+  RegExp.LastCharClass:=self;
+  Previous:=nil;
+  Next:=nil;
+ end;{}
+ First:=nil;
+ Last:=nil;
+ Root:=nil;
+ Inverted:=false;
+ Canonicalized:=false;
+ CharSet:=[];
+end;
+
+destructor TFLREUnicodeCharClass.Destroy;
+begin
+ while assigned(First) do begin
+  First.Destroy;
+ end;
+{if assigned(Previous) then begin
+  Previous.Next:=Next;
+ end else if RegExp.FirstCharClass=self then begin
+  RegExp.FirstCharClass:=Next;
+ end;
+ if assigned(Next) then begin
+  Next.Previous:=Previous;
+ end else if RegExp.LastCharClass=self then begin
+  RegExp.LastCharClass:=Previous;
+ end;{}
+ Previous:=nil;
+ Next:=nil;
+ inherited Destroy;
+end;
+
+procedure TFLREUnicodeCharClass.Clear;
+begin
+ while assigned(First) do begin
+  First.Destroy;
+ end;
+ Inverted:=false;
+ Canonicalized:=false;
+ Root:=nil;
+end;
+
+procedure TFLREUnicodeCharClass.Dump;
+var Range:TFLREUnicodeCharClassRange;
+begin
+ Range:=First;
+ while assigned(Range) do begin
+  writeln(Range.Lo:8,' ',Range.Hi:8);
+  Range:=Range.Next;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.DebugDump;
+var Range:TFLREUnicodeCharClassRange;
+begin
+ Range:=First;
+ while assigned(Range) do begin
+  Range:=Range.Next;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.Optimize;
+var Range:TFLREUnicodeCharClassRange;
+begin
+ Range:=First;
+ while assigned(Range) do begin
+  if assigned(Range.Previous) and (((Range.Previous.Hi>=Range.Lo) or ((Range.Previous.Hi+1)=Range.Lo))) then begin
+   if Range.Lo>Range.Previous.Lo then begin
+    Range.Lo:=Range.Previous.Lo;
+   end;
+   if Range.Hi<Range.Previous.Hi then begin
+    Range.Hi:=Range.Previous.Hi;
+   end;
+   Range.Previous.Destroy;
+   if assigned(Range.Previous) then begin
+    Range:=Range.Previous;
+   end;
+  end else if assigned(Range.Next) and (((Range.Hi>=Range.Next.Lo) or ((Range.Hi+1)=Range.Next.Lo))) then begin
+   if Range.Lo>Range.Next.Lo then begin
+    Range.Lo:=Range.Next.Lo;
+   end;
+   if Range.Hi<Range.Next.Hi then begin
+    Range.Hi:=Range.Next.Hi;
+   end;
+   Range.Next.Destroy;
+   if assigned(Range.Previous) then begin
+    Range:=Range.Previous;
+   end;
+  end else begin
+   Range:=Range.Next;
+  end;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.AddRange(Lo,Hi:longword;IgnoreCase:boolean=false);
+var Range:TFLREUnicodeCharClassRange;
+    c,cl,cu:longword;
+    NeedToCanonicalize:boolean;
+begin
+ if IgnoreCase then begin
+  NeedToCanonicalize:=false;
+  for c:=Lo to Hi do begin
+   cl:=UnicodeToLower(c);
+   cu:=UnicodeToUpper(c);
+   if (cl<>cu) or (cl<>c) or (cu<>c) then begin
+    NeedToCanonicalize:=true;
+    break;
+   end;
+  end;
+  if NeedToCanonicalize then begin
+   for c:=Lo to Hi do begin
+    cl:=UnicodeToLower(c);
+    cu:=UnicodeToUpper(c);
+    if (cl=cu) and (cl=c) then begin
+     AddRange(c,c,false);
+    end else begin
+     AddRange(cl,cl,false);
+     AddRange(cu,cu,false);
+     if (cl<>c) and (cu<>c) then begin
+      AddRange(c,c,false);
+     end;
+    end;
+   end;
+  end else begin
+   AddRange(Lo,Hi,false);
+  end;
+ end else begin
+  Range:=First;
+  while assigned(Range) do begin
+   if (Lo>=Range.Lo) and (Hi<=Range.Hi) then begin
+    exit;
+   end else if (Lo<=Range.Lo) or ((Lo=Range.Lo) and (Hi<=Range.Hi)) then begin
+    break;
+   end;
+   Range:=Range.Next;
+  end;
+  if assigned(Range) then begin
+   TFLREUnicodeCharClassRange.CreateBefore(self,Range,Lo,Hi);
+  end else begin
+   TFLREUnicodeCharClassRange.Create(self,Lo,Hi);
+  end;
+  Optimize;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.AddChar(c:longword;IgnoreCase:boolean=false);
+begin
+ AddRange(c,c,IgnoreCase);
+end;
+
+procedure TFLREUnicodeCharClass.AddUnicodeCategory(CategoryFlags:longword;IgnoreCase:boolean=false);
+var Value,LowValue,HighValue,Index:longword;
+begin
+ LowValue:=$ffffffff;
+ HighValue:=0;
+ for Value:=0 to $10ffff do begin
+  Index:=Value shr FLREUnicodeCategoryArrayBlockBits;
+  if (CategoryFlags and (1 shl FLREUnicodeCategoryArrayBlockData[FLREUnicodeCategoryArrayIndexBlockData[FLREUnicodeCategoryArrayIndexIndexData[Index shr FLREUnicodeCategoryArrayIndexBlockBits],Index and FLREUnicodeCategoryArrayIndexBlockMask],Value and FLREUnicodeCategoryArrayBlockMask]))<>0 then begin
+   if LowValue<=HighValue then begin
+    if (HighValue+1)=Value then begin
+     HighValue:=Value;
+    end else begin
+     AddRange(LowValue,HighValue,IgnoreCase);
+     LowValue:=Value;
+     HighValue:=Value;
+    end;
+   end else begin
+    LowValue:=Value;
+    HighValue:=Value;
+   end;
+  end;
+ end;
+ if LowValue<=HighValue then begin
+  AddRange(LowValue,HighValue,IgnoreCase);
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.AddUnicodeScript(Script:longword;IgnoreCase:boolean=false);
+var Value,LowValue,HighValue,Index:longword;
+begin
+ LowValue:=$ffffffff;
+ HighValue:=0;
+ for Value:=0 to $10ffff do begin
+  Index:=Value shr FLREUnicodeScriptArrayBlockBits;
+  if Script=FLREUnicodeScriptArrayBlockData[FLREUnicodeScriptArrayIndexBlockData[FLREUnicodeScriptArrayIndexIndexData[Index shr FLREUnicodeScriptArrayIndexBlockBits],Index and FLREUnicodeScriptArrayIndexBlockMask],Value and FLREUnicodeScriptArrayBlockMask] then begin
+   if LowValue<=HighValue then begin
+    if (HighValue+1)=Value then begin
+     HighValue:=Value;
+    end else begin
+     AddRange(LowValue,HighValue,IgnoreCase);
+     LowValue:=Value;
+     HighValue:=Value;
+    end;
+   end else begin
+    LowValue:=Value;
+    HighValue:=Value;
+   end;
+  end;
+ end;
+ if LowValue<=HighValue then begin
+  AddRange(LowValue,HighValue,IgnoreCase);
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.AddUnicodeBlock(Block:longword;IgnoreCase:boolean=false);
+begin
+ AddRange(FLREUnicodeBlocks[Block].FromChar,FLREUnicodeBlocks[Block].ToChar,IgnoreCase);
+end;
+
+procedure TFLREUnicodeCharClass.Combine(From:TFLREUnicodeCharClass);
+var Range:TFLREUnicodeCharClassRange;
+begin
+ if assigned(From) then begin
+  if assigned(First) then begin
+   Canonicalized:=Canonicalized and From.Canonicalized;
+  end else begin
+   Canonicalized:=From.Canonicalized;
+  end;
+  Range:=From.First;
+  while assigned(Range) do begin
+   AddRange(Range.Lo,Range.Hi,false);
+   Range:=Range.Next;
+  end;
+ end;
+end;
+                                 
+function TFLREUnicodeCharClass.Subtraction(From,SubtractWith:TFLREUnicodeCharClass):boolean;
+var Range1,Range2:TFLREUnicodeCharClassRange;
+    First,Min,Max:longword;
+begin
+ result:=false;
+ if ((assigned(From) and assigned(SubtractWith)) and (assigned(From.First) and assigned(SubtractWith.First))) and ((From.First.Lo<=SubtractWith.Last.Hi) and (SubtractWith.First.Lo<=From.Last.Hi)) then begin
+  Canonicalized:=From.Canonicalized;
+  Range1:=From.First;
+  while assigned(Range1) do begin
+   First:=Range1.Lo;
+   Range2:=SubtractWith.First;
+   while assigned(Range2) do begin
+    if (First<=Range2.Hi) and (Range2.Lo<=Range1.Hi) then begin
+     result:=true;
+     if First>Range2.Lo then begin
+      Min:=First;
+     end else begin
+      Min:=Range2.Lo;
+     end;
+     if Range1.Hi<Range2.Hi then begin
+      Max:=Range1.Hi;
+     end else begin
+      Max:=Range2.Hi;
+     end;
+     if First<Min then begin
+      AddRange(First,Min-1,false);
+     end;
+     First:=Max+1;
+    end;
+    Range2:=Range2.Next;
+   end;
+   if First<=Range1.Hi then begin
+    AddRange(First,Range1.Hi,false);
+   end;
+   Range1:=Range1.Next;
+  end;
+ end;
+end;
+
+function TFLREUnicodeCharClass.Intersection(From,IntersectWith:TFLREUnicodeCharClass):boolean;
+var Range1,Range2:TFLREUnicodeCharClassRange;
+    Min,Max:longword;
+begin
+ result:=false;
+ if ((assigned(From) and assigned(IntersectWith)) and (assigned(From.First) and assigned(IntersectWith.First))) and ((From.First.Lo<=IntersectWith.Last.Hi) and (IntersectWith.First.Lo<=From.Last.Hi)) then begin
+  Canonicalized:=From.Canonicalized;
+  Range1:=From.First;
+  while assigned(Range1) do begin
+   Range2:=IntersectWith.First;
+   while assigned(Range2) do begin
+    if (Range1.Lo<=Range2.Hi) and (Range2.Lo<=Range1.Hi) then begin
+     result:=true;
+     if Range1.Lo>Range2.Lo then begin
+      Min:=Range1.Lo;
+     end else begin
+      Min:=Range2.Lo;
+     end;
+     if Range1.Hi<Range2.Hi then begin
+      Max:=Range1.Hi;
+     end else begin
+      Max:=Range2.Hi;
+     end;
+     if Min<=Max then begin
+      AddRange(Min,Max,false);
+     end;
+    end;
+    Range2:=Range2.Next;
+   end;
+   Range1:=Range1.Next;
+  end;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.TakeoverCombine(From:TFLREUnicodeCharClass);
+var SrcRange,NextSrcRange,Range:TFLREUnicodeCharClassRange;
+begin
+ if assigned(From) then begin
+  if assigned(First) then begin
+   Canonicalized:=Canonicalized and From.Canonicalized;
+  end else begin
+   Canonicalized:=From.Canonicalized;
+  end;
+  SrcRange:=From.First;
+  while assigned(SrcRange) do begin
+   Range:=First;
+   while assigned(Range) do begin
+    if (SrcRange.Lo>=Range.Lo) and (SrcRange.Hi<=Range.Hi) then begin
+     exit;
+    end else if (SrcRange.Lo<=Range.Lo) or ((SrcRange.Lo=Range.Lo) and (SrcRange.Hi<=Range.Hi)) then begin
+     break;
+    end;
+    Range:=Range.Next;
+   end;
+   SrcRange.CharClass:=self;
+   NextSrcRange:=SrcRange.Next;
+   if assigned(SrcRange.Previous) then begin
+    SrcRange.Previous.Next:=SrcRange.Next;
+   end else if From.First=SrcRange then begin
+    From.First:=SrcRange.Next;
+   end;
+   if assigned(SrcRange.Next) then begin
+    SrcRange.Next.Previous:=SrcRange.Previous;
+   end else if From.Last=SrcRange then begin
+    From.Last:=SrcRange.Previous;
+   end;
+   SrcRange.Previous:=nil;
+   SrcRange.Next:=nil;
+   if assigned(Range) then begin
+    SrcRange.Previous:=Range.Previous;
+    SrcRange.Next:=Range;
+    Range.Previous:=SrcRange;
+    if assigned(SrcRange.Previous) then begin
+     SrcRange.Previous.Next:=SrcRange;
+    end else begin
+     SrcRange.CharClass.First:=SrcRange;
+    end;
+   end else begin
+    if assigned(SrcRange.CharClass.Last) then begin
+     SrcRange.Previous:=SrcRange.CharClass.Last;
+     SrcRange.CharClass.Last:=SrcRange;
+     SrcRange.Previous.Next:=SrcRange;
+     SrcRange.Next:=nil;
+    end else begin
+     SrcRange.CharClass.First:=SrcRange;
+     SrcRange.CharClass.Last:=SrcRange;
+     SrcRange.Previous:=nil;
+     SrcRange.Next:=nil;
+    end;
+   end;
+   Optimize;
+   SrcRange:=NextSrcRange;
+  end;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.TakeoverDirtyCombine(From:TFLREUnicodeCharClass);
+var SrcRange:TFLREUnicodeCharClassRange;
+begin
+ if assigned(From) then begin
+  if assigned(First) then begin
+   Canonicalized:=Canonicalized and From.Canonicalized;
+  end else begin
+   Canonicalized:=From.Canonicalized;
+  end;
+  SrcRange:=From.First;
+  while assigned(SrcRange) do begin
+   SrcRange.CharClass:=self;
+   SrcRange:=SrcRange.Next;
+  end;
+  if assigned(Last) then begin
+   Last.Next:=From.First;
+   From.First.Previous:=Last;
+   Last:=From.Last;
+  end else begin
+   First:=From.First;
+   Last:=From.Last;
+  end;
+  From.First:=nil;
+  From.Last:=nil;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.Assign(From:TFLREUnicodeCharClass);
+var Range:TFLREUnicodeCharClassRange;
+begin
+ if assigned(From) then begin
+  while assigned(First) do begin
+   First.Destroy;
+  end;
+  Inverted:=From.Inverted;
+  Canonicalized:=From.Canonicalized;
+  Range:=From.First;
+  while assigned(Range) do begin
+   Range.CharClass:=self;
+   Range:=Range.Next;
+  end;
+  First:=From.First;
+  Last:=From.Last;
+  From.First:=nil;
+  From.Last:=nil;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.Append(From:TFLREUnicodeCharClass);
+var Range:TFLREUnicodeCharClassRange;
+begin
+ if assigned(From) then begin
+  Range:=From.First;
+  while assigned(Range) do begin
+   TFLREUnicodeCharClassRange.Create(self,Range.Lo,Range.Hi);
+   Range:=Range.Next;
+  end;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.Invert;
+var NewList:TFLREUnicodeCharClass;
+    Range:TFLREUnicodeCharClassRange;
+    Lo,Hi:longword;
+begin
+ Optimize;
+ Inverted:=not Inverted;
+ if assigned(First) and (First=Last) and (First.Lo=0) and (First.Hi=$ffffffff) then begin
+  First.Destroy;
+ end else if not assigned(First) then begin
+  TFLREUnicodeCharClassRange.Create(self,0,$ffffffff);
+ end else begin
+  NewList:=TFLREUnicodeCharClass.Create(RegExp);
+  try
+   Range:=First;
+   if Range.Lo>0 then begin
+    TFLREUnicodeCharClassRange.Create(NewList,0,Range.Lo-1);
+   end;
+   Lo:=Range.Hi;
+   Range:=Range.Next;
+   while assigned(Range) do begin
+    if (Lo+1)<Range.Lo then begin
+     Hi:=Range.Lo;
+     TFLREUnicodeCharClassRange.Create(NewList,Lo+1,Hi-1);
+    end;
+    Lo:=Range.Hi;
+    Range:=Range.Next;
+   end;
+   if Lo<>$ffffffff then begin
+    TFLREUnicodeCharClassRange.Create(NewList,Lo+1,$ffffffff);
+   end;
+   while assigned(First) do begin
+    First.Destroy;
+   end;
+   Range:=NewList.First;
+   while assigned(Range) do begin
+    Range.CharClass:=self;
+    Range:=Range.Next;
+   end;
+   First:=NewList.First;
+   Last:=NewList.Last;
+   NewList.First:=nil;
+   NewList.Last:=nil;
+   Range:=First;
+   while assigned(Range) do begin
+    Range.CharClass:=self;
+    Range:=Range.Next;
+   end;
+  finally
+   NewList.Destroy;
+  end;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.Canonicalize;
+var NewList:TFLREUnicodeCharClass;
+    Range:TFLREUnicodeCharClassRange;
+    OldInverted:boolean;
+begin
+ if not Canonicalized then begin
+  NewList:=TFLREUnicodeCharClass.Create(RegExp);
+  try
+   OldInverted:=Inverted;
+   if Inverted then begin
+    Invert;
+   end;
+   Range:=First;
+   while assigned(Range) do begin
+    NewList.AddRange(Range.Lo,Range.Hi,true);
+    Range:=Range.Next;
+   end;
+   while assigned(First) do begin
+    First.Destroy;
+   end;
+   First:=NewList.First;
+   Last:=NewList.Last;
+   NewList.First:=nil;
+   NewList.Last:=nil;
+   Range:=First;
+   while assigned(Range) do begin
+    Range.CharClass:=self;
+    Range:=Range.Next;
+   end;
+   if OldInverted then begin
+    Invert;
+   end;
+   Inverted:=OldInverted;
+  finally
+   NewList.Destroy;
+  end;
+  Canonicalized:=true;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.CompileBinarySearchTree;
+type PTFLREUnicodeCharClassRange=^TFLREUnicodeCharClassRange;
+var Ranges:TFLREUnicodeCharClassRanges;
+ procedure Process(Parent:PTFLREUnicodeCharClassRange;LowIndex,HighIndex:longint);
+ var Middle:longint;
+ begin
+  while LowIndex<=HighIndex do begin
+   Middle:=(LowIndex+HighIndex) div 2;
+   Parent^:=Ranges[Middle];
+   case HighIndex-LowIndex of
+    0:begin
+     break;
+    end;
+    1:begin
+     if Middle=LowIndex then begin
+      Parent:=@Parent^.Right;
+      LowIndex:=Middle+1;
+     end else begin
+      Parent:=@Parent^.Left;
+      HighIndex:=Middle-1;
+     end;
+    end;
+    else begin
+     Process(@Parent^.Left,LowIndex,Middle-1);
+     Parent:=@Parent^.Right;
+     LowIndex:=Middle+1;
+    end;
+   end;
+  end;
+ end;
+var Range:TFLREUnicodeCharClassRange;
+    Count:longint;
+begin
+ Root:=nil;
+ Ranges:=nil;
+ try
+  Count:=0;
+  Range:=First;
+  while assigned(Range) do begin
+   inc(Count);
+   Range:=Range.Next;
+  end;
+  SetLength(Ranges,Count);
+  Count:=0;
+  Range:=First;
+  while assigned(Range) do begin
+   Ranges[Count]:=Range;
+   inc(Count);
+   Range:=Range.Next;
+  end;
+  if Count>0 then begin
+   Process(@Root,0,Count-1);
+  end;
+ finally
+  SetLength(Ranges,0);
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.CompileCharset;
+var Range:TFLREUnicodeCharClassRange;
+begin
+ CharSet:=[];
+ Range:=First;
+ while assigned(Range) and (Range.Lo<256) do begin
+  if Range.Lo=Range.Hi then begin
+   System.Include(CharSet,ansichar(byte(Range.Lo)));
+  end else begin
+   if Range.Hi<256 then begin
+    CharSet:=CharSet+[ansichar(byte(Range.Lo))..ansichar(byte(Range.Hi))];
+   end else begin
+    CharSet:=CharSet+[ansichar(byte(Range.Lo))..#$ff];
+   end;
+  end;
+  Range:=Range.Next;
+ end;
+end;
+
+procedure TFLREUnicodeCharClass.Finalize;
+begin
+ CompileCharset;
+ CompileBinarySearchTree;
+end;
+
+function TFLREUnicodeCharClass.Count:longword;
+var Range:TFLREUnicodeCharClassRange;
+begin
+ result:=0;
+ Range:=First;
+ while assigned(Range) do begin
+  inc(result,(Range.Hi-Range.Lo)+1);
+  Range:=Range.Next;
+ end;
+end;
+
+function TFLREUnicodeCharClass.Contains(c:longword):boolean;
+var Range:TFLREUnicodeCharClassRange;
+begin
+ result:=false;
+ Range:=Root;
+ if assigned(Range) and ((c>=First.Lo) and (c<=Last.Hi)) then begin
+  if First=Last then begin
+   result:=true;
+   exit;
+  end else begin
+   if c<256 then begin
+    result:=ansichar(byte(c)) in CharSet;
+   end else begin
+    repeat
+     if (c>=Range.Lo) and (c<=Range.Hi) then begin
+      result:=true;
+      break;
+     end;
+     if c<Range.Lo then begin
+      Range:=Range.Left;
+      continue;
+     end;
+     if Range.Hi<c then begin
+      Range:=Range.Right;
+      continue;
+     end;
+     result:=false;
+     break;
+    until not assigned(Range);
+   end;
+  end;
+ end;
+end;
+
+function TFLREUnicodeCharClass.Intersects(Other:TFLREUnicodeCharClass):boolean;
+var Range1,Range2:TFLREUnicodeCharClassRange;
+begin
+ result:=false;
+ if (assigned(Other) and (assigned(First) and assigned(Other.First))) and ((First.Lo<=Other.Last.Hi) and (Other.First.Lo<=Last.Hi)) then begin
+  Range1:=First;
+  while assigned(Range1) do begin
+   Range2:=Other.First;
+   while assigned(Range2) do begin
+    if (Range1.Lo<=Range2.Hi) and (Range2.Lo<=Range1.Hi) then begin
+     result:=true;
+     exit;
+    end;
+    Range2:=Range2.Next;
+   end;
+   Range1:=Range1.Next;
+  end;
+ end;
+end;
+
+function TFLREUnicodeCharClass.IsSingle:boolean;
+begin
+ result:=(First=Last) and ((assigned(First) and (First.Lo=First.Hi)) or not assigned(First));
+end;
+
+function TFLREUnicodeCharClass.HashCode:longword;
+var Range:TFLREUnicodeCharClassRange;
+    h,i:longword;
+begin
+ result:=$811c9dc5;
+ Range:=First;
+ h:=0;
+ while assigned(Range) do begin
+  inc(h);
+  Range:=Range.Next;
+ end;
+ Range:=First;
+ while assigned(Range) do begin
+  i:=((Range.Hi and $ffff) shl 16) or (Range.Lo and $ffff);
+  h:=(h xor i) xor $2e63823a;
+  inc(h,(h shl 15) or (h shr (32-15)));
+  dec(h,(h shl 9) or (h shr (32-9)));
+  inc(h,(h shl 4) or (h shr (32-4)));
+  dec(h,(h shl 1) or (h shr (32-1)));
+  h:=h xor (h shl 2) or (h shr (32-2));
+  result:=result xor i;
+  inc(result,(result shl 1)+(result shl 4)+(result shl 7)+(result shl 8)+(result shl 24));
+  i:=(Range.Hi and $ffff0000) or ((Range.Lo and $ffff0000) shr 16);
+  h:=(h xor i) xor $2e63823a;
+  inc(h,(h shl 15) or (h shr (32-15)));
+  dec(h,(h shl 9) or (h shr (32-9)));
+  inc(h,(h shl 4) or (h shr (32-4)));
+  dec(h,(h shl 1) or (h shr (32-1)));
+  h:=h xor (h shl 2) or (h shr (32-2));
+  result:=result xor i;
+  inc(result,(result shl 1)+(result shl 4)+(result shl 7)+(result shl 8)+(result shl 24));
+  Range:=Range.Next;
+ end;
+ result:=result xor h;
+ if result=0 then begin
+  result:=$ffffffff;
+ end;
+end;
+
+function CompareCharClasses(c1,c2:TFLREUnicodeCharClass):longint;
+var r1,r2:TFLREUnicodeCharClassRange;
+begin
+ r1:=c1.First;
+ r2:=c2.First;
+ while assigned(r1) and assigned(r2) do begin
+  if r1.Lo<>r2.Lo then begin
+   result:=longint(r1.Lo)-longint(r2.Lo);
+   exit;
+  end;
+  if r1.Hi<>r2.Hi then begin
+   result:=longint(r1.Hi)-longint(r2.Hi);
+   exit;
+  end;
+  r1:=r1.Next;
+  r2:=r2.Next;
+ end;
+ if assigned(r1) then begin
+  result:=1;
+ end else if assigned(r2) then begin
+  result:=-1;
+ end else begin
+  result:=0;
+ end;
+end;
+
+function TFLREUnicodeCharClass.EqualsTo(OtherObject:TFLREUnicodeCharClass):boolean;
+begin
+ result:=CompareCharClasses(self,TFLREUnicodeCharClass(OtherObject))=0;
+end;
+
 constructor TFLRE.Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[]);
 var FLREDFAStateCreateTempDFAState:TFLREDFAState;
 begin
@@ -3573,7 +4450,6 @@ begin
   end else if (NodeLeft^.NodeType=ntCHAR) and (NodeRight^.NodeType=ntCHAR) then begin
    result:=NewNode(ntCHAR,nil,nil,nil,0);
    result^.CharClass:=NodeLeft^.CharClass+NodeRight^.CharClass;
-// result:=ConvertUTF8CharClassNode(NewNode(ntCHAR,nil,nil,nil,RegExp.AddCharClass(c)));
   end else begin
    result:=NewNode(ntALT,NodeLeft,NodeRight,nil,0);
   end;
@@ -3941,170 +4817,370 @@ var SourcePosition,SourceLength:longint;
   end;
  end;
  function ParseDisjunction:PFLRENode; forward;
- function GetCharClass(const CurrentChar:ansichar;out IsSingle:boolean;out SingleChar:ansichar):TFLRECharClass;
+ procedure GetCharClass(const CurrentChar:ansichar;const UnicodeCharClass:TFLREUnicodeCharClass;const IgnoreCase:boolean);
+ var i:longint;
  begin
   case CurrentChar of
    '0':begin
-    result:=[#0];
-    IsSingle:=true;
-    SingleChar:=#0;
+    UnicodeCharClass.AddChar(0,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
    end;
    't':begin
-    result:=[#9];
-    IsSingle:=true;
-    SingleChar:=#9;
+    UnicodeCharClass.AddChar(9,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
    end;
    'n':begin
-    result:=[#10];
-    IsSingle:=true;
-    SingleChar:=#10;
+    UnicodeCharClass.AddChar(10,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
    end;
    'v':begin
-    result:=[#11];
-    IsSingle:=true;
-    SingleChar:=#11;
+    UnicodeCharClass.AddChar(11,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
    end;
    'f':begin
-    result:=[#12];
-    IsSingle:=true;
-    SingleChar:=#12;
+    UnicodeCharClass.AddChar(12,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
    end;
    'r':begin
-    result:=[#13];
-    IsSingle:=true;
-    SingleChar:=#13;
+    UnicodeCharClass.AddChar(13,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   'a':begin
-    result:=['a'..'z','A'..'Z'];
-    IsSingle:=false;
-    SingleChar:=#0;
+   'e':begin
+    UnicodeCharClass.AddChar($1b,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   'A':begin
-    result:=AllCharClass-['a'..'z','A'..'Z'];
-    IsSingle:=false;
-    SingleChar:=#0;
+   'a','A':begin
+    if rfUTF8 in Flags then begin
+     UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryLu) or (1 shl FLREUnicodeCategoryLl) or (1 shl FLREUnicodeCategoryLt),IgnoreCase);
+    end else begin
+     UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
+     UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
+    end;
+    if CurrentChar='A' then begin
+     UnicodeCharClass.Invert;
+     UnicodeCharClass.Inverted:=false;
+    end;
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   'w':begin
-    result:=['a'..'z','A'..'Z','0'..'9','_'];
-    IsSingle:=false;
-    SingleChar:=#0;
+   'w','W':begin
+    if rfUTF8 in Flags then begin
+     for i:=0 to length(UnicodeCharRangeClasses[ucrWORDS])-1 do begin
+      UnicodeCharClass.AddRange(UnicodeCharRangeClasses[ucrWORDS,i,0],UnicodeCharRangeClasses[ucrWORDS,i,1],IgnoreCase);
+     end;
+    end else begin
+     UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
+     UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
+     UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('_'),IgnoreCase);
+    end;
+    if CurrentChar='W' then begin
+     UnicodeCharClass.Invert;
+     UnicodeCharClass.Inverted:=false;
+    end;
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   'W':begin
-    result:=AllCharClass-['a'..'z','A'..'Z','0'..'9','_'];
-    IsSingle:=false;
-    SingleChar:=#0;
+   's','S':begin
+    if rfUTF8 in Flags then begin
+     for i:=0 to length(UnicodeCharRangeClasses[ucrWHITESPACES])-1 do begin
+      UnicodeCharClass.AddRange(UnicodeCharRangeClasses[ucrWHITESPACES,i,0],UnicodeCharRangeClasses[ucrWHITESPACES,i,1],IgnoreCase);
+     end;
+    end else begin
+     UnicodeCharClass.AddRange(9,13,IgnoreCase);
+     UnicodeCharClass.AddChar(32,IgnoreCase);
+    end;
+    if CurrentChar='S' then begin
+     UnicodeCharClass.Invert;
+     UnicodeCharClass.Inverted:=false;
+    end;
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   's':begin
-    result:=[#9,#10,#13,#32];
-    IsSingle:=false;
-    SingleChar:=#0;
+   'd','D':begin
+    if rfUTF8 in Flags then begin
+     for i:=0 to length(UnicodeCharRangeClasses[ucrDIGITS])-1 do begin
+      UnicodeCharClass.AddRange(UnicodeCharRangeClasses[ucrDIGITS,i,0],UnicodeCharRangeClasses[ucrDIGITS,i,1],IgnoreCase);
+     end;
+    end else begin
+     UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
+    end;
+    if CurrentChar='D' then begin
+     UnicodeCharClass.Invert;
+     UnicodeCharClass.Inverted:=false;
+    end;
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   'S':begin
-    result:=AllCharClass-[#9,#10,#13,#32];
-    IsSingle:=false;
-    SingleChar:=#0;
+   'h','H':begin
+    UnicodeCharClass.AddRange(ord('a'),ord('f'),IgnoreCase);
+    UnicodeCharClass.AddRange(ord('A'),ord('f'),IgnoreCase);
+    UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
+    if CurrentChar='H' then begin
+     UnicodeCharClass.Invert;
+     UnicodeCharClass.Inverted:=false;
+    end;
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   'd':begin
-    result:=['0'..'9'];
-    IsSingle:=false;
-    SingleChar:=#0;
+   'c','C':begin
+    if rfUTF8 in Flags then begin
+     UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryCc,IgnoreCase);
+    end else begin
+     UnicodeCharClass.AddRange(0,31,IgnoreCase);
+     UnicodeCharClass.AddChar(127,IgnoreCase);
+    end;
+    if CurrentChar='C' then begin
+     UnicodeCharClass.Invert;
+     UnicodeCharClass.Inverted:=false;
+    end;
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   'D':begin
-    result:=AllCharClass-['0'..'9'];
-    IsSingle:=false;
-    SingleChar:=#0;
+   'p','P':begin
+    if rfUTF8 in Flags then begin
+     UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryPd) or (1 shl FLREUnicodeCategoryPs) or (1 shl FLREUnicodeCategoryPe) or (1 shl FLREUnicodeCategoryPc) or (1 shl FLREUnicodeCategoryPo),IgnoreCase);
+    end else begin
+     UnicodeCharClass.AddChar(ord('!'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('"'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('#'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('$'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('%'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('&'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord(''''),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('('),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('!'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord(')'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('*'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('+'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord(','),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('\'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('-'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('.'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('/'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord(':'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord(';'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('<'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('='),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('>'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('?'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('@'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('['),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('^'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('_'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('`'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('{'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('|'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('}'),IgnoreCase);
+     UnicodeCharClass.AddChar(ord('~'),IgnoreCase);
+    end;
+    if CurrentChar='P' then begin
+     UnicodeCharClass.Invert;
+     UnicodeCharClass.Inverted:=false;
+    end;
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   'h':begin
-    result:=['0'..'9','a'..'f','A'..'F'];
-    IsSingle:=false;
-    SingleChar:=#0;
+   'l','L':begin
+    if rfUTF8 in Flags then begin
+     UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryLl,IgnoreCase);
+    end else begin
+     UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
+    end;
+    if CurrentChar='L' then begin
+     UnicodeCharClass.Invert;
+     UnicodeCharClass.Inverted:=false;
+    end;
+    UnicodeCharClass.Canonicalized:=true;
    end;
-   'H':begin
-    result:=AllCharClass-['0'..'9','a'..'f','A'..'F'];
-    IsSingle:=false;
-    SingleChar:=#0;
-   end;
-   'c':begin
-    result:=[#0..#31,#127];
-    IsSingle:=false;
-    SingleChar:=#0;
-   end;
-   'C':begin
-    result:=AllCharClass-[#0..#31,#127];
-    IsSingle:=false;
-    SingleChar:=#0;
-   end;
-   'p':begin
-    result:=['!','"','#','%','&','''','(',')',';','<','=','>','?','[','\',']','*','+',',','-','.','/',':','^','_','{','|','}','~'];
-    IsSingle:=false;
-    SingleChar:=#0;
-   end;
-   'P':begin
-    result:=AllCharClass-['!','"','#','%','&','''','(',')',';','<','=','>','?','[','\',']','*','+',',','-','.','/',':','^','_','{','|','}','~'];
-    IsSingle:=false;
-    SingleChar:=#0;
-   end;
-   'l':begin
-    result:=['a'..'z'];
-    IsSingle:=false;
-    SingleChar:=#0;
-   end;
-   'L':begin
-    result:=AllCharClass-['a'..'z'];
-    IsSingle:=false;
-    SingleChar:=#0;
-   end;
-   'u':begin
-    result:=['A'..'Z'];
-    IsSingle:=false;
-    SingleChar:=#0;
-   end;
-   'U':begin
-    result:=AllCharClass-['A'..'Z'];
-    IsSingle:=false;
-    SingleChar:=#0;
+   'u','U':begin
+    if rfUTF8 in Flags then begin
+     UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryLu,IgnoreCase);
+    end else begin
+     UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
+    end;
+    if CurrentChar='U' then begin
+     UnicodeCharClass.Invert;
+     UnicodeCharClass.Inverted:=false;
+    end;
+    UnicodeCharClass.Canonicalized:=true;
    end;
    else begin
-    result:=[CurrentChar];
-    IsSingle:=true;
-    SingleChar:=CurrentChar;
+    UnicodeCharClass.AddChar(ord(CurrentChar),IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
    end;
   end;
  end;
- function GetCharClassPerName(const Name:ansistring):TFLRECharClass;
+ procedure GetCharClassPerName(const Name:ansistring;const UnicodeCharClass:TFLREUnicodeCharClass;const IgnoreCase:boolean);
+ var i:longint;
+     f:int64;
  begin
+  begin
+   f:=UnicodeClassHashMap[Name];
+   if f>0 then begin
+    UnicodeCharClass.AddUnicodeCategory(f,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
+    exit;
+   end;
+  end;
+  begin
+   f:=UnicodeScriptHashMap[Name];
+   if f>0 then begin
+    UnicodeCharClass.AddUnicodeScript(f,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
+    exit;
+   end;
+  end;
+  begin
+   f:=UnicodeBlockHashMap[Name];
+   if f>0 then begin
+    UnicodeCharClass.AddUnicodeBlock(f,IgnoreCase);
+    UnicodeCharClass.Canonicalized:=true;
+    exit;
+   end;
+  end;
   if Name='alnum' then begin
-   result:=['a'..'z','A'..'Z','0'..'9'];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryLu) or (1 shl FLREUnicodeCategoryLl) or (1 shl FLREUnicodeCategoryLt) or (1 shl FLREUnicodeCategoryNd),IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
+    UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
+    UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='alpha' then begin
-   result:=['a'..'z','A'..'Z'];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryLu) or (1 shl FLREUnicodeCategoryLl) or (1 shl FLREUnicodeCategoryLt),IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
+    UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='ascii' then begin
-   result:=[#$00..#$7f];
+   UnicodeCharClass.AddRange($00,$7f,IgnoreCase);
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='blank' then begin
-   result:=[#9,#32];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryZs,IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddChar(9,IgnoreCase);
+    UnicodeCharClass.AddChar(32,IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='cntrl' then begin
-   result:=[#$00..#$1f,#$7f];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryCc,IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddRange($00,$1f,IgnoreCase);
+    UnicodeCharClass.AddChar($7f,IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='digits' then begin
-   result:=['0'..'9'];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryNd,IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='graph' then begin
-   result:=[#$21..#$7e];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryZs) or (1 shl FLREUnicodeCategoryZl) or (1 shl FLREUnicodeCategoryZp) or (1 shl FLREUnicodeCategoryCc) or (1 shl FLREUnicodeCategoryCf) or (1 shl FLREUnicodeCategoryCo) or (1 shl FLREUnicodeCategoryCs) or (1 shl FLREUnicodeCategoryCn),IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddRange($21,$7e,IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
+  end else if Name='inbasiclatin' then begin
+   UnicodeCharClass.AddRange($00,$7f,IgnoreCase);
+   UnicodeCharClass.Canonicalized:=true;
+  end else if (Name='inno_block') or (Name='isno_block') or (Name='innoblock') or (Name='isnoblock') then begin
+   for i:=0 to FLREUnicodeBlockCount-1 do begin
+    UnicodeCharClass.AddUnicodeBlock(i,false);
+   end;
+   UnicodeCharClass.Invert;
+   UnicodeCharClass.Inverted:=false;
+   if IgnoreCase then begin
+    UnicodeCharClass.Canonicalize;
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='lower' then begin
-   result:=['a'..'z'];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryLl,IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='print' then begin
-   result:=[#$20..#$7e];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryCc) or (1 shl FLREUnicodeCategoryCf) or (1 shl FLREUnicodeCategoryCo) or (1 shl FLREUnicodeCategoryCs) or (1 shl FLREUnicodeCategoryCn),IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddRange($20,$7e,IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='punct' then begin
-   result:=['!','"','#','$','%','&','''','(',')','*','+',
-                       ',','\','-','.','/',':',';','<','=','>','?',
-                       '@','[','\',']','^','_','`','{','|','}','~'];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryPd) or (1 shl FLREUnicodeCategoryPs) or (1 shl FLREUnicodeCategoryPe) or (1 shl FLREUnicodeCategoryPc) or (1 shl FLREUnicodeCategoryPo),IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddChar(ord('!'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('"'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('#'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('$'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('%'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('&'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord(''''),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('('),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('!'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord(')'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('*'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('+'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord(','),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('\'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('-'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('.'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('/'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord(':'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord(';'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('<'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('='),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('>'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('?'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('@'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('['),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('^'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('_'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('`'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('{'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('|'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('}'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('~'),IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='space' then begin
-   result:=[#9,#10..#13,#32];
+   if rfUTF8 in Flags then begin
+    for i:=0 to length(UnicodeCharRangeClasses[ucrWHITESPACES])-1 do begin
+     UnicodeCharClass.AddRange(UnicodeCharRangeClasses[ucrWHITESPACES,i,0],UnicodeCharRangeClasses[ucrWHITESPACES,i,1],IgnoreCase);
+    end;
+   end else begin
+    UnicodeCharClass.AddRange(9,13,IgnoreCase);
+    UnicodeCharClass.AddChar(32,IgnoreCase);
+   end;
   end else if Name='upper' then begin
-   result:=['A'..'Z'];
+   if rfUTF8 in Flags then begin
+    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryLu,IgnoreCase);
+   end else begin
+    UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='word' then begin
-   result:=['a'..'z','A'..'Z','0'..'9','_'];
+   if rfUTF8 in Flags then begin
+    for i:=0 to length(UnicodeCharRangeClasses[ucrWORDS])-1 do begin
+     UnicodeCharClass.AddRange(UnicodeCharRangeClasses[ucrWORDS,i,0],UnicodeCharRangeClasses[ucrWORDS,i,1],IgnoreCase);
+    end;
+   end else begin
+    UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
+    UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
+    UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
+    UnicodeCharClass.AddChar(ord('_'),IgnoreCase);
+   end;
+   UnicodeCharClass.Canonicalized:=true;
   end else if Name='xdigit' then begin
-   result:=['a'..'f','A'..'F','0'..'9'];
+   UnicodeCharClass.AddRange(ord('a'),ord('f'),IgnoreCase);
+   UnicodeCharClass.AddRange(ord('A'),ord('f'),IgnoreCase);
+   UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
+   UnicodeCharClass.Canonicalized:=true;
   end else begin
-   result:=[];
    raise EFLRE.Create('Syntax error');
   end;
  end;
@@ -4179,15 +5255,861 @@ var SourcePosition,SourceLength:longint;
    end;
   end;
  end;
+ function NewUnicodeChar(UnicodeChar:longword):PFLRENode;
+ var Index:longint;
+     TemporaryString:ansistring;
+     TemporaryNode:PFLRENode;
+ begin
+  result:=nil;
+  TemporaryString:=UTF32CharToUTF8(UnicodeChar);
+  try
+   for Index:=1 to length(TemporaryString) do begin
+    TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
+    TemporaryNode^.CharClass:=[TemporaryString[Index]];
+    if assigned(result) then begin
+     result:=Concat(result,TemporaryNode);
+    end else begin
+     result:=TemporaryNode;
+    end;
+   end;
+  finally
+   TemporaryString:='';
+  end;
+ end;
+ function NewCharEx(UnicodeChar:longword):PFLRENode;
+ begin           
+  if (rfUTF8 in Flags) and (UnicodeChar>=$80) then begin
+   result:=NewUnicodeChar(UnicodeChar);
+  end else if UnicodeChar<=$ff then begin
+   result:=NewNode(ntCHAR,nil,nil,nil,0);
+   result^.CharClass:=[ansichar(byte(UnicodeChar))];
+  end else begin
+   raise EFLRE.Create('Syntax error');
+  end;
+ end;
+ function NewChar(UnicodeChar:longword):PFLRENode;
+ var LowerCaseUnicodeChar,UpperCaseUnicodeChar:longword;
+ begin
+  LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
+  UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
+  if (rfCASEINSENSITIVE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
+   if (rfUTF8 in Flags) and ((LowerCaseUnicodeChar>=$80) or (UpperCaseUnicodeChar>=$80)) then begin
+    result:=NewAlt(NewCharEx(LowerCaseUnicodeChar),NewCharEx(UpperCaseUnicodeChar));
+   end else begin
+    result:=NewNode(ntCHAR,nil,nil,nil,0);
+    result^.CharClass:=[ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))];
+   end;
+  end else begin
+   if (rfUTF8 in Flags) and (UnicodeChar>=$80) then begin
+    result:=NewCharEx(UnicodeChar);
+   end else begin
+    result:=NewNode(ntCHAR,nil,nil,nil,0);
+    result^.CharClass:=[ansichar(byte(UnicodeChar))];
+   end;
+  end;
+ end;
+ function CompileUTF8Range(Lo,Hi:longword):PFLRENode;
+ type TString6Chars=string[6];
+ const Seq0010ffff:array[0..6,0..4,0..1] of longint=((($00,$7f),(-1,-1),(-1,-1),(-1,-1),(-1,-1)),        // 00-7F
+                                                     (($c2,$df),($80,$bf),(-1,-1),(-1,-1),(-1,-1)),      // C2-DF 80-BF
+                                                     (($e0,$e0),($a0,$bf),($80,$bf),(-1,-1),(-1,-1)),    // E0-E0 A0-BF 80-BF
+                                                     (($e1,$ef),($80,$bf),($80,$bf),(-1,-1),(-1,-1)),    // E1-EF 80-BF 80-BF
+                                                     (($f0,$f0),($80,$bf),($80,$bf),($80,$bf),(-1,-1)),  // F0-F0 90-BF 80-BF 80-BF
+                                                     (($f1,$f3),($80,$bf),($80,$bf),($80,$bf),(-1,-1)),  // F1-F3 80-BF 80-BF 80-BF
+                                                     (($f4,$f4),($80,$bf),($80,$bf),($80,$bf),(-1,-1))); // F4-F4 80-8F 80-BF 80-BF
+       HexChars:array[$0..$f] of ansichar='0123456789ABCDEF';
+ var OutputNode,NodeChain:PFLRENode;
+  procedure Add(const NewNode:PFLRENode);
+  begin
+   if assigned(NewNode) then begin
+    if assigned(NodeChain) then begin
+     NodeChain:=Concat(OutputNode,NewNode);
+    end else begin
+     NodeChain:=NewNode;
+    end;
+   end;
+  end;
+  procedure AddSuffix;
+  begin
+   if assigned(NodeChain) then begin
+    if assigned(OutputNode) then begin
+     OutputNode:=NewAlt(OutputNode,NodeChain);
+    end else begin
+     OutputNode:=NodeChain;
+    end;
+    NodeChain:=nil;
+   end;
+  end;
+  function ToString(CharValue:longword):TString6Chars;
+  begin
+   case CharValue of
+    $00000000..$0000007f:begin
+     SetLength(result,1);
+     result[1]:=ansichar(byte(CharValue));
+    end;
+    $00000080..$000007ff:begin
+     SetLength(result,2);
+     result[1]:=ansichar(byte($c0 or ((CharValue shr 6) and $1f)));
+     result[2]:=ansichar(byte($80 or (CharValue and $3f)));
+    end;
+ // {$ifdef PLREStrictUTF8}$00000800..$0000d7ff,$0000e000..$0000ffff{$else}$00000800..$0000ffff{$endif}:begin
+    $00000800..$0000ffff:begin
+     SetLength(result,3);
+     result[1]:=ansichar(byte($e0 or ((CharValue shr 12) and $0f)));
+     result[2]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
+     result[3]:=ansichar(byte($80 or (CharValue and $3f)));
+    end;
+    $00010000..$0010ffff:begin
+     SetLength(result,4);
+     result[1]:=ansichar(byte($f0 or ((CharValue shr 18) and $07)));
+     result[2]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
+     result[3]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
+     result[4]:=ansichar(byte($80 or (CharValue and $3f)));
+    end;
+    $00200000..$03ffffff:begin
+     SetLength(result,5);
+     result[1]:=ansichar(byte($f8 or ((CharValue shr 24) and $03)));
+     result[2]:=ansichar(byte($80 or ((CharValue shr 18) and $3f)));
+     result[3]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
+     result[4]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
+     result[5]:=ansichar(byte($80 or (CharValue and $3f)));
+    end;
+    $04000000..$7fffffff:begin
+     SetLength(result,6);
+     result[1]:=ansichar(byte($fc or ((CharValue shr 30) and $01)));
+     result[2]:=ansichar(byte($80 or ((CharValue shr 24) and $3f)));
+     result[3]:=ansichar(byte($80 or ((CharValue shr 18) and $3f)));
+     result[4]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
+     result[5]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
+     result[6]:=ansichar(byte($80 or (CharValue and $3f)));
+    end;
+    else begin
+     SetLength(result,3);
+     result[1]:=#$ef;
+     result[2]:=#$bf;
+     result[3]:=#$bd;
+    end;
+   end;
+  end;
+  procedure AddRange(const Lo,Hi:byte);
+  var Node:PFLRENode;
+  begin
+   Node:=NewNode(ntCHAR,nil,nil,nil,0);
+   Node^.CharClass:=[ansichar(byte(Lo))..ansichar(byte(Hi))];
+   Add(Node);
+  end;
+  procedure ProcessRange(Lo,Hi:longword);
+  var i,m:longword;
+      StrLo,StrHi:TString6Chars;
+      CurrentNode:PFLRENode;
+  begin
+   if Hi>$0010ffff then begin
+    Hi:=$0010ffff;
+   end;
+   if Lo<=Hi then begin
+    if (Lo=$00000000) and (Hi=$0010ffff) then begin
+     for m:=low(Seq0010ffff) to high(Seq0010ffff) do begin
+      for i:=low(Seq0010ffff[m]) to high(Seq0010ffff[m]) do begin
+       if Seq0010ffff[m,i,0]<0 then begin
+        break;
+       end;
+       AddRange(byte(Seq0010ffff[m,i,0]),byte(Seq0010ffff[m,i,1]));
+      end;
+      AddSuffix;
+     end;
+    end else if (Lo=$00000080) and (Hi=$0010ffff) then begin
+     for m:=1 to high(Seq0010ffff) do begin
+      for i:=low(Seq0010ffff[m]) to high(Seq0010ffff[m]) do begin
+       if Seq0010ffff[m,i,0]<0 then begin
+        break;
+       end;
+       AddRange(byte(Seq0010ffff[m,i,0]),byte(Seq0010ffff[m,i,1]));
+      end;
+      AddSuffix;
+     end;
+    end else begin
+     for i:=1 to 3 do begin
+      if i=1 then begin
+       m:=7;
+      end else begin
+       m:=(7-i)+(6*(i-1));
+      end;
+      m:=(1 shl m)-1;
+      if (Lo<=m) and (m<Hi) then begin
+       ProcessRange(Lo,m);
+       ProcessRange(m+1,Hi);
+       exit;
+      end;
+     end;
+     if Hi<128 then begin
+      AddRange(Lo,Hi);
+      AddSuffix;
+     end else begin
+      for i:=1 to 3 do begin
+       m:=(1 shl (6*i))-1;
+       if (Lo and not m)<>(Hi and not m) then begin
+        if (Lo and m)<>0 then begin
+         ProcessRange(Lo,Lo or m);
+         ProcessRange((Lo or m)+1,Hi);
+         exit;
+        end else if (Hi and m)<>m then begin
+         ProcessRange(Lo,(Hi and not m)-1);
+         ProcessRange(Hi and not m,Hi);
+         exit;
+        end;
+       end;
+      end;
+      StrLo:=ToString(Lo);
+      StrHi:=ToString(Hi);
+      if length(StrLo)=length(StrHi) then begin
+       for i:=1 to length(StrLo) do begin
+        AddRange(byte(StrLo[i]),byte(StrHi[i]));
+       end;
+       AddSuffix;
+      end;
+     end;
+    end;
+   end;
+  end;
+ begin
+  OutputNode:=nil;
+  NodeChain:=nil;
+  ProcessRange(Lo,Hi);
+  result:=OutputNode;
+ end;
+ function NewUnicodeCharClass(UnicodeCharClass:TFLREUnicodeCharClass):PFLRENode;
+ var Range:TFLREUnicodeCharClassRange;
+     Node:PFLRENode;
+ begin
+  UnicodeCharClass.Optimize;
+  if UnicodeCharClass.IsSingle then begin
+   result:=NewChar(UnicodeCharClass.First.Lo);
+  end else begin
+   if (rfUTF8 in Flags) and assigned(UnicodeCharClass.Last) and (UnicodeCharClass.Last.Hi>=128) then begin
+    result:=nil;
+    Range:=UnicodeCharClass.First;
+    while assigned(Range) do begin
+     if (Range.Lo<=$10ffff) and (Range.Lo=Range.Hi) then begin
+      Node:=NewCharEx(Range.Lo);
+     end else begin
+      Node:=CompileUTF8Range(Range.Lo,Range.Hi);
+     end;
+     if assigned(result) then begin
+      result:=NewAlt(result,Node);
+     end else begin
+      result:=Node;
+     end;
+     Range:=Range.Next;
+    end;
+   end else begin
+    result:=NewNode(ntCHAR,nil,nil,nil,0);
+    result^.CharClass:=[];
+    Range:=UnicodeCharClass.First;
+    while assigned(Range) and (Range.Lo<256) do begin
+     if Range.Lo=Range.Hi then begin
+      Include(result^.CharClass,ansichar(byte(Range.Lo)));
+     end else begin
+      if Range.Hi<256 then begin
+       result^.CharClass:=result^.CharClass+[ansichar(byte(Range.Lo))..ansichar(byte(Range.Hi))];
+      end else begin
+       result^.CharClass:=result^.CharClass+[ansichar(byte(Range.Lo))..#$ff];
+      end;
+     end;
+     Range:=Range.Next;
+    end;
+   end;
+  end;
+ end;
+ function TestClassPOSIXCharacterClass:boolean;
+ var LocalSourcePosition,i:longint;
+ begin
+  result:=false;
+  LocalSourcePosition:=SourcePosition;
+
+  if (LocalSourcePosition<=SourceLength) and (Source[LocalSourcePosition]='[') then begin
+   inc(LocalSourcePosition);
+  end else begin
+   exit;
+  end;
+
+  if (LocalSourcePosition<=SourceLength) and (Source[LocalSourcePosition]=':') then begin
+   inc(LocalSourcePosition);
+  end else begin
+   exit;
+  end;
+
+  if (LocalSourcePosition<=SourceLength) and (Source[LocalSourcePosition]='^') then begin
+   inc(LocalSourcePosition);
+  end else begin
+   exit;
+  end;
+
+  i:=0;
+  while (LocalSourcePosition<=SourceLength) and (Source[LocalSourcePosition] in ['a'..'z','A'..'Z','0'..'9','_','-']) do begin
+   inc(LocalSourcePosition);
+  end;
+  if i=0 then begin
+   exit;
+  end;
+
+  if (LocalSourcePosition<=SourceLength) and (Source[LocalSourcePosition]=':') then begin
+   inc(LocalSourcePosition);
+  end else begin
+   exit;
+  end;
+
+  if (LocalSourcePosition<=SourceLength) and (Source[LocalSourcePosition]=']') then begin
+   inc(LocalSourcePosition);
+  end else begin
+   exit;
+  end;
+
+  result:=true;
+ end;
+ function ParseClassPOSIXCharacterClass(const UnicodeCharClass:TFLREUnicodeCharClass;const CanBeAlreadyCanonicalized:boolean):boolean;
+ var Name:ansistring;
+     Negate,IgnoreCase:boolean;
+ begin
+  result:=false;
+
+  IgnoreCase:=CanBeAlreadyCanonicalized and (rfCASEINSENSITIVE in Flags);
+
+  if (SourcePosition<=SourceLength) and (Source[SourcePosition]='[') then begin
+   inc(SourcePosition);
+  end else begin
+   raise EFLRE.Create('Syntax error');
+  end;
+
+  if (SourcePosition<=SourceLength) and (Source[SourcePosition]=':') then begin
+   inc(SourcePosition);
+  end else begin
+   raise EFLRE.Create('Syntax error');
+  end;
+
+  if (SourcePosition<=SourceLength) and (Source[SourcePosition]='^') then begin
+   inc(SourcePosition);
+   Negate:=true;
+  end else begin
+   Negate:=false;
+  end;
+
+  Name:='';
+  while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['a'..'z','A'..'Z','0'..'9','_','-']) do begin
+   Name:=Name+Source[SourcePosition];
+   inc(SourcePosition);
+  end;
+
+  if (SourcePosition<=SourceLength) and (Source[SourcePosition]=':') then begin
+   inc(SourcePosition);
+  end else begin
+   raise EFLRE.Create('Syntax error');
+  end;
+
+  if (SourcePosition<=SourceLength) and (Source[SourcePosition]=']') then begin
+   inc(SourcePosition);
+  end else begin
+   raise EFLRE.Create('Syntax error');
+  end;
+
+  GetCharClassPerName(Name,UnicodeCharClass,IgnoreCase);
+  if Negate then begin
+   UnicodeCharClass.Invert;
+   UnicodeCharClass.Inverted:=false;
+  end;
+
+  result:=true;
+ end;
+ function ParseClassEscapeUnicodeProperty(const UnicodeCharClass:TFLREUnicodeCharClass;const CanBeAlreadyCanonicalized:boolean):boolean;
+ var Identifier:ansistring;
+     i:longword;
+     IgnoreCase,IsNegative:boolean;
+     f,LastSourcePos,UntilSourcePos:longint;
+ begin
+  result:=false;
+  if SourcePosition<=SourceLength then begin
+   IgnoreCase:=CanBeAlreadyCanonicalized and (rfCASEINSENSITIVE in Flags);
+   case Source[SourcePosition] of
+    'a'..'z','A'..'Z':begin
+     f:=UnicodeClassHashMap.GetValue(UTF32CharToUTF8(UnicodeToLower(byte(ansichar(Source[SourcePosition])))));
+     if f>=0 then begin
+      inc(SourcePosition);
+      UnicodeCharClass.AddUnicodeCategory(f,IgnoreCase);
+      result:=true;
+     end;
+    end;
+    '{':begin
+     LastSourcePos:=SourcePosition;
+     inc(SourcePosition);
+     if (SourcePosition<=SourceLength) and (Source[SourcePosition]='^') then begin
+      LastSourcePos:=SourcePosition;
+      inc(SourcePosition);
+      IsNegative:=true;
+      IgnoreCase:=false;
+     end else begin
+      IsNegative:=false;
+     end;
+     UntilSourcePos:=LastSourcePos;
+     while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['a'..'z','A'..'Z','0'..'9','_','-']) do begin
+      UntilSourcePos:=SourcePosition;
+      inc(SourcePosition);
+     end;
+     if (LastSourcePos<UntilSourcePos) and ((SourcePosition<=SourceLength) and (Source[SourcePosition]='}')) then begin
+      Identifier:=UTF8LowerCase(copy(Source,LastSourcePos,UntilSourcePos-LastSourcePos));
+      inc(SourcePosition);
+      GetCharClassPerName(Identifier,UnicodeCharClass,IgnoreCase);
+      if IsNegative and assigned(UnicodeCharClass.First) then begin
+       UnicodeCharClass.Invert;
+       UnicodeCharClass.Inverted:=false;
+       if CanBeAlreadyCanonicalized and (rfCASEINSENSITIVE in Flags) then begin
+        UnicodeCharClass.Canonicalize;
+       end;
+      end;
+      result:=true;
+     end;
+    end;
+   end;
+  end;
+ end;
+ function ParseClassEscape(const CanBeAlreadyCanonicalized:boolean):TFLREUnicodeCharClass;
+ var i:longint;
+     IgnoreCase:boolean;
+     UnicodeChar:longword;
+ begin
+  result:=nil;
+  try
+   IgnoreCase:=CanBeAlreadyCanonicalized and (rfCASEINSENSITIVE in Flags);
+   result:=TFLREUnicodeCharClass.Create(self);
+   if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9']) then begin
+    i:=0;
+    while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9']) do begin
+     i:=(i*10)+longint(byte(ansichar(Source[SourcePosition]))-byte(ansichar('0')));
+     inc(SourcePosition);
+    end;
+    if i<>0 then begin
+     raise EFLRE.Create('Syntax error');
+    end;
+    result.AddChar(i,IgnoreCase);
+    result.Canonicalized:=IgnoreCase;
+    exit;
+   end;
+   case Source[SourcePosition] of
+    'a':begin
+     inc(SourcePosition);
+     result.AddChar($0007,IgnoreCase);
+     result.Canonicalized:=true;
+    end;
+    'b':begin
+     inc(SourcePosition);
+     result.AddChar($0008,IgnoreCase);
+     result.Canonicalized:=true;
+    end;
+    'B':begin
+     inc(SourcePosition);
+     result.AddChar(ord('\'),IgnoreCase);
+     result.Canonicalized:=true;
+    end;
+    't':begin
+     inc(SourcePosition);
+     result.AddChar(9,IgnoreCase);
+     result.Canonicalized:=true;
+    end;
+    'n':begin
+     inc(SourcePosition);
+     result.AddChar(10,IgnoreCase);
+     result.Canonicalized:=true;
+    end;
+    'v':begin
+     inc(SourcePosition);
+     result.AddChar(11,IgnoreCase);
+     result.Canonicalized:=true;
+    end;
+    'f':begin
+     inc(SourcePosition);
+     result.AddChar(12,IgnoreCase);
+     result.Canonicalized:=true;
+    end;
+    'r':begin
+     inc(SourcePosition);
+     result.AddChar(13,IgnoreCase);
+     result.Canonicalized:=true;
+    end;
+    'e':begin
+     inc(SourcePosition);
+     result.AddChar($1b,IgnoreCase);
+     result.Canonicalized:=true;
+    end;
+    'w','W':begin
+     if rfUTF8 in Flags then begin
+      for i:=0 to length(UnicodeCharRangeClasses[ucrWORDS])-1 do begin
+       result.AddRange(UnicodeCharRangeClasses[ucrWORDS,i,0],UnicodeCharRangeClasses[ucrWORDS,i,1],IgnoreCase);
+      end;
+     end else begin
+      result.AddRange(ord('a'),ord('z'),IgnoreCase);
+      result.AddRange(ord('A'),ord('Z'),IgnoreCase);
+      result.AddRange(ord('0'),ord('9'),IgnoreCase);
+      result.AddChar(ord('_'),IgnoreCase);
+     end;
+     if Source[SourcePosition]='W' then begin
+      result.Invert;
+      result.Inverted:=false;
+     end;
+     result.Canonicalized:=true;
+     inc(SourcePosition);
+    end;
+    's','S':begin
+     if rfUTF8 in Flags then begin
+      for i:=0 to length(UnicodeCharRangeClasses[ucrWHITESPACES])-1 do begin
+       result.AddRange(UnicodeCharRangeClasses[ucrWHITESPACES,i,0],UnicodeCharRangeClasses[ucrWHITESPACES,i,1],IgnoreCase);
+      end;
+     end else begin
+      result.AddRange(9,13,IgnoreCase);
+      result.AddChar(32,IgnoreCase);
+     end;
+     if Source[SourcePosition]='S' then begin
+      result.Invert;
+      result.Inverted:=false;
+     end;
+     result.Canonicalized:=true;
+     inc(SourcePosition);
+    end;
+    'd','D':begin
+     if rfUTF8 in Flags then begin
+      for i:=0 to length(UnicodeCharRangeClasses[ucrDIGITS])-1 do begin
+       result.AddRange(UnicodeCharRangeClasses[ucrDIGITS,i,0],UnicodeCharRangeClasses[ucrDIGITS,i,1],IgnoreCase);
+      end;
+     end else begin
+      result.AddRange(ord('0'),ord('9'),IgnoreCase);
+     end;
+     if Source[SourcePosition]='D' then begin
+      result.Invert;
+      result.Inverted:=false;
+     end;
+     result.Canonicalized:=true;
+     inc(SourcePosition);
+    end;
+    'p':begin
+     inc(SourcePosition);
+     if ParseClassEscapeUnicodeProperty(result,CanBeAlreadyCanonicalized) then begin
+      result.Canonicalized:=true;
+     end else begin
+      raise EFLRE.Create('Syntax error');
+     end;
+    end;
+    'P':begin
+     inc(SourcePosition);
+     if ParseClassEscapeUnicodeProperty(result,CanBeAlreadyCanonicalized) then begin
+      result.Canonicalized:=true;
+     end else begin
+      raise EFLRE.Create('Syntax error');
+     end;
+     result.Invert;
+     result.Inverted:=false;
+     result.Canonicalized:=true;
+    end;
+    'c':begin
+     inc(SourcePosition);
+     if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['a'..'z','A'..'Z']) then begin
+      case Source[SourcePosition] of
+       'a'..'z':begin
+        result.AddChar(byte(ansichar(Source[SourcePosition]))-byte(ansichar('a')),IgnoreCase);
+       end;
+       'A'..'Z':begin
+        result.AddChar(byte(ansichar(Source[SourcePosition]))-byte(ansichar('A')),IgnoreCase);
+       end;
+      end;
+      result.Canonicalized:=IgnoreCase;
+     end else begin
+      raise EFLRE.Create('Syntax error');
+     end;
+    end;
+    'x':begin
+     inc(SourcePosition);
+     if ((SourcePosition+1)<=SourceLength) and
+        (Source[SourcePosition+0] in ['0'..'9','a'..'f','A'..'F']) and
+        (Source[SourcePosition+1] in ['0'..'9','a'..'f','A'..'F']) then begin
+      result.AddChar((Hex2Value(Source[SourcePosition+0]) shl 8) or Hex2Value(Source[SourcePosition+1]),IgnoreCase);
+      inc(SourcePosition,2);
+     end else if (SourcePosition<=SourceLength) and (Source[SourcePosition]='{') then begin
+      inc(SourcePosition);
+      UnicodeChar:=0;
+      while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','a'..'f','A'..'F']) do begin
+       UnicodeChar:=(UnicodeChar shl 4) or Hex2Value(Source[SourcePosition]);
+       inc(SourcePosition);
+      end;
+      if (SourcePosition<=SourceLength) and (Source[SourcePosition]='}') then begin
+       inc(SourcePosition);
+       result.AddChar(UnicodeChar,IgnoreCase);
+      end else begin
+       raise EFLRE.Create('Syntax error');
+      end;
+     end else begin
+      raise EFLRE.Create('Syntax error');
+     end;
+    end;
+    'u':begin
+     inc(SourcePosition);
+     if ((SourcePosition+3)<=SourceLength) and
+        (Source[SourcePosition+0] in ['0'..'9','a'..'f','A'..'F']) and
+        (Source[SourcePosition+1] in ['0'..'9','a'..'f','A'..'F']) and
+        (Source[SourcePosition+2] in ['0'..'9','a'..'f','A'..'F']) and
+        (Source[SourcePosition+3] in ['0'..'9','a'..'f','A'..'F']) then begin
+      UnicodeChar:=(Hex2Value(Source[SourcePosition+0]) shl 24) or (Hex2Value(Source[SourcePosition+1]) shl 16) or (Hex2Value(Source[SourcePosition+2]) shl 8) or Hex2Value(Source[SourcePosition+3]);
+      inc(SourcePosition,4);
+      result.AddChar(UnicodeChar,IgnoreCase);
+     end else begin
+      raise EFLRE.Create('Syntax error');
+     end;
+    end;
+    'U':begin
+     inc(SourcePosition);
+     if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','a'..'f','A'..'F']) then begin
+      UnicodeChar:=0;
+      while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','a'..'f','A'..'F']) do begin
+       UnicodeChar:=(UnicodeChar shl 4) or Hex2Value(Source[SourcePosition]);
+       inc(SourcePosition);
+      end;
+      result.AddChar(UnicodeChar,IgnoreCase);
+     end else begin
+      raise EFLRE.Create('Syntax error');
+     end;
+    end;
+    'Q':begin
+     inc(SourcePosition);
+     while SourcePosition<=SourceLength do begin
+      if Source[SourcePosition]='\' then begin
+       inc(SourcePosition);
+       if (SourcePosition<=SourceLength) and (Source[SourcePosition]='E') then begin
+        inc(SourcePosition);
+        break;
+       end else begin
+        result.AddChar(ord('\'),IgnoreCase);
+       end;
+      end else begin
+       if (rfUTF8 in Flags) and (byte(ansichar(Source[SourcePosition]))>=$80) then begin
+        UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
+        result.AddChar(UnicodeChar,IgnoreCase);
+       end else begin
+        result.AddChar(byte(ansichar(Source[SourcePosition])),IgnoreCase);
+        inc(SourcePosition);
+       end;
+      end;
+     end;
+     result.Canonicalized:=IgnoreCase;
+    end;
+    else begin
+     if (rfUTF8 in Flags) and (byte(ansichar(Source[SourcePosition]))>=$80) then begin
+      UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
+      result.AddChar(UnicodeChar,IgnoreCase);
+     end else begin
+      result.AddChar(byte(ansichar(Source[SourcePosition])),IgnoreCase);
+      inc(SourcePosition);
+     end;
+    end;
+   end;
+  except
+   FreeAndNil(result);
+   raise;
+  end;
+ end;
+ function ParseClassAtom:TFLREUnicodeCharClass;
+ begin
+  result:=nil;
+  try
+   if SourcePosition<=SourceLength then begin
+    if Source[SourcePosition]='\' then begin
+     inc(SourcePosition);
+     result:=ParseClassEscape(false);
+    end else if TestClassPOSIXCharacterClass then begin
+     result:=TFLREUnicodeCharClass.Create(self);
+     if not ParseClassPOSIXCharacterClass(result,false) then begin
+      raise EFLRE.Create('Syntax error');
+     end;
+    end else begin
+     result:=TFLREUnicodeCharClass.Create(self);
+     if (rfUTF8 in Flags) and (byte(ansichar(Source[SourcePosition]))>=$80) then begin
+      result.AddChar(UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition));
+     end else begin
+      result.AddChar(byte(ansichar(Source[SourcePosition])));
+      inc(SourcePosition);
+     end;
+    end;
+   end else begin
+    raise EFLRE.Create('Syntax error');
+   end;
+  except
+   FreeAndNil(result);
+   raise;
+  end;
+ end;
+ function ParseCharacterClass:TFLREUnicodeCharClass;
+ var InvertFlag:boolean;
+     a,b,c:TFLREUnicodeCharClass;
+ begin
+  result:=nil;
+  try
+   a:=nil;
+   b:=nil;
+   try
+    result:=TFLREUnicodeCharClass.Create(self);
+    if (SourcePosition<=SourceLength) and (Source[SourcePosition]='[') then begin
+     inc(SourcePosition);
+    end else begin
+     raise EFLRE.Create('Syntax error');
+    end;
+    if (SourcePosition<=SourceLength) and (Source[SourcePosition]='^') then begin
+     inc(SourcePosition);
+     InvertFlag:=true;
+    end else begin
+     InvertFlag:=false;
+    end;
+    while (SourcePosition<=SourceLength) and (Source[SourcePosition]<>']') do begin
+     if ((SourcePosition+1)<=SourceLength) and ((Source[SourcePosition]='-') and (Source[SourcePosition+1] in ['[',']'])) then begin
+      inc(SourcePosition);
+      if Source[SourcePosition]=']' then begin
+       a:=TFLREUnicodeCharClass.Create(self);
+       a.AddChar(ord('-'));
+      end else begin
+       a:=ParseCharacterClass;
+       b:=TFLREUnicodeCharClass.Create(self);
+       if b.Subtraction(result,a) then begin
+        FreeAndNil(result);
+        result:=b;
+        b:=nil;
+       end else begin
+        FreeAndNil(b);
+       end;
+       FreeAndNil(a);
+       if not ((SourcePosition<=SourceLength) and (Source[SourcePosition]=']')) then begin
+        raise EFLRE.Create('Syntax error');
+       end;
+       continue;
+      end;
+     end else begin
+      a:=ParseClassAtom;
+     end;
+     if ((SourcePosition+1)<=SourceLength) and ((Source[SourcePosition]='&') and (Source[SourcePosition+1]='&')) then begin
+      inc(SourcePosition,2);
+      if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['[',']']) then begin
+       if Source[SourcePosition]='[' then begin
+        if assigned(a) then begin
+         result.TakeoverCombine(a);
+         FreeAndNil(a);
+        end;
+        a:=ParseCharacterClass;
+        b:=TFLREUnicodeCharClass.Create(self);
+        if b.Intersection(result,a) then begin
+         FreeAndNil(result);
+         result:=b;
+         b:=nil;
+        end else begin
+         FreeAndNil(b);
+        end;
+        FreeAndNil(a);
+        if not ((SourcePosition<=SourceLength) and (Source[SourcePosition]=']')) then begin
+         raise EFLRE.Create('Syntax error');
+        end;
+        continue;
+       end else begin
+        raise EFLRE.Create('Syntax error');
+       end;
+      end else begin
+       raise EFLRE.Create('Syntax error');
+      end;
+     end else if (SourcePosition<=SourceLength) and (Source[SourcePosition]='-') then begin
+      inc(SourcePosition);
+      if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['[',']']) then begin
+       if Source[SourcePosition]='[' then begin
+        if assigned(a) then begin
+         result.TakeoverCombine(a);
+         FreeAndNil(a);
+        end;
+        a:=ParseCharacterClass;
+        b:=TFLREUnicodeCharClass.Create(self);
+        if b.Subtraction(result,a) then begin
+         FreeAndNil(result);
+         result:=b;
+         b:=nil;
+        end else begin
+         FreeAndNil(b);
+        end;
+        FreeAndNil(a);
+        if not ((SourcePosition<=SourceLength) and (Source[SourcePosition]=']')) then begin
+         raise EFLRE.Create('Syntax error');
+        end;
+        continue;
+       end else begin
+        a.AddChar(ord('-'));
+       end;
+      end else if assigned(a) then begin
+       if not a.IsSingle then begin
+        if assigned(a.Last) and (a.Last.Lo<=a.Last.Hi) then begin
+         c:=TFLREUnicodeCharClass.Create(self);
+         c.AddChar(a.Last.Hi);
+         c.Canonicalized:=a.Canonicalized;
+         c.Inverted:=a.Inverted;
+         result.TakeoverCombine(a);
+         FreeAndNil(a);
+         a:=c;
+        end else begin
+         FreeAndNil(a);
+         raise EFLRE.Create('Syntax error');
+        end;
+       end;
+       b:=ParseClassAtom;
+       if (not b.IsSingle) and (assigned(b.First) and (a.First.Lo<=a.First.Hi)) then begin
+        c:=TFLREUnicodeCharClass.Create(self);
+        c.AddChar(b.First.Lo);
+        c.Canonicalized:=b.Canonicalized;
+        c.Inverted:=b.Inverted;
+        result.TakeoverCombine(b);
+        FreeAndNil(b);
+        b:=c;
+       end;
+       if (not b.IsSingle) or ((assigned(a.Last) and assigned(b.Last)) and not (a.Last.Lo<=b.Last.Hi)) then begin
+        FreeAndNil(a);
+        FreeAndNil(b);
+        raise EFLRE.Create('Syntax error');
+       end;
+       if assigned(a.Last) and assigned(b.Last) then begin
+        a.Last.Hi:=b.Last.Hi;
+       end else begin
+        a.TakeoverCombine(b);
+       end;
+       FreeAndNil(b);
+      end;
+     end;
+     if assigned(a) then begin
+      result.TakeoverCombine(a);
+      FreeAndNil(a);
+     end;
+    end;
+    if (SourcePosition<=SourceLength) and (Source[SourcePosition]=']') then begin
+     inc(SourcePosition);
+    end else begin
+     raise EFLRE.Create('Syntax error');
+    end;
+    if (rfCASEINSENSITIVE in Flags) and not result.Canonicalized then begin
+     result.Canonicalize;
+    end;
+    if InvertFlag then begin
+     result.Invert;
+    end;
+   finally
+    FreeAndNil(a);
+    FreeAndNil(b);
+   end;
+  except
+   FreeAndNil(result);
+   raise;
+  end;
+ end;
  function ParseAtom:PFLRENode;
  var Value,Index:longint;
      Negate,IsSingle,Done,IsNegative,First,Num:boolean;
-     StartChar,EndChar:ansichar;
-     CharClass:TFLRECharClass;
+     StartChar,EndChar,UnicodeChar,LowerCaseUnicodeChar,UpperCaseUnicodeChar:longword;
+     UnicodeCharClass:TFLREUnicodeCharClass;
      OldFlags:TFLREFlags;
-     Name,TemporaryString:ansistring;
-     UnicodeChar,LowerCaseUnicodeChar,UpperCaseUnicodeChar:longword;
-     TemporaryNodes:array[0..3] of PFLRENode;
+     Name:ansistring;
  begin
   result:=nil;
   try
@@ -4389,34 +6311,79 @@ var SourcePosition,SourceLength:longint;
        inc(SourcePosition);
        if SourcePosition<=SourceLength then begin
         case Source[SourcePosition] of
-         'b':begin
+         'b','y':begin
           result:=NewNode(ntBRK,nil,nil,nil,0);
           inc(SourcePosition);
          end;
-         'B':begin
+         'B','Y':begin
           result:=NewNode(ntNBRK,nil,nil,nil,0);
           inc(SourcePosition);
          end;
-         'x','X':begin
-          inc(SourcePosition);
-          if ((SourcePosition+1)<=SourceLength) and
-             (Source[SourcePosition+0] in ['0'..'9','a'..'f','A'..'F']) and
-             (Source[SourcePosition+1] in ['0'..'9','a'..'f','A'..'F']) then begin
-           result:=NewNode(ntCHAR,nil,nil,nil,0);
-           result^.CharClass:=[ansichar(byte(longword((Hex2Value(Source[SourcePosition+0]) shl 8) or Hex2Value(Source[SourcePosition+1]))))];
-           inc(SourcePosition,2);
+         'A':begin
+          if rfMULTILINE in Flags then begin
+           result:=NewNode(ntBOL,nil,nil,nil,0);
           end else begin
-           raise EFLRE.Create('Syntax error');
+           result:=NewNode(ntBOT,nil,nil,nil,0);
           end;
+          inc(SourcePosition);
+         end;
+         'Z':begin
+          if rfMULTILINE in Flags then begin
+           result:=NewNode(ntEOL,nil,nil,nil,0);
+          end else begin
+           result:=NewNode(ntEOT,nil,nil,nil,0);
+          end;
+          inc(SourcePosition);
+         end;
+         'k':begin
+          result:=NewNode(ntBOT,nil,nil,nil,0);
+          inc(SourcePosition);
+         end;
+         'z':begin
+          result:=NewNode(ntEOT,nil,nil,nil,0);
+          inc(SourcePosition);
          end;
          else begin
-          result:=NewNode(ntCHAR,nil,nil,nil,0);
-          result^.CharClass:=GetCharClass(Source[SourcePosition],IsSingle,StartChar);
-          inc(SourcePosition);
+          if (rfUTF8 in Flags) and (byte(ansichar(Source[SourcePosition]))>=$80) then begin
+           UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
+           result:=NewUnicodeChar(UnicodeChar);
+          end else begin
+           UnicodeCharClass:=nil;
+           try
+            UnicodeCharClass:=ParseClassEscape(true);
+            if assigned(UnicodeCharClass) then begin
+             result:=NewUnicodeCharClass(UnicodeCharClass);
+            end else begin
+             raise EFLRE.Create('Syntax error');
+            end;
+           finally
+            FreeAndNil(UnicodeCharClass);
+           end;
+          end;
          end;
         end;
        end else begin
         raise EFLRE.Create('Syntax error');
+       end;
+      end;
+      '[':begin
+       UnicodeCharClass:=nil;
+       try
+        if TestClassPOSIXCharacterClass then begin
+         UnicodeCharClass:=TFLREUnicodeCharClass.Create(self);
+         if not ParseClassPOSIXCharacterClass(UnicodeCharClass,true) then begin
+          raise EFLRE.Create('Syntax error');
+         end;
+        end else begin
+         UnicodeCharClass:=ParseCharacterClass;
+        end;
+        if assigned(UnicodeCharClass) then begin
+         result:=NewUnicodeCharClass(UnicodeCharClass);
+        end else begin
+         raise EFLRE.Create('Syntax error');
+        end;
+       finally
+        FreeAndNil(UnicodeCharClass);
        end;
       end;
       '.':begin
@@ -4445,202 +6412,15 @@ var SourcePosition,SourceLength:longint;
        end;
        inc(SourcePosition);
       end;
-      '[':begin
-       inc(SourcePosition);
-       if (SourcePosition<=SourceLength) and (Source[SourcePosition]=':') then begin
-        inc(SourcePosition);
-        Name:='';
-        while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['a'..'z']) do begin
-         Name:=Name+Source[SourcePosition];
-         inc(SourcePosition);
-        end;
-        if ((SourcePosition+1)<=SourceLength) and ((Source[SourcePosition]=':') and (Source[SourcePosition+1]=']')) then begin
-         inc(SourcePosition,2);
-         result:=NewNode(ntCHAR,nil,nil,nil,0);
-         result^.CharClass:=GetCharClassPerName(Name);
-        end else begin
-         raise EFLRE.Create('Syntax error');
-        end;
-       end else begin
-        result:=NewNode(ntCHAR,nil,nil,nil,0);
-        result^.CharClass:=[];
-        if (SourcePosition<=SourceLength) and (Source[SourcePosition]='^') then begin
-         inc(SourcePosition);
-         Negate:=true;
-        end else begin
-         Negate:=false;
-        end;
-        StartChar:=#0;
-        EndChar:=#0;
-        while SourcePosition<=SourceLength do begin
-         case Source[SourcePosition] of
-          ']':begin
-           break;
-          end;
-          '^':begin
-           raise EFLRE.Create('Syntax error');
-          end;
-          '\':begin
-           inc(SourcePosition);
-           if SourcePosition<=SourceLength then begin
-            case Source[SourcePosition] of
-             'x','X':begin
-              inc(SourcePosition);
-              if ((SourcePosition+1)<=SourceLength) and
-                 (Source[SourcePosition+0] in ['0'..'9','a'..'f','A'..'F']) and
-                 (Source[SourcePosition+1] in ['0'..'9','a'..'f','A'..'F']) then begin
-               StartChar:=ansichar(byte(longword((Hex2Value(Source[SourcePosition+0]) shl 8) or Hex2Value(Source[SourcePosition+1]))));
-               result^.CharClass:=result^.CharClass+[ansichar(byte(longword((Hex2Value(Source[SourcePosition+0]) shl 8) or Hex2Value(Source[SourcePosition+1]))))];
-               inc(SourcePosition,2);
-              end else begin
-               raise EFLRE.Create('Syntax error');
-              end;
-             end;
-             else begin
-              IsSingle:=false;
-              result^.CharClass:=result^.CharClass+GetCharClass(Source[SourcePosition],IsSingle,StartChar);
-              inc(SourcePosition);
-              if not IsSingle then begin
-               continue;
-              end;
-             end;
-            end;
-           end else begin
-            raise EFLRE.Create('Syntax error');
-           end;
-          end;
-          '[':begin
-           inc(SourcePosition);
-           if (SourcePosition<=SourceLength) and (Source[SourcePosition]=':') then begin
-            inc(SourcePosition);
-            Name:='';
-            while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['a'..'z']) do begin
-             Name:=Name+Source[SourcePosition];
-             inc(SourcePosition);
-            end;
-            if ((SourcePosition+1)<=SourceLength) and ((Source[SourcePosition]=':') and (Source[SourcePosition+1]=']')) then begin
-             inc(SourcePosition,2);
-             result^.CharClass:=result^.CharClass+GetCharClassPerName(Name);
-             continue;
-            end else begin
-             raise EFLRE.Create('Syntax error');
-            end;
-           end else begin
-            raise EFLRE.Create('Syntax error');
-           end;
-          end;
-          '|','*','+','?','(',')','{','}',':','$':begin
-           raise EFLRE.Create('Syntax error');
-          end;
-          else begin
-           StartChar:=Source[SourcePosition];
-           inc(SourcePosition);
-          end;
-         end;
-         if (SourcePosition<=SourceLength) and (Source[SourcePosition]='-') then begin
-          inc(SourcePosition);
-          case Source[SourcePosition] of
-           '\':begin
-            inc(SourcePosition);
-            if SourcePosition<=SourceLength then begin
-             case Source[SourcePosition] of
-              'x','X':begin
-               inc(SourcePosition);
-               if ((SourcePosition+1)<=SourceLength) and
-                  (Source[SourcePosition+0] in ['0'..'9','a'..'f','A'..'F']) and
-                  (Source[SourcePosition+1] in ['0'..'9','a'..'f','A'..'F']) then begin
-                EndChar:=ansichar(byte(longword((Hex2Value(Source[SourcePosition+0]) shl 8) or Hex2Value(Source[SourcePosition+1]))));
-                inc(SourcePosition,2);
-               end else begin
-                raise EFLRE.Create('Syntax error');
-               end;
-              end;
-              else begin
-               IsSingle:=false;
-               result^.CharClass:=result^.CharClass+GetCharClass(Source[SourcePosition],IsSingle,EndChar);
-               inc(SourcePosition);
-               if not IsSingle then begin
-                raise EFLRE.Create('Syntax error');
-               end;
-              end;
-             end;
-            end;
-           end;
-           '|','*','+','?','(',')','[',']','{','}',':','.','^','$':begin
-            raise EFLRE.Create('Syntax error');
-           end;
-           else begin
-            EndChar:=Source[SourcePosition];
-            inc(SourcePosition);
-           end;
-          end;
-          if EndChar<StartChar then begin
-           raise EFLRE.Create('Syntax error');
-          end else begin
-           result^.CharClass:=result^.CharClass+[StartChar..EndChar];
-          end;
-         end else begin
-          Include(result^.CharClass,StartChar);
-         end;
-        end;
-        if (SourcePosition<=SourceLength) and (Source[SourcePosition]=']') then begin
-         inc(SourcePosition);
-         if Negate then begin
-          result^.CharClass:=AllCharClass-result^.CharClass;
-         end;
-         if result^.CharClass=[] then begin
-          raise EFLRE.Create('Syntax error');
-         end;
-        end else begin
-         raise EFLRE.Create('Syntax error');
-        end;
-       end;
-      end;
       #128..#255:begin
        if rfUTF8 in Flags then begin
         UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
         LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
         UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
         if (rfCASEINSENSITIVE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
-         begin
-          TemporaryNodes[0]:=nil;
-          TemporaryString:=UTF32CharToUTF8(LowerCaseUnicodeChar);
-          for Index:=1 to length(TemporaryString) do begin
-           TemporaryNodes[3]:=NewNode(ntCHAR,nil,nil,nil,0);
-           TemporaryNodes[3]^.CharClass:=[TemporaryString[Index]];
-           if assigned(TemporaryNodes[0]) then begin
-            TemporaryNodes[0]:=Concat(TemporaryNodes[0],TemporaryNodes[3]);
-           end else begin
-            TemporaryNodes[0]:=TemporaryNodes[3];
-           end;
-          end;
-         end;
-         begin
-          TemporaryNodes[1]:=nil;
-          TemporaryString:=UTF32CharToUTF8(UpperCaseUnicodeChar);
-          for Index:=1 to length(TemporaryString) do begin
-           TemporaryNodes[3]:=NewNode(ntCHAR,nil,nil,nil,0);
-           TemporaryNodes[3]^.CharClass:=[TemporaryString[Index]];
-           if assigned(TemporaryNodes[0]) then begin
-            TemporaryNodes[1]:=Concat(TemporaryNodes[1],TemporaryNodes[3]);
-           end else begin
-            TemporaryNodes[1]:=TemporaryNodes[3];
-           end;
-          end;
-         end;
-         result:=NewAlt(TemporaryNodes[0],TemporaryNodes[1]);
+         result:=NewAlt(NewUnicodeChar(LowerCaseUnicodeChar),NewUnicodeChar(UpperCaseUnicodeChar));
         end else begin
-         result:=nil;
-         TemporaryString:=UTF32CharToUTF8(UnicodeChar);
-         for Index:=1 to length(TemporaryString) do begin
-          TemporaryNodes[0]:=NewNode(ntCHAR,nil,nil,nil,0);
-          TemporaryNodes[0]^.CharClass:=[TemporaryString[Index]];
-          if assigned(result) then begin
-           result:=Concat(result,TemporaryNodes[0]);
-          end else begin
-           result:=TemporaryNodes[0];
-          end;
-         end;
+         result:=NewUnicodeChar(UnicodeChar);
         end;
        end else begin
         result:=NewNode(ntCHAR,nil,nil,nil,0);
@@ -8005,338 +9785,338 @@ const FLRESignature:ansistring=' FLRE - yet another efficient, principled regula
    UnicodeClassHashMap:=TFLREStringIntegerPairHashMap.Create;
    for i:=0 to FLREUnicodeCategoryCount-1 do begin
     s:=FLREUnicodeCategoryIDs[i];
-    UnicodeClassHashMap.SetValue(UTF8LowerCase(s),1 shl i);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Is'+s),1 shl i);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('In'+s),1 shl i);
+    UnicodeClassHashMap.SetValue(UTF8Correct(s),1 shl i);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Is'+s),1 shl i);
+    UnicodeClassHashMap.SetValue(UTF8Correct('In'+s),1 shl i);
    end;
    begin
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Lu'),1 shl FLRE_CT_UPPERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Uppercase_Letter'),1 shl FLRE_CT_UPPERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('UppercaseLetter'),1 shl FLRE_CT_UPPERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Ll'),1 shl FLRE_CT_LOWERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Lowercase_Letter'),1 shl FLRE_CT_LOWERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('LowercaseLetter'),1 shl FLRE_CT_LOWERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Lt'),1 shl FLRE_CT_TITLECASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Titlecase_Letter'),1 shl FLRE_CT_TITLECASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('TitlecaseLetter'),1 shl FLRE_CT_TITLECASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Lm'),1 shl FLRE_CT_MODIFIER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Modifier_Letter'),1 shl FLRE_CT_MODIFIER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('ModifierLetter'),1 shl FLRE_CT_MODIFIER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Lo'),1 shl FLRE_CT_OTHER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Other_Letter'),1 shl FLRE_CT_OTHER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('OtherLetter'),1 shl FLRE_CT_OTHER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('L'),(1 shl FLRE_CT_UPPERCASE_LETTER) or (1 shl FLRE_CT_LOWERCASE_LETTER) or (1 shl FLRE_CT_TITLECASE_LETTER) or (1 shl FLRE_CT_MODIFIER_LETTER) or (1 shl FLRE_CT_OTHER_LETTER));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Mn'),1 shl FLRE_CT_NON_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Non_Spacing_Mark'),1 shl FLRE_CT_NON_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('NonSpacingMark'),1 shl FLRE_CT_NON_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Me'),1 shl FLRE_CT_ENCLOSING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Enclosing_Mark'),1 shl FLRE_CT_ENCLOSING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('EnclosingMark'),1 shl FLRE_CT_ENCLOSING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Mc'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Spacing_Combining_Mark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('SpacingCombiningMark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('M'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Mark'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Nd'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Decimal_Digit_Number'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('DecimalDigitNumber'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Nl'),1 shl FLRE_CT_LETTER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Letter_Number'),1 shl FLRE_CT_LETTER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('LetterNumber'),1 shl FLRE_CT_LETTER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('No'),1 shl FLRE_CT_OTHER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Other_Number'),1 shl FLRE_CT_OTHER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('OtherNumber'),1 shl FLRE_CT_OTHER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('N'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Number'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Zs'),1 shl FLRE_CT_SPACE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Space_Separator'),1 shl FLRE_CT_SPACE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('SpaceSeparator'),1 shl FLRE_CT_SPACE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Zl'),1 shl FLRE_CT_LINE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Line_Separator'),1 shl FLRE_CT_LINE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('LineSeparator'),1 shl FLRE_CT_LINE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Zp'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Paragraph_Separator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('ParagraphSeparator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Z'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Seperator'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Cc'),1 shl FLRE_CT_CONTROL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Control'),1 shl FLRE_CT_CONTROL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Cf'),1 shl FLRE_CT_FORMAT);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Format'),1 shl FLRE_CT_CONTROL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Co'),1 shl FLRE_CT_PRIVATE_USE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Private_Use'),1 shl FLRE_CT_PRIVATE_USE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('PrivateUse'),1 shl FLRE_CT_PRIVATE_USE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Cs'),1 shl FLRE_CT_SURROGATE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Surrogate'),1 shl FLRE_CT_SURROGATE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Cn'),1 shl FLRE_CT_UNASSIGNED);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Unassigned'),1 shl FLRE_CT_UNASSIGNED);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('C'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Other'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Pd'),1 shl FLRE_CT_DASH_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Dash_Punctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('DashPunctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Ps'),1 shl FLRE_CT_START_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Open_Punctuation'),1 shl FLRE_CT_START_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('OpenPunctuation'),1 shl FLRE_CT_START_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Pe'),1 shl FLRE_CT_END_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Close_Punctuation'),1 shl FLRE_CT_END_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('ClosePunctuation'),1 shl FLRE_CT_END_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Pi'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Initial_Punctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InitialPunctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Pf'),1 shl FLRE_CT_FINAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Final_Punctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('FinalPunctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Pc'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Connector_Punctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('ConnectorPunctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Po'),1 shl FLRE_CT_OTHER_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Other_Punctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('OtherPunctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('P'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Punctuation'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Sm'),1 shl FLRE_CT_MATH_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Math_Symbol'),1 shl FLRE_CT_MATH_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('MathSymbol'),1 shl FLRE_CT_MATH_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Sc'),1 shl FLRE_CT_CURRENCY_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Currency_Symbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('CurrencySymbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Sk'),1 shl FLRE_CT_MODIFIER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Modifier_Symbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('ModifierSymbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('So'),1 shl FLRE_CT_OTHER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Other_Symbol'),1 shl FLRE_CT_OTHER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('OtherSymbol'),1 shl FLRE_CT_OTHER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('S'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('Symbol'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Lu'),1 shl FLRE_CT_UPPERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Uppercase_Letter'),1 shl FLRE_CT_UPPERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('UppercaseLetter'),1 shl FLRE_CT_UPPERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Ll'),1 shl FLRE_CT_LOWERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Lowercase_Letter'),1 shl FLRE_CT_LOWERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('LowercaseLetter'),1 shl FLRE_CT_LOWERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Lt'),1 shl FLRE_CT_TITLECASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Titlecase_Letter'),1 shl FLRE_CT_TITLECASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('TitlecaseLetter'),1 shl FLRE_CT_TITLECASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Lm'),1 shl FLRE_CT_MODIFIER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Modifier_Letter'),1 shl FLRE_CT_MODIFIER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('ModifierLetter'),1 shl FLRE_CT_MODIFIER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Lo'),1 shl FLRE_CT_OTHER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Other_Letter'),1 shl FLRE_CT_OTHER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('OtherLetter'),1 shl FLRE_CT_OTHER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('L'),(1 shl FLRE_CT_UPPERCASE_LETTER) or (1 shl FLRE_CT_LOWERCASE_LETTER) or (1 shl FLRE_CT_TITLECASE_LETTER) or (1 shl FLRE_CT_MODIFIER_LETTER) or (1 shl FLRE_CT_OTHER_LETTER));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Mn'),1 shl FLRE_CT_NON_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Non_Spacing_Mark'),1 shl FLRE_CT_NON_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('NonSpacingMark'),1 shl FLRE_CT_NON_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Me'),1 shl FLRE_CT_ENCLOSING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Enclosing_Mark'),1 shl FLRE_CT_ENCLOSING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('EnclosingMark'),1 shl FLRE_CT_ENCLOSING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Mc'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Spacing_Combining_Mark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('SpacingCombiningMark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('M'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Mark'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Nd'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Decimal_Digit_Number'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('DecimalDigitNumber'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Nl'),1 shl FLRE_CT_LETTER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Letter_Number'),1 shl FLRE_CT_LETTER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('LetterNumber'),1 shl FLRE_CT_LETTER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('No'),1 shl FLRE_CT_OTHER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Other_Number'),1 shl FLRE_CT_OTHER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('OtherNumber'),1 shl FLRE_CT_OTHER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('N'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Number'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Zs'),1 shl FLRE_CT_SPACE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Space_Separator'),1 shl FLRE_CT_SPACE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('SpaceSeparator'),1 shl FLRE_CT_SPACE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Zl'),1 shl FLRE_CT_LINE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Line_Separator'),1 shl FLRE_CT_LINE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('LineSeparator'),1 shl FLRE_CT_LINE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Zp'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Paragraph_Separator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('ParagraphSeparator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Z'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Seperator'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Cc'),1 shl FLRE_CT_CONTROL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Control'),1 shl FLRE_CT_CONTROL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Cf'),1 shl FLRE_CT_FORMAT);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Format'),1 shl FLRE_CT_CONTROL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Co'),1 shl FLRE_CT_PRIVATE_USE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Private_Use'),1 shl FLRE_CT_PRIVATE_USE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('PrivateUse'),1 shl FLRE_CT_PRIVATE_USE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Cs'),1 shl FLRE_CT_SURROGATE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Surrogate'),1 shl FLRE_CT_SURROGATE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Cn'),1 shl FLRE_CT_UNASSIGNED);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Unassigned'),1 shl FLRE_CT_UNASSIGNED);
+    UnicodeClassHashMap.SetValue(UTF8Correct('C'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Other'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Pd'),1 shl FLRE_CT_DASH_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Dash_Punctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('DashPunctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Ps'),1 shl FLRE_CT_START_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Open_Punctuation'),1 shl FLRE_CT_START_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('OpenPunctuation'),1 shl FLRE_CT_START_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Pe'),1 shl FLRE_CT_END_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Close_Punctuation'),1 shl FLRE_CT_END_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('ClosePunctuation'),1 shl FLRE_CT_END_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Pi'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Initial_Punctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InitialPunctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Pf'),1 shl FLRE_CT_FINAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Final_Punctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('FinalPunctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Pc'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Connector_Punctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('ConnectorPunctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Po'),1 shl FLRE_CT_OTHER_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Other_Punctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('OtherPunctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('P'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Punctuation'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Sm'),1 shl FLRE_CT_MATH_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Math_Symbol'),1 shl FLRE_CT_MATH_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('MathSymbol'),1 shl FLRE_CT_MATH_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Sc'),1 shl FLRE_CT_CURRENCY_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Currency_Symbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('CurrencySymbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Sk'),1 shl FLRE_CT_MODIFIER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Modifier_Symbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('ModifierSymbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('So'),1 shl FLRE_CT_OTHER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('Other_Symbol'),1 shl FLRE_CT_OTHER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('OtherSymbol'),1 shl FLRE_CT_OTHER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('S'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
+    UnicodeClassHashMap.SetValue(UTF8Correct('Symbol'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
    end;
    begin
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLu'),1 shl FLRE_CT_UPPERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsUppercase_Letter'),1 shl FLRE_CT_UPPERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsUppercaseLetter'),1 shl FLRE_CT_UPPERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLl'),1 shl FLRE_CT_LOWERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLowercase_Letter'),1 shl FLRE_CT_LOWERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLowercaseLetter'),1 shl FLRE_CT_LOWERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLt'),1 shl FLRE_CT_TITLECASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsTitlecase_Letter'),1 shl FLRE_CT_TITLECASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsTitlecaseLetter'),1 shl FLRE_CT_TITLECASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLm'),1 shl FLRE_CT_MODIFIER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsModifier_Letter'),1 shl FLRE_CT_MODIFIER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsModifierLetter'),1 shl FLRE_CT_MODIFIER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLo'),1 shl FLRE_CT_OTHER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOther_Letter'),1 shl FLRE_CT_OTHER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOtherLetter'),1 shl FLRE_CT_OTHER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsL'),(1 shl FLRE_CT_UPPERCASE_LETTER) or (1 shl FLRE_CT_LOWERCASE_LETTER) or (1 shl FLRE_CT_TITLECASE_LETTER) or (1 shl FLRE_CT_MODIFIER_LETTER) or (1 shl FLRE_CT_OTHER_LETTER));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsMn'),1 shl FLRE_CT_NON_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsNon_Spacing_Mark'),1 shl FLRE_CT_NON_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsNonSpacingMark'),1 shl FLRE_CT_NON_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsMe'),1 shl FLRE_CT_ENCLOSING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsEnclosing_Mark'),1 shl FLRE_CT_ENCLOSING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsEnclosingMark'),1 shl FLRE_CT_ENCLOSING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsMc'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSpacing_Combining_Mark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSpacingCombiningMark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsM'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsMark'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsNd'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsDecimal_Digit_Number'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsDecimalDigitNumber'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsNl'),1 shl FLRE_CT_LETTER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLetter_Number'),1 shl FLRE_CT_LETTER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLetterNumber'),1 shl FLRE_CT_LETTER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsNo'),1 shl FLRE_CT_OTHER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOther_Number'),1 shl FLRE_CT_OTHER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOtherNumber'),1 shl FLRE_CT_OTHER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsN'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsNumber'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsZs'),1 shl FLRE_CT_SPACE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSpace_Separator'),1 shl FLRE_CT_SPACE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSpaceSeparator'),1 shl FLRE_CT_SPACE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsZl'),1 shl FLRE_CT_LINE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLine_Separator'),1 shl FLRE_CT_LINE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsLineSeparator'),1 shl FLRE_CT_LINE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsZp'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsParagraph_Separator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsParagraphSeparator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsZ'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSeperator'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsCc'),1 shl FLRE_CT_CONTROL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsControl'),1 shl FLRE_CT_CONTROL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsCf'),1 shl FLRE_CT_FORMAT);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsFormat'),1 shl FLRE_CT_CONTROL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsCo'),1 shl FLRE_CT_PRIVATE_USE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPrivate_Use'),1 shl FLRE_CT_PRIVATE_USE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPrivateUse'),1 shl FLRE_CT_PRIVATE_USE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsCs'),1 shl FLRE_CT_SURROGATE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSurrogate'),1 shl FLRE_CT_SURROGATE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsCn'),1 shl FLRE_CT_UNASSIGNED);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsUnassigned'),1 shl FLRE_CT_UNASSIGNED);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsC'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOther'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPd'),1 shl FLRE_CT_DASH_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsDash_Punctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsDashPunctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPs'),1 shl FLRE_CT_START_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOpen_Punctuation'),1 shl FLRE_CT_START_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOpenPunctuation'),1 shl FLRE_CT_START_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPe'),1 shl FLRE_CT_END_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsClose_Punctuation'),1 shl FLRE_CT_END_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsClosePunctuation'),1 shl FLRE_CT_END_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPi'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsInitial_Punctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsInitialPunctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPf'),1 shl FLRE_CT_FINAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsFinal_Punctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsFinalPunctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPc'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsConnector_Punctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsConnectorPunctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPo'),1 shl FLRE_CT_OTHER_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOther_Punctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOtherPunctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsP'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsPunctuation'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSm'),1 shl FLRE_CT_MATH_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsMath_Symbol'),1 shl FLRE_CT_MATH_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsMathSymbol'),1 shl FLRE_CT_MATH_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSc'),1 shl FLRE_CT_CURRENCY_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsCurrency_Symbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsCurrencySymbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSk'),1 shl FLRE_CT_MODIFIER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsModifier_Symbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsModifierSymbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSo'),1 shl FLRE_CT_OTHER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOther_Symbol'),1 shl FLRE_CT_OTHER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsOtherSymbol'),1 shl FLRE_CT_OTHER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsS'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('IsSymbol'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLu'),1 shl FLRE_CT_UPPERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsUppercase_Letter'),1 shl FLRE_CT_UPPERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsUppercaseLetter'),1 shl FLRE_CT_UPPERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLl'),1 shl FLRE_CT_LOWERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLowercase_Letter'),1 shl FLRE_CT_LOWERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLowercaseLetter'),1 shl FLRE_CT_LOWERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLt'),1 shl FLRE_CT_TITLECASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsTitlecase_Letter'),1 shl FLRE_CT_TITLECASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsTitlecaseLetter'),1 shl FLRE_CT_TITLECASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLm'),1 shl FLRE_CT_MODIFIER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsModifier_Letter'),1 shl FLRE_CT_MODIFIER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsModifierLetter'),1 shl FLRE_CT_MODIFIER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLo'),1 shl FLRE_CT_OTHER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOther_Letter'),1 shl FLRE_CT_OTHER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOtherLetter'),1 shl FLRE_CT_OTHER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsL'),(1 shl FLRE_CT_UPPERCASE_LETTER) or (1 shl FLRE_CT_LOWERCASE_LETTER) or (1 shl FLRE_CT_TITLECASE_LETTER) or (1 shl FLRE_CT_MODIFIER_LETTER) or (1 shl FLRE_CT_OTHER_LETTER));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsMn'),1 shl FLRE_CT_NON_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsNon_Spacing_Mark'),1 shl FLRE_CT_NON_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsNonSpacingMark'),1 shl FLRE_CT_NON_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsMe'),1 shl FLRE_CT_ENCLOSING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsEnclosing_Mark'),1 shl FLRE_CT_ENCLOSING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsEnclosingMark'),1 shl FLRE_CT_ENCLOSING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsMc'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSpacing_Combining_Mark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSpacingCombiningMark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsM'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsMark'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsNd'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsDecimal_Digit_Number'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsDecimalDigitNumber'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsNl'),1 shl FLRE_CT_LETTER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLetter_Number'),1 shl FLRE_CT_LETTER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLetterNumber'),1 shl FLRE_CT_LETTER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsNo'),1 shl FLRE_CT_OTHER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOther_Number'),1 shl FLRE_CT_OTHER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOtherNumber'),1 shl FLRE_CT_OTHER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsN'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsNumber'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsZs'),1 shl FLRE_CT_SPACE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSpace_Separator'),1 shl FLRE_CT_SPACE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSpaceSeparator'),1 shl FLRE_CT_SPACE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsZl'),1 shl FLRE_CT_LINE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLine_Separator'),1 shl FLRE_CT_LINE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsLineSeparator'),1 shl FLRE_CT_LINE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsZp'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsParagraph_Separator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsParagraphSeparator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsZ'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSeperator'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsCc'),1 shl FLRE_CT_CONTROL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsControl'),1 shl FLRE_CT_CONTROL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsCf'),1 shl FLRE_CT_FORMAT);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsFormat'),1 shl FLRE_CT_CONTROL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsCo'),1 shl FLRE_CT_PRIVATE_USE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPrivate_Use'),1 shl FLRE_CT_PRIVATE_USE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPrivateUse'),1 shl FLRE_CT_PRIVATE_USE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsCs'),1 shl FLRE_CT_SURROGATE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSurrogate'),1 shl FLRE_CT_SURROGATE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsCn'),1 shl FLRE_CT_UNASSIGNED);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsUnassigned'),1 shl FLRE_CT_UNASSIGNED);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsC'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOther'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPd'),1 shl FLRE_CT_DASH_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsDash_Punctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsDashPunctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPs'),1 shl FLRE_CT_START_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOpen_Punctuation'),1 shl FLRE_CT_START_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOpenPunctuation'),1 shl FLRE_CT_START_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPe'),1 shl FLRE_CT_END_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsClose_Punctuation'),1 shl FLRE_CT_END_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsClosePunctuation'),1 shl FLRE_CT_END_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPi'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsInitial_Punctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsInitialPunctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPf'),1 shl FLRE_CT_FINAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsFinal_Punctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsFinalPunctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPc'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsConnector_Punctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsConnectorPunctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPo'),1 shl FLRE_CT_OTHER_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOther_Punctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOtherPunctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsP'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsPunctuation'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSm'),1 shl FLRE_CT_MATH_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsMath_Symbol'),1 shl FLRE_CT_MATH_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsMathSymbol'),1 shl FLRE_CT_MATH_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSc'),1 shl FLRE_CT_CURRENCY_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsCurrency_Symbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsCurrencySymbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSk'),1 shl FLRE_CT_MODIFIER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsModifier_Symbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsModifierSymbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSo'),1 shl FLRE_CT_OTHER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOther_Symbol'),1 shl FLRE_CT_OTHER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsOtherSymbol'),1 shl FLRE_CT_OTHER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsS'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
+    UnicodeClassHashMap.SetValue(UTF8Correct('IsSymbol'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
    end;
    begin
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLu'),1 shl FLRE_CT_UPPERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InUppercase_Letter'),1 shl FLRE_CT_UPPERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InUppercaseLetter'),1 shl FLRE_CT_UPPERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLl'),1 shl FLRE_CT_LOWERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLowercase_Letter'),1 shl FLRE_CT_LOWERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLowercaseLetter'),1 shl FLRE_CT_LOWERCASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLt'),1 shl FLRE_CT_TITLECASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InTitlecase_Letter'),1 shl FLRE_CT_TITLECASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InTitlecaseLetter'),1 shl FLRE_CT_TITLECASE_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLm'),1 shl FLRE_CT_MODIFIER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InModifier_Letter'),1 shl FLRE_CT_MODIFIER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InModifierLetter'),1 shl FLRE_CT_MODIFIER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLo'),1 shl FLRE_CT_OTHER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOther_Letter'),1 shl FLRE_CT_OTHER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOtherLetter'),1 shl FLRE_CT_OTHER_LETTER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InL'),(1 shl FLRE_CT_UPPERCASE_LETTER) or (1 shl FLRE_CT_LOWERCASE_LETTER) or (1 shl FLRE_CT_TITLECASE_LETTER) or (1 shl FLRE_CT_MODIFIER_LETTER) or (1 shl FLRE_CT_OTHER_LETTER));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InMn'),1 shl FLRE_CT_NON_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InNon_Spacing_Mark'),1 shl FLRE_CT_NON_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InNonSpacingMark'),1 shl FLRE_CT_NON_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InMe'),1 shl FLRE_CT_ENCLOSING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InEnclosing_Mark'),1 shl FLRE_CT_ENCLOSING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InEnclosingMark'),1 shl FLRE_CT_ENCLOSING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InMc'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSpacing_Combining_Mark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSpacingCombiningMark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InM'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InMark'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InNd'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InDecimal_Digit_Number'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InDecimalDigitNumber'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InNl'),1 shl FLRE_CT_LETTER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLetter_Number'),1 shl FLRE_CT_LETTER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLetterNumber'),1 shl FLRE_CT_LETTER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InNo'),1 shl FLRE_CT_OTHER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOther_Number'),1 shl FLRE_CT_OTHER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOtherNumber'),1 shl FLRE_CT_OTHER_NUMBER);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InN'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InNumber'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InZs'),1 shl FLRE_CT_SPACE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSpace_Separator'),1 shl FLRE_CT_SPACE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSpaceSeparator'),1 shl FLRE_CT_SPACE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InZl'),1 shl FLRE_CT_LINE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLine_Separator'),1 shl FLRE_CT_LINE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InLineSeparator'),1 shl FLRE_CT_LINE_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InZp'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InParagraph_Separator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InParagraphSeparator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InZ'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSeperator'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InCc'),1 shl FLRE_CT_CONTROL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InControl'),1 shl FLRE_CT_CONTROL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InCf'),1 shl FLRE_CT_FORMAT);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InFormat'),1 shl FLRE_CT_CONTROL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InCo'),1 shl FLRE_CT_PRIVATE_USE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPrivate_Use'),1 shl FLRE_CT_PRIVATE_USE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPrivateUse'),1 shl FLRE_CT_PRIVATE_USE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InCs'),1 shl FLRE_CT_SURROGATE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSurrogate'),1 shl FLRE_CT_SURROGATE);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InCn'),1 shl FLRE_CT_UNASSIGNED);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InUnassigned'),1 shl FLRE_CT_UNASSIGNED);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InC'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOther'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPd'),1 shl FLRE_CT_DASH_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InDash_Punctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InDashPunctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPs'),1 shl FLRE_CT_START_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOpen_Punctuation'),1 shl FLRE_CT_START_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOpenPunctuation'),1 shl FLRE_CT_START_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPe'),1 shl FLRE_CT_END_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InClose_Punctuation'),1 shl FLRE_CT_END_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InClosePunctuation'),1 shl FLRE_CT_END_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPi'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InInitial_Punctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InInitialPunctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPf'),1 shl FLRE_CT_FINAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InFinal_Punctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InFinalPunctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPc'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InConnector_Punctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InConnectorPunctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPo'),1 shl FLRE_CT_OTHER_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOther_Punctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOtherPunctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InP'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InPunctuation'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSm'),1 shl FLRE_CT_MATH_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InMath_Symbol'),1 shl FLRE_CT_MATH_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InMathSymbol'),1 shl FLRE_CT_MATH_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSc'),1 shl FLRE_CT_CURRENCY_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InCurrency_Symbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InCurrencySymbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSk'),1 shl FLRE_CT_MODIFIER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InModifier_Symbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InModifierSymbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSo'),1 shl FLRE_CT_OTHER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOther_Symbol'),1 shl FLRE_CT_OTHER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InOtherSymbol'),1 shl FLRE_CT_OTHER_SYMBOL);
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InS'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
-    UnicodeClassHashMap.SetValue(UTF8LowerCase('InSymbol'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLu'),1 shl FLRE_CT_UPPERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InUppercase_Letter'),1 shl FLRE_CT_UPPERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InUppercaseLetter'),1 shl FLRE_CT_UPPERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLl'),1 shl FLRE_CT_LOWERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLowercase_Letter'),1 shl FLRE_CT_LOWERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLowercaseLetter'),1 shl FLRE_CT_LOWERCASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLt'),1 shl FLRE_CT_TITLECASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InTitlecase_Letter'),1 shl FLRE_CT_TITLECASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InTitlecaseLetter'),1 shl FLRE_CT_TITLECASE_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLm'),1 shl FLRE_CT_MODIFIER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InModifier_Letter'),1 shl FLRE_CT_MODIFIER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InModifierLetter'),1 shl FLRE_CT_MODIFIER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLo'),1 shl FLRE_CT_OTHER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOther_Letter'),1 shl FLRE_CT_OTHER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOtherLetter'),1 shl FLRE_CT_OTHER_LETTER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InL'),(1 shl FLRE_CT_UPPERCASE_LETTER) or (1 shl FLRE_CT_LOWERCASE_LETTER) or (1 shl FLRE_CT_TITLECASE_LETTER) or (1 shl FLRE_CT_MODIFIER_LETTER) or (1 shl FLRE_CT_OTHER_LETTER));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InMn'),1 shl FLRE_CT_NON_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InNon_Spacing_Mark'),1 shl FLRE_CT_NON_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InNonSpacingMark'),1 shl FLRE_CT_NON_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InMe'),1 shl FLRE_CT_ENCLOSING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InEnclosing_Mark'),1 shl FLRE_CT_ENCLOSING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InEnclosingMark'),1 shl FLRE_CT_ENCLOSING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InMc'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSpacing_Combining_Mark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSpacingCombiningMark'),1 shl FLRE_CT_COMBINING_SPACING_MARK);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InM'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InMark'),(1 shl FLRE_CT_NON_SPACING_MARK) or (1 shl FLRE_CT_ENCLOSING_MARK) or (1 shl FLRE_CT_COMBINING_SPACING_MARK));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InNd'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InDecimal_Digit_Number'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InDecimalDigitNumber'),1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InNl'),1 shl FLRE_CT_LETTER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLetter_Number'),1 shl FLRE_CT_LETTER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLetterNumber'),1 shl FLRE_CT_LETTER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InNo'),1 shl FLRE_CT_OTHER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOther_Number'),1 shl FLRE_CT_OTHER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOtherNumber'),1 shl FLRE_CT_OTHER_NUMBER);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InN'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InNumber'),(1 shl FLRE_CT_DECIMAL_DIGIT_NUMBER) or (1 shl FLRE_CT_LETTER_NUMBER) or (1 shl FLRE_CT_OTHER_NUMBER));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InZs'),1 shl FLRE_CT_SPACE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSpace_Separator'),1 shl FLRE_CT_SPACE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSpaceSeparator'),1 shl FLRE_CT_SPACE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InZl'),1 shl FLRE_CT_LINE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLine_Separator'),1 shl FLRE_CT_LINE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InLineSeparator'),1 shl FLRE_CT_LINE_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InZp'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InParagraph_Separator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InParagraphSeparator'),1 shl FLRE_CT_PARAGRAPH_SEPARATOR);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InZ'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSeperator'),(1 shl FLRE_CT_SPACE_SEPARATOR) or (1 shl FLRE_CT_LINE_SEPARATOR) or (1 shl FLRE_CT_PARAGRAPH_SEPARATOR));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InCc'),1 shl FLRE_CT_CONTROL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InControl'),1 shl FLRE_CT_CONTROL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InCf'),1 shl FLRE_CT_FORMAT);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InFormat'),1 shl FLRE_CT_CONTROL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InCo'),1 shl FLRE_CT_PRIVATE_USE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPrivate_Use'),1 shl FLRE_CT_PRIVATE_USE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPrivateUse'),1 shl FLRE_CT_PRIVATE_USE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InCs'),1 shl FLRE_CT_SURROGATE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSurrogate'),1 shl FLRE_CT_SURROGATE);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InCn'),1 shl FLRE_CT_UNASSIGNED);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InUnassigned'),1 shl FLRE_CT_UNASSIGNED);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InC'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOther'),(1 shl FLRE_CT_CONTROL) or (1 shl FLRE_CT_FORMAT) or (1 shl FLRE_CT_PRIVATE_USE) or (1 shl FLRE_CT_SURROGATE) or (1 shl FLRE_CT_UNASSIGNED));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPd'),1 shl FLRE_CT_DASH_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InDash_Punctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InDashPunctuation'),1 shl FLRE_CT_DASH_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPs'),1 shl FLRE_CT_START_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOpen_Punctuation'),1 shl FLRE_CT_START_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOpenPunctuation'),1 shl FLRE_CT_START_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPe'),1 shl FLRE_CT_END_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InClose_Punctuation'),1 shl FLRE_CT_END_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InClosePunctuation'),1 shl FLRE_CT_END_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPi'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InInitial_Punctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InInitialPunctuation'),1 shl FLRE_CT_INITIAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPf'),1 shl FLRE_CT_FINAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InFinal_Punctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InFinalPunctuation'),1 shl FLRE_CT_FINAL_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPc'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InConnector_Punctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InConnectorPunctuation'),1 shl FLRE_CT_CONNECTOR_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPo'),1 shl FLRE_CT_OTHER_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOther_Punctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOtherPunctuation'),1 shl FLRE_CT_OTHER_PUNCTUATION);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InP'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InPunctuation'),(1 shl FLRE_CT_DASH_PUNCTUATION) or (1 shl FLRE_CT_START_PUNCTUATION) or (1 shl FLRE_CT_END_PUNCTUATION) or (1 shl FLRE_CT_INITIAL_PUNCTUATION) or (1 shl FLRE_CT_FINAL_PUNCTUATION) or (1 shl FLRE_CT_CONNECTOR_PUNCTUATION) or (1 shl FLRE_CT_OTHER_PUNCTUATION));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSm'),1 shl FLRE_CT_MATH_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InMath_Symbol'),1 shl FLRE_CT_MATH_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InMathSymbol'),1 shl FLRE_CT_MATH_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSc'),1 shl FLRE_CT_CURRENCY_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InCurrency_Symbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InCurrencySymbol'),1 shl FLRE_CT_CURRENCY_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSk'),1 shl FLRE_CT_MODIFIER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InModifier_Symbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InModifierSymbol'),1 shl FLRE_CT_MODIFIER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSo'),1 shl FLRE_CT_OTHER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOther_Symbol'),1 shl FLRE_CT_OTHER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InOtherSymbol'),1 shl FLRE_CT_OTHER_SYMBOL);
+    UnicodeClassHashMap.SetValue(UTF8Correct('InS'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
+    UnicodeClassHashMap.SetValue(UTF8Correct('InSymbol'),(1 shl FLRE_CT_MATH_SYMBOL) or (1 shl FLRE_CT_CURRENCY_SYMBOL) or (1 shl FLRE_CT_MODIFIER_SYMBOL) or (1 shl FLRE_CT_OTHER_SYMBOL));
    end;
   end;
   begin
    UnicodeScriptHashMap:=TFLREStringIntegerPairHashMap.Create;
    for i:=FLREUnicodeScriptCommon to FLREUnicodeScriptCount-1 do begin
     s:=FLREUnicodeScriptIDs[i];
-    UnicodeScriptHashMap.SetValue(UTF8LowerCase(s),i);
-    UnicodeScriptHashMap.SetValue(UTF8LowerCase('In'+s),i);
-    UnicodeScriptHashMap.SetValue(UTF8LowerCase('Is'+s),i);
+    UnicodeScriptHashMap.SetValue(UTF8Correct(s),i);
+    UnicodeScriptHashMap.SetValue(UTF8Correct('In'+s),i);
+    UnicodeScriptHashMap.SetValue(UTF8Correct('Is'+s),i);
     s:=AnsiString(StringReplace(String(s),'_','',[rfREPLACEALL]));
-    UnicodeScriptHashMap.SetValue(UTF8LowerCase(s),i);
-    UnicodeScriptHashMap.SetValue(UTF8LowerCase('In'+s),i);
-    UnicodeScriptHashMap.SetValue(UTF8LowerCase('Is'+s),i);
+    UnicodeScriptHashMap.SetValue(UTF8Correct(s),i);
+    UnicodeScriptHashMap.SetValue(UTF8Correct('In'+s),i);
+    UnicodeScriptHashMap.SetValue(UTF8Correct('Is'+s),i);
    end;
   end;
   begin
    UnicodeBlockHashMap:=TFLREStringIntegerPairHashMap.Create;
    for i:=FLREUnicodeScriptCommon to FLREUnicodeBlockCount-1 do begin
     s:=AnsiString(StringReplace(String(FLREUnicodeBlocks[i].Name),' ','_',[rfREPLACEALL]));
-    UnicodeBlockHashMap.SetValue(UTF8LowerCase(s),i);
-    UnicodeBlockHashMap.SetValue(UTF8LowerCase('In'+s),i);
-    UnicodeBlockHashMap.SetValue(UTF8LowerCase('Is'+s),i);
+    UnicodeBlockHashMap.SetValue(UTF8Correct(s),i);
+    UnicodeBlockHashMap.SetValue(UTF8Correct('In'+s),i);
+    UnicodeBlockHashMap.SetValue(UTF8Correct('Is'+s),i);
     s:=AnsiString(StringReplace(String(s),'_','',[rfREPLACEALL]));
-    UnicodeBlockHashMap.SetValue(UTF8LowerCase(s),i);
-    UnicodeBlockHashMap.SetValue(UTF8LowerCase('In'+s),i);
-    UnicodeBlockHashMap.SetValue(UTF8LowerCase('Is'+s),i);
+    UnicodeBlockHashMap.SetValue(UTF8Correct(s),i);
+    UnicodeBlockHashMap.SetValue(UTF8Correct('In'+s),i);
+    UnicodeBlockHashMap.SetValue(UTF8Correct('Is'+s),i);
    end;
   end;
  end;
