@@ -8018,10 +8018,11 @@ begin
 end;
 
 procedure TFLRE.AddThread(const ThreadLocalState:TFLREThreadLocalState;const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
+ function Satisfy(const NextFlags:longword;const Position:longint):boolean;
+ begin
+  result:=((NextFlags and sfEmptyAllFlags) and not ThreadLocalState.GetSatisfyFlags(Position))=0;
+ end;
 var Thread:PFLREThread;
-    CurrentChar,OtherChar:longword;
-    OtherPosition:longint;
-    BooleanValue:boolean;
 begin
  while assigned(Instruction) do begin
   if Instruction^.Generation=Generation then begin
@@ -8045,69 +8046,25 @@ begin
      continue;
     end;
     opBOL:begin
-     if rfUTF8 in Flags then begin
-      OtherPosition:=Position;
-      UTF8PtrDec(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
-     end else begin
-      OtherPosition:=Position-1;
-     end;
-     if Position<0 then begin
+     if Satisfy(sfEmptyBeginLine,Position) then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
-      if rfUTF8 in Flags then begin
-       CurrentChar:=UTF8PtrCodeUnitGetChar(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
-       case CurrentChar of
-        $0a,$0c,$0d,$85,$2028,$2029:begin
-         Instruction:=Instruction^.Next;
-         continue;
-        end;
-       end;
-      end else begin
-       case byte(ansichar(ThreadLocalState.Input[OtherPosition])) of
-        $0a,$0d,$85:begin
-         Instruction:=Instruction^.Next;
-         continue;
-        end;
-       end;
-      end;
       DecRef(SubMatches);
       break;
      end;
     end;
     opEOL:begin
-     if rfUTF8 in Flags then begin
-      OtherPosition:=Position;
-      UTF8PtrSafeInc(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
-     end else begin
-      OtherPosition:=Position+1;
-     end;
-     if OtherPosition>=ThreadLocalState.InputLength then begin
+     if Satisfy(sfEmptyEndLine,Position) then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
-      if rfUTF8 in Flags then begin
-       CurrentChar:=UTF8PtrCodeUnitGetChar(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
-       case CurrentChar of
-        $0a,$0c,$0d,$85,$2028,$2029:begin
-         Instruction:=Instruction^.Next;
-         continue;
-        end;
-       end;
-      end else begin
-       case byte(ansichar(ThreadLocalState.Input[OtherPosition])) of
-        $0a,$0d,$85:begin
-         Instruction:=Instruction^.Next;
-         continue;
-        end;
-       end;
-      end;
       DecRef(SubMatches);
       break;
      end;
     end;
     opBOT:begin
-     if Position=0 then begin
+     if Satisfy(sfEmptyBeginText,Position) then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
@@ -8116,13 +8073,7 @@ begin
      end;
     end;
     opEOT:begin
-     if rfUTF8 in Flags then begin
-      OtherPosition:=Position;
-      UTF8PtrSafeInc(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
-     end else begin
-      OtherPosition:=Position+1;
-     end;
-     if OtherPosition>=ThreadLocalState.InputLength then begin
+     if Satisfy(sfEmptyEndText,Position) then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
@@ -8130,37 +8081,17 @@ begin
       break;
      end;
     end;
-    opBRK,opNBRK:begin
-     if (Position>=0) and (Position<=ThreadLocalState.InputLength) then begin
-      if rfUTF8 in Flags then begin
-       CurrentChar:=UTF8PtrCodeUnitGetChar(ThreadLocalState.Input,ThreadLocalState.InputLength,Position);
-      end else begin
-       CurrentChar:=byte(ansichar(ThreadLocalState.Input[Position]));
-      end;
+    opBRK:begin
+     if Satisfy(sfEmptyWordBoundary,Position) then begin
+      Instruction:=Instruction^.Next;
+      continue;
      end else begin
-      CurrentChar:=$ffffffff;
+      DecRef(SubMatches);
+      break;
      end;
-     if (Position=0) or ((Position+1)=ThreadLocalState.InputLength) then begin
-      BooleanValue:=IsWordChar(CurrentChar);
-     end else begin
-      if rfUTF8 in Flags then begin
-       OtherPosition:=Position;
-       UTF8PtrDec(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
-       if (OtherPosition>0) and (OtherPosition<=ThreadLocalState.InputLength) then begin
-        OtherChar:=UTF8PtrCodeUnitGetCharFallback(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
-       end else begin
-        OtherChar:=$ffffffff;
-       end;
-      end else begin
-       if (Position>0) and (Position<=ThreadLocalState.InputLength) then begin
-        OtherChar:=byte(ansichar(ThreadLocalState.Input[Position-1]));
-       end else begin
-        OtherChar:=$ffffffff;
-       end;
-      end;
-      BooleanValue:=IsWordChar(CurrentChar)=IsWordChar(OtherChar);
-     end;
-     if BooleanValue xor ((Instruction^.IndexAndOpcode and $ff)=opBRK) then begin
+    end;
+    opNBRK:begin
+     if Satisfy(sfEmptyNonWordBoundary,Position) then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
