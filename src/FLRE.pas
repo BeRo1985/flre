@@ -183,24 +183,24 @@ type EFLRE=class(Exception);
      PPFLREInstructionsStatic=^TPFLREInstructionsStatic;
      TPFLREInstructionsStatic=array[0..65535] of PFLREInstruction;
 
-     PFLRESubMatchesItem=^TFLRESubMatchesItem;
-     TFLRESubMatchesItem=longint;
+     PFLREParallelNFAStateItem=^TFLREParallelNFAStateItem;
+     TFLREParallelNFAStateItem=longint;
 
-     TFLRESubMatchesItems=array of TFLRESubMatchesItem;
+     TFLREParallelNFAStateItems=array of TFLREParallelNFAStateItem;
 
-     PFLRESubMatches=^TFLRESubMatches;
-     TFLRESubMatches=record
-      Next:PFLRESubMatches;
+     PFLREParallelNFAState=^TFLREParallelNFAState;
+     TFLREParallelNFAState=record
+      Next:PFLREParallelNFAState;
       ReferenceCounter:longint;
       Count:longint;
       BitState:longword;
-      SubMatches:TFLRESubMatchesItems;
+      SubMatches:TFLREParallelNFAStateItems;
      end;
 
      PFLREThread=^TFLREThread;
      TFLREThread=record
       Instruction:PFLREInstruction;
-      SubMatches:PFLRESubMatches;
+      State:PFLREParallelNFAState;
      end;
 
      TFLREThreads=array of TFLREThread;
@@ -368,7 +368,7 @@ type EFLRE=class(Exception);
        Generation:int64;
        InstructionGenerations:TFLREInstructionGenerations;
 
-       FreeSubMatches:PFLRESubMatches;
+       FreeSubMatches:PFLREParallelNFAState;
        AllSubMatches:TList;
 
        DFAStackInstructions:TPFLREInstructions;
@@ -392,12 +392,12 @@ type EFLRE=class(Exception);
 
        function GetSatisfyFlags(const Position:longint):longword;
 
-       function SubMatchesAllocate(const Count:longint;const BitState:longword):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
-       procedure SubMatchesRelease(const SubMatches:PFLRESubMatches); {$ifdef caninline}inline;{$endif}
-       function SubMatchesUse(const SubMatches:PFLRESubMatches):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
-       function SubMatchesUpdate(const SubMatches:PFLRESubMatches;const Index,Position:longint):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
+       function ParallelNFAStateAllocate(const Count:longint;const BitState:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+       function ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+       procedure ParallelNFAStateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
+       function ParallelNFAStateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 
-       procedure ParallelNFAAddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
+       procedure ParallelNFAAddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;State:PFLREParallelNFAState;const Position:longint);
 
        function DFACacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
        procedure DFAAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
@@ -4199,15 +4199,15 @@ begin
 end;
 
 destructor TFLREThreadLocalStorage.Destroy;
-var SubMatches:PFLRESubMatches;
+var State:PFLREParallelNFAState;
 begin
 
  while assigned(FreeSubMatches) do begin
-  SubMatches:=FreeSubMatches;
+  State:=FreeSubMatches;
   FreeSubMatches:=FreeSubMatches^.Next;
-  SetLength(SubMatches^.SubMatches,0);
-  Finalize(SubMatches^);
-  FreeMem(SubMatches);
+  SetLength(State^.SubMatches,0);
+  Finalize(State^);
+  FreeMem(State);
  end;
  FreeSubMatches:=nil;
 
@@ -4313,14 +4313,14 @@ begin
  end;
 end;
 
-function TFLREThreadLocalStorage.SubMatchesAllocate(const Count:longint;const BitState:longword):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
+function TFLREThreadLocalStorage.ParallelNFAStateAllocate(const Count:longint;const BitState:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 begin
  if assigned(FreeSubMatches) then begin
   result:=FreeSubMatches;
   FreeSubMatches:=result^.Next;
  end else begin
-  GetMem(result,SizeOf(TFLRESubMatches));
-  FillChar(result^,SizeOf(TFLRESubMatches),#0);
+  GetMem(result,SizeOf(TFLREParallelNFAState));
+  FillChar(result^,SizeOf(TFLREParallelNFAState),#0);
   SetLength(result^.SubMatches,Instance.CountSubMatches);
   AllSubMatches.Add(result);
  end;
@@ -4329,41 +4329,41 @@ begin
  result^.BitState:=BitState;
 end;
 
-procedure TFLREThreadLocalStorage.SubMatchesRelease(const SubMatches:PFLRESubMatches); {$ifdef caninline}inline;{$endif}
+function TFLREThreadLocalStorage.ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 begin
- dec(SubMatches^.ReferenceCounter);
- if SubMatches^.ReferenceCounter=0 then begin
-  SubMatches^.Next:=FreeSubMatches;
-  FreeSubMatches:=SubMatches;
+ inc(State^.ReferenceCounter);
+ result:=State;
+end;
+
+procedure TFLREThreadLocalStorage.ParallelNFAStateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
+begin
+ dec(State^.ReferenceCounter);
+ if State^.ReferenceCounter=0 then begin
+  State^.Next:=FreeSubMatches;
+  FreeSubMatches:=State;
  end;
 end;
 
-function TFLREThreadLocalStorage.SubMatchesUse(const SubMatches:PFLRESubMatches):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
-begin
- inc(SubMatches^.ReferenceCounter);
- result:=SubMatches;
-end;
-
-function TFLREThreadLocalStorage.SubMatchesUpdate(const SubMatches:PFLRESubMatches;const Index,Position:longint):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
+function TFLREThreadLocalStorage.ParallelNFAStateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 var Counter:longint;
     BitState:longword;
 begin
- result:=SubMatches;
+ result:=State;
  if result^.ReferenceCounter>1 then begin
-  result:=SubMatchesAllocate(SubMatches^.Count,SubMatches^.BitState);
+  result:=ParallelNFAStateAllocate(State^.Count,State^.BitState);
 {$ifdef cpu386}
   asm
    push ebx
    push esi
    push edi
     mov ebx,dword ptr result
-    mov ecx,dword ptr [ebx+TFLRESubMatches.BitState]
+    mov ecx,dword ptr [ebx+TFLREParallelNFAState.BitState]
     test ecx,ecx // or test ecx,$80000000; jnz @CopyAll 
     js @CopyAll
     jecxz @Done
-     mov esi,dword ptr SubMatches
-     mov esi,dword ptr [esi+TFLRESubMatches.SubMatches]
-     mov edi,dword ptr [ebx+TFLRESubMatches.SubMatches]
+     mov esi,dword ptr State
+     mov esi,dword ptr [esi+TFLREParallelNFAState.SubMatches]
+     mov edi,dword ptr [ebx+TFLREParallelNFAState.SubMatches]
      @CopySelectedLoop:
        bsf eax,ecx
        mov edx,dword ptr [esi+eax*4]
@@ -4373,10 +4373,10 @@ begin
       jnz @CopySelectedLoop
      jmp @Done
      @CopyAll:
-      mov esi,dword ptr SubMatches
-      mov ecx,dword ptr [esi+TFLRESubMatches.Count]
-      mov esi,dword ptr [esi+TFLRESubMatches.SubMatches]
-      mov edi,dword ptr [ebx+TFLRESubMatches.SubMatches]
+      mov esi,dword ptr State
+      mov ecx,dword ptr [esi+TFLREParallelNFAState.Count]
+      mov esi,dword ptr [esi+TFLREParallelNFAState.SubMatches]
+      mov edi,dword ptr [ebx+TFLREParallelNFAState.SubMatches]
       rep movsd
     @Done:
    pop edi
@@ -4388,13 +4388,13 @@ begin
    BitState:=result^.BitState;
    while BitState<>0 do begin
     Counter:=PopFirstOneBit(BitState);
-    result^.SubMatches[Counter]:=SubMatches^.SubMatches[Counter];
+    result^.SubMatches[Counter]:=State^.SubMatches[Counter];
    end;
   end else begin
-   Move(SubMatches^.SubMatches[0],result^.SubMatches[0],SubMatches^.Count*SizeOf(TFLRESubMatchesItem));
+   Move(State^.SubMatches[0],result^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
   end;
 {$endif}
-  dec(SubMatches^.ReferenceCounter);
+  dec(State^.ReferenceCounter);
  end;
 {$ifdef cpu386}
  result^.BitState:=result^.BitState or ((longword(1) shl Index) or longword(-longword(longword(-(Index-30)) shr 31)));
@@ -4410,7 +4410,7 @@ begin
  result^.SubMatches[Index]:=Position;
 end;
 
-procedure TFLREThreadLocalStorage.ParallelNFAAddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
+procedure TFLREThreadLocalStorage.ParallelNFAAddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;State:PFLREParallelNFAState;const Position:longint);
  function Satisfy(const NextFlags:longword;const Position:longint):boolean;
  begin
   result:=((NextFlags and sfEmptyAllFlags) and not GetSatisfyFlags(Position))=0;
@@ -4419,7 +4419,7 @@ var Thread:PFLREThread;
 begin
  while assigned(Instruction) do begin
   if InstructionGenerations[Instruction^.IndexAndOpcode shr 8]=Generation then begin
-   SubMatchesRelease(SubMatches);
+   ParallelNFAStateRelease(State);
    break;
   end else begin
    InstructionGenerations[Instruction^.IndexAndOpcode shr 8]:=Generation;
@@ -4429,12 +4429,12 @@ begin
      continue;
     end;
     opSPLIT:begin
-     ParallelNFAAddThread(ThreadList,Instruction^.Next,SubMatchesUse(SubMatches),Position);
+     ParallelNFAAddThread(ThreadList,Instruction^.Next,ParallelNFAStateAcquire(State),Position);
      Instruction:=Instruction^.OtherNext;
      continue;
     end;
     opSAVE:begin
-     SubMatches:=SubMatchesUpdate(SubMatches,Instruction^.Value,Position);
+     State:=ParallelNFAStateUpdate(State,Instruction^.Value,Position);
      Instruction:=Instruction^.Next;
      continue;
     end;
@@ -4443,7 +4443,7 @@ begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
-      SubMatchesRelease(SubMatches);
+      ParallelNFAStateRelease(State);
       break;
      end;
     end;
@@ -4452,7 +4452,7 @@ begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
-      SubMatchesRelease(SubMatches);
+      ParallelNFAStateRelease(State);
       break;
      end;
     end;
@@ -4461,7 +4461,7 @@ begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
-      SubMatchesRelease(SubMatches);
+      ParallelNFAStateRelease(State);
       break;
      end;
     end;
@@ -4470,7 +4470,7 @@ begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
-      SubMatchesRelease(SubMatches);
+      ParallelNFAStateRelease(State);
       break;
      end;
     end;
@@ -4479,7 +4479,7 @@ begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
-      SubMatchesRelease(SubMatches);
+      ParallelNFAStateRelease(State);
       break;
      end;
     end;
@@ -4488,7 +4488,7 @@ begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
-      SubMatchesRelease(SubMatches);
+      ParallelNFAStateRelease(State);
       break;
      end;
     end;
@@ -4496,7 +4496,7 @@ begin
      Thread:=@ThreadList^.Threads[ThreadList^.Count];
      inc(ThreadList^.Count);
      Thread^.Instruction:=Instruction;
-     Thread^.SubMatches:=SubMatches;
+     Thread^.State:=State;
      break;
     end;
    end;
@@ -8410,7 +8410,7 @@ end;
 function TFLRE.SearchMatchParallelNFA(const ThreadLocalStorage:TFLREThreadLocalStorage;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
 var InputLength,CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosition:longint;
     CurrentThreadList,NewThreadList,TemporaryThreadList:PFLREThreadList;
-    SubMatches,Matched,BestSubMatches:PFLRESubMatches;
+    State,Matched,BestState:PFLREParallelNFAState;
     CurrentThread:PFLREThread;
     Thread:TFLREThread;
     Instruction:PFLREInstruction;
@@ -8430,18 +8430,18 @@ begin
  CurrentThreadList^.Count:=0;
  NewThreadList^.Count:=0;
 
- SubMatches:=ThreadLocalStorage.SubMatchesAllocate(CountSubMatches,0);
+ State:=ThreadLocalStorage.ParallelNFAStateAllocate(CountSubMatches,0);
 
  inc(ThreadLocalStorage.Generation);
  if UnanchoredStart then begin
-  ThreadLocalStorage.ParallelNFAAddThread(CurrentThreadList,UnanchoredStartInstruction,SubMatches,StartPosition);
+  ThreadLocalStorage.ParallelNFAAddThread(CurrentThreadList,UnanchoredStartInstruction,State,StartPosition);
  end else begin
-  ThreadLocalStorage.ParallelNFAAddThread(CurrentThreadList,AnchoredStartInstruction,SubMatches,StartPosition);
+  ThreadLocalStorage.ParallelNFAAddThread(CurrentThreadList,AnchoredStartInstruction,State,StartPosition);
  end;
 
  Matched:=nil;
 
- BestSubMatches:=nil;
+ BestState:=nil;
 
  LastPosition:=-1;
 
@@ -8454,48 +8454,48 @@ begin
   for ThreadIndex:=0 to CurrentThreadList^.Count-1 do begin
    CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
    Instruction:=CurrentThread^.Instruction;
-   SubMatches:=CurrentThread^.SubMatches;
+   State:=CurrentThread^.State;
    case Instruction^.IndexAndOpcode and $ff of
     opSINGLECHAR:begin
      if (CurrentPosition>=InputLength) or (byte(ansichar(CurrentChar))<>Instruction^.Value) then begin
-      ThreadLocalStorage.SubMatchesRelease(SubMatches);
+      ThreadLocalStorage.ParallelNFAStateRelease(State);
      end else begin
-      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
+      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
      end;
     end;
     opCHAR:begin
      if (CurrentPosition>=InputLength) or not (CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
-      ThreadLocalStorage.SubMatchesRelease(SubMatches);
+      ThreadLocalStorage.ParallelNFAStateRelease(State);
      end else begin
-      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
+      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
      end;
     end;
     opANY:begin
      if CurrentPosition>=InputLength then begin
-      ThreadLocalStorage.SubMatchesRelease(SubMatches);
+      ThreadLocalStorage.ParallelNFAStateRelease(State);
      end else begin
-      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
+      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
      end;
     end;
     opMATCH:begin
      if rfLONGEST in Flags then begin
-      if not assigned(BestSubMatches) then begin
-       BestSubMatches:=ThreadLocalStorage.SubMatchesAllocate(CountSubMatches,SubMatches^.BitState);
+      if not assigned(BestState) then begin
+       BestState:=ThreadLocalStorage.ParallelNFAStateAllocate(CountSubMatches,State^.BitState);
       end;
-      if SubMatches^.BitState<>0 then begin
+      if State^.BitState<>0 then begin
        if LastPosition<CurrentPosition then begin
         LastPosition:=CurrentPosition;
-        BestSubMatches^.BitState:=SubMatches^.BitState;
-        Move(SubMatches^.SubMatches[0],BestSubMatches^.SubMatches[0],SubMatches^.Count*SizeOf(TFLRESubMatchesItem));
+        BestState^.BitState:=State^.BitState;
+        Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
        end;
       end;
      end else begin
       if assigned(Matched) then begin
-       ThreadLocalStorage.SubMatchesRelease(Matched);
+       ThreadLocalStorage.ParallelNFAStateRelease(Matched);
       end;
-      Matched:=SubMatches;
+      Matched:=State;
       for Counter:=ThreadIndex+1 to CurrentThreadList^.Count-1 do begin
-       ThreadLocalStorage.SubMatchesRelease(CurrentThreadList^.Threads[Counter].SubMatches);
+       ThreadLocalStorage.ParallelNFAStateRelease(CurrentThreadList^.Threads[Counter].State);
       end;
       break;
      end;
@@ -8513,30 +8513,30 @@ begin
   for ThreadIndex:=0 to CurrentThreadList^.Count-1 do begin
    CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
    Instruction:=CurrentThread^.Instruction;
-   SubMatches:=CurrentThread^.SubMatches;
+   State:=CurrentThread^.State;
    case Instruction^.IndexAndOpcode and $ff of
     opSINGLECHAR,opCHAR,opANY:begin
-     ThreadLocalStorage.SubMatchesRelease(SubMatches);
+     ThreadLocalStorage.ParallelNFAStateRelease(State);
     end;
     opMATCH:begin
      if rfLONGEST in Flags then begin
-      if not assigned(BestSubMatches) then begin
-       BestSubMatches:=ThreadLocalStorage.SubMatchesAllocate(CountSubMatches,SubMatches^.BitState);
+      if not assigned(BestState) then begin
+       BestState:=ThreadLocalStorage.ParallelNFAStateAllocate(CountSubMatches,State^.BitState);
       end;
-      if SubMatches^.BitState<>0 then begin
+      if State^.BitState<>0 then begin
        if LastPosition<UntilExcludingPosition then begin
         LastPosition:=UntilExcludingPosition;
-        BestSubMatches^.BitState:=SubMatches^.BitState;
-        Move(SubMatches^.SubMatches[0],BestSubMatches^.SubMatches[0],SubMatches^.Count*SizeOf(TFLRESubMatchesItem));
+        BestState^.BitState:=State^.BitState;
+        Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
        end;
       end;
      end else begin
       if assigned(Matched) then begin
-       ThreadLocalStorage.SubMatchesRelease(Matched);
+       ThreadLocalStorage.ParallelNFAStateRelease(Matched);
       end;
-      Matched:=SubMatches;
+      Matched:=State;
       for Counter:=ThreadIndex+1 to CurrentThreadList^.Count-1 do begin
-       ThreadLocalStorage.SubMatchesRelease(CurrentThreadList^.Threads[Counter].SubMatches);
+       ThreadLocalStorage.ParallelNFAStateRelease(CurrentThreadList^.Threads[Counter].State);
       end;
       break;
      end;
@@ -8545,11 +8545,11 @@ begin
   end;
  end;
 
- if assigned(BestSubMatches) then begin
+ if assigned(BestState) then begin
   if assigned(Matched) then begin
-   ThreadLocalStorage.SubMatchesRelease(Matched);
+   ThreadLocalStorage.ParallelNFAStateRelease(Matched);
   end;
-  Matched:=BestSubMatches;
+  Matched:=BestState;
  end;
 
  if assigned(Matched) then begin
@@ -8580,7 +8580,7 @@ begin
     Capture^.Length:=CurrentLength;
    end;
   end;
-  ThreadLocalStorage.SubMatchesRelease(Matched);
+  ThreadLocalStorage.ParallelNFAStateRelease(Matched);
   result:=true;
  end;
 
