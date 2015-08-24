@@ -4123,7 +4123,6 @@ begin
    CurrentChar:=byte(ansichar(Input[Position]));
   end else begin
    CurrentChar:=0;
-   PreviousChar:=0;
   end;
  end;
  if Position<=0 then begin
