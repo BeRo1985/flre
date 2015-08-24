@@ -142,10 +142,13 @@ type EFLRE=class(Exception);
                 rfSINGLELINE,
                 rfMULTILINE,
                 rfFREESPACING,
+                rfNAMED,
                 rfLONGEST,
+                rfUNGREEDY,
                 rfLAZY,
                 rfGREEDY,
-                rfUTF8);
+                rfUTF8,
+                rfDELIMITERS);
 
      TFLREFlags=set of TFLREFlag;
 
@@ -536,7 +539,7 @@ type EFLRE=class(Exception);
 
       public
 
-       constructor Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[]);
+       constructor Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[rfDELIMITERS]);
        destructor Destroy; override;
 
        function PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
@@ -5388,7 +5391,10 @@ begin
  end;
 end;
 
-constructor TFLRE.Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[]);
+constructor TFLRE.Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[rfDELIMITERS]);
+var StartDelimiter,EndDelimiter:ansichar;
+    Index,SubIndex:longint;
+    FlagsStr:ansistring;
 begin
  inherited Create;
 
@@ -5416,6 +5422,109 @@ begin
  RegularExpression:=ARegularExpression;
 
  Flags:=AFlags;
+
+ if length(RegularExpression)=0 then begin
+  raise EFLRE.Create('Invalid regular expression');
+ end;
+
+ if rfDELIMITERS in Flags then begin
+
+  StartDelimiter:=RegularExpression[1];
+
+  case StartDelimiter of
+   '(':begin
+    EndDelimiter:=')';
+   end;
+   '[':begin
+    EndDelimiter:=']';
+   end;
+   '{':begin
+    EndDelimiter:='}';
+   end;
+   else begin
+    EndDelimiter:=StartDelimiter;
+   end;
+  end;
+
+  Index:=0;
+  for SubIndex:=length(RegularExpression) downto 2 do begin
+   if RegularExpression[SubIndex]=EndDelimiter then begin
+    Index:=SubIndex;
+    break;
+   end;
+  end;
+
+  if Index=0 then begin
+   raise EFLRE.Create('Invalid regular expression');
+  end;
+
+  FlagsStr:=copy(RegularExpression,Index+1,(length(RegularExpression)-Index)+1);
+  RegularExpression:=copy(RegularExpression,2,Index-2);
+
+  for Index:=1 to length(FlagsStr) do begin
+   case FlagsStr[Index] of
+    'x':begin
+     if rfFREESPACING in Flags then begin
+      raise EFLRE.Create('Too many free-spacing regular expression modifier flags');
+     end else begin
+      Include(Flags,rfFREESPACING);
+     end;
+    end;
+    'i':begin
+     if rfCASEINSENSITIVE in Flags then begin
+      raise EFLRE.Create('Too many ignore-case regular expression modifier flags');
+     end else begin
+      Include(Flags,rfCASEINSENSITIVE);
+     end;
+    end;
+    'n':begin
+     if rfNAMED in Flags then begin
+      raise EFLRE.Create('Too many named regular expression modifier flags');
+     end else begin
+      Include(Flags,rfNAMED);
+     end;
+    end;
+    's':begin
+     if rfSINGLELINE in Flags then begin
+      raise EFLRE.Create('Too many single-line regular expression modifier flags');
+     end else begin
+      Include(Flags,rfSINGLELINE);
+     end;
+    end;
+    'm':begin
+     if rfMULTILINE in Flags then begin
+      raise EFLRE.Create('Too many multi-line regular expression modifier flags');
+     end else begin
+      Include(Flags,rfMULTILINE);
+     end;
+    end;
+    'u':begin
+     if rfUTF8 in Flags then begin
+      raise EFLRE.Create('Too many UTF8 regular expression modifier flags');
+     end else begin
+      Include(Flags,rfUTF8);
+     end;
+    end;
+    'U':begin
+     if rfUNGREEDY in Flags then begin
+      raise EFLRE.Create('Too many ungreedy regular expression modifier flags');
+     end else begin
+      Include(Flags,rfUNGREEDY);
+     end;
+    end;
+    'p':begin
+     if rfLONGEST in Flags then begin
+      raise EFLRE.Create('Too many longest regular expression modifier flags');
+     end else begin
+      Include(Flags,rfLONGEST);
+     end;
+    end;
+    else begin
+     raise EFLRE.Create('Unknown regular expression modifier flag');
+    end;
+   end;
+  end;
+ end;
 
  FixedString:='';
  FixedStringBoyerMooreNext:=nil;
