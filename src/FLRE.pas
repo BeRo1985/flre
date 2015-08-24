@@ -5922,6 +5922,7 @@ var SourcePosition,SourceLength:longint;
      UnicodeCharClass:TFLREUnicodeCharClass;
      OldFlags:TFLREFlags;
      Name:ansistring;
+     TemporaryNode:PFLRENode;
  begin
   result:=nil;
   try
@@ -6155,6 +6156,44 @@ var SourcePosition,SourceLength:longint;
           result:=NewNode(ntEOT,nil,nil,nil,0);
           inc(SourcePosition);
          end;
+         'p':begin
+          inc(SourcePosition);
+          UnicodeCharClass:=nil;
+          try
+           UnicodeCharClass:=TFLREUnicodeCharClass.Create(self);
+           if not ParseClassEscapeUnicodeProperty(UnicodeCharClass,true) then begin
+            raise EFLRE.Create('Syntax error');
+           end;
+           UnicodeCharClass.Canonicalized:=true;
+           if assigned(UnicodeCharClass) then begin
+            result:=NewUnicodeCharClass(UnicodeCharClass);
+           end else begin
+            raise EFLRE.Create('Syntax error');
+           end;
+          finally
+           FreeAndNil(UnicodeCharClass);
+          end;
+         end;
+         'P':begin
+          inc(SourcePosition);
+          UnicodeCharClass:=nil;
+          try
+           UnicodeCharClass:=TFLREUnicodeCharClass.Create(self);
+           if not ParseClassEscapeUnicodeProperty(UnicodeCharClass,true) then begin
+            raise EFLRE.Create('Syntax error');
+           end;
+           UnicodeCharClass.Invert;
+           UnicodeCharClass.Inverted:=false;
+           UnicodeCharClass.Canonicalized:=true;
+           if assigned(UnicodeCharClass) then begin
+            result:=NewUnicodeCharClass(UnicodeCharClass);
+           end else begin
+            raise EFLRE.Create('Syntax error');
+           end;
+          finally
+           FreeAndNil(UnicodeCharClass);
+          end;
+         end;
          else begin
           if (rfUTF8 in Flags) and (byte(ansichar(Source[SourcePosition]))>=$80) then begin
            UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
@@ -6176,6 +6215,62 @@ var SourcePosition,SourceLength:longint;
         end;
        end else begin
         raise EFLRE.Create('Syntax error');
+       end;
+      end;
+      'Q':begin
+       inc(SourcePosition);
+       while SourcePosition<=SourceLength do begin
+        TemporaryNode:=nil;
+        case Source[SourcePosition] of
+         '\':begin
+          inc(SourcePosition);
+          if (SourcePosition<=SourceLength) and (Source[SourcePosition]='E') then begin
+           inc(SourcePosition);
+           break;
+          end else begin
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
+           TemporaryNode^.CharClass:=['\'];
+          end;
+         end;
+         #128..#255:begin
+          if rfUTF8 in Flags then begin
+           UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
+           LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
+           UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
+           if (rfCASEINSENSITIVE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
+            TemporaryNode:=NewAlt(NewUnicodeChar(LowerCaseUnicodeChar),NewUnicodeChar(UpperCaseUnicodeChar));
+           end else begin
+            TemporaryNode:=NewUnicodeChar(UnicodeChar);
+           end;
+          end else begin
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
+           TemporaryNode^.CharClass:=[Source[SourcePosition]];
+           inc(SourcePosition);
+          end;
+         end;
+         else begin
+          if (rfCASEINSENSITIVE in Flags) and (Source[SourcePosition] in ['a'..'z','A'..'Z']) then begin
+           UnicodeChar:=byte(ansichar(Source[SourcePosition]));
+           LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
+           UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
+           TemporaryNode^.CharClass:=[ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))];
+          end else begin
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
+           TemporaryNode^.CharClass:=[Source[SourcePosition]];
+           inc(SourcePosition);
+          end;
+         end;
+        end;
+        if assigned(TemporaryNode) then begin
+         if assigned(result) then begin
+          result:=Concat(result,TemporaryNode);
+         end else begin
+          result:=TemporaryNode;
+         end;
+        end else begin
+         raise EFLRE.Create('Syntax error');
+        end;
        end;
       end;
       '[':begin
