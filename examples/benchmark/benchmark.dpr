@@ -5,7 +5,8 @@ uses
   SysUtils,
   Classes,
   Windows,
-  FLRE in '..\..\src\FLRE.pas';
+  FLRE in '..\..\src\FLRE.pas',
+  FLREUnicode in '..\..\src\FLREUnicode.pas';
 
 // benchmark from http://lh3lh3.users.sourceforge.net/reb.shtml
 {const BenchmarkPatterns2:array[0..4] of ansistring=('installation',
@@ -22,7 +23,7 @@ uses
 *)
 const BenchmarkPatterns:array[0..4] of ansistring=('installation',
                                                    '([a-zA-Z][a-zA-Z0-9]*)://([^ /]+)(/[^ ]*)?',
-                                                   '([^ @]+)@([^ @]+)',
+                                                   '(?#Hallo)([^ @]+)@([^ @]+)',
                                                    '([0-9][0-9]?)/([0-9][0-9]?)/([0-9][0-9]([0-9][0-9])?)',
                                                    '([a-zA-Z][a-zA-Z0-9]*)://([^ /]+)(/[^ ]*)?|([^ @]+)@([^ @]+)');
 
