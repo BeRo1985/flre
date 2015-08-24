@@ -1811,14 +1811,24 @@ end;
 function TFLRE.AreNodesEqual(NodeA,NodeB:PFLRENode):boolean;
 begin
  result:=(NodeA=NodeB) or
-         ((((assigned(NodeA) and assigned(NodeB))) and ((NodeA^.NodeType=NodeB^.NodeType) and ((NodeA^.Value=NodeB^.Value) and ((AreNodesEqual(NodeA^.Left,NodeB^.Left) and AreNodesEqual(NodeA^.Right,NodeB^.Right)) and AreNodesEqual(NodeA^.Extra,NodeB^.Extra))))) or
+         ((((assigned(NodeA) and assigned(NodeB))) and
+          ((NodeA^.NodeType=NodeB^.NodeType) and
+           ((NodeA^.Value=NodeB^.Value) and
+            (NodeA^.CharClass=NodeB^.CharClass) and
+            ((AreNodesEqual(NodeA^.Left,NodeB^.Left) and AreNodesEqual(NodeA^.Right,NodeB^.Right)) and AreNodesEqual(NodeA^.Extra,NodeB^.Extra))))) or
           not (assigned(NodeA) or assigned(NodeB)));
 end;
 
 function TFLRE.AreNodesEqualSafe(NodeA,NodeB:PFLRENode):boolean;
 begin
  result:=(NodeA=NodeB) or
-         ((((assigned(NodeA) and assigned(NodeB))) and (((NodeA^.NodeType=NodeB^.NodeType) and not (NodeB^.NodeType in [ntPAREN])) and ((NodeA^.Value=NodeB^.Value) and ((AreNodesEqualSafe(NodeA^.Left,NodeB^.Left) and AreNodesEqualSafe(NodeA^.Right,NodeB^.Right)) and AreNodesEqualSafe(NodeA^.Extra,NodeB^.Extra))))) or
+         ((((assigned(NodeA) and assigned(NodeB))) and
+           (((NodeA^.NodeType=NodeB^.NodeType) and not (NodeB^.NodeType in [ntPAREN])) and
+            ((NodeA^.Value=NodeB^.Value) and
+             (NodeA^.CharClass=NodeB^.CharClass) and
+             ((AreNodesEqualSafe(NodeA^.Left,NodeB^.Left) and
+               AreNodesEqualSafe(NodeA^.Right,NodeB^.Right)) and
+               AreNodesEqualSafe(NodeA^.Extra,NodeB^.Extra))))) or
           not (assigned(NodeA) or assigned(NodeB)));
 end;
 
