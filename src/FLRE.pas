@@ -4622,7 +4622,7 @@ var SourcePosition,SourceLength:longint;
            TemporaryNodes[3]:=NewNode(ntCHAR,nil,nil,nil,0);
            TemporaryNodes[3]^.CharClass:=[TemporaryString[Index]];
            if assigned(TemporaryNodes[0]) then begin
-            TemporaryNodes[1]:=Concat(TemporaryNodes[0],TemporaryNodes[3]);
+            TemporaryNodes[1]:=Concat(TemporaryNodes[1],TemporaryNodes[3]);
            end else begin
             TemporaryNodes[1]:=TemporaryNodes[3];
            end;
@@ -4630,10 +4630,16 @@ var SourcePosition,SourceLength:longint;
          end;
          result:=NewAlt(TemporaryNodes[0],TemporaryNodes[1]);
         end else begin
+         result:=nil;
          TemporaryString:=UTF32CharToUTF8(UnicodeChar);
          for Index:=1 to length(TemporaryString) do begin
-          result:=NewNode(ntCHAR,nil,nil,nil,0);
-          result^.CharClass:=[TemporaryString[Index]];
+          TemporaryNodes[0]:=NewNode(ntCHAR,nil,nil,nil,0);
+          TemporaryNodes[0]^.CharClass:=[TemporaryString[Index]];
+          if assigned(result) then begin
+           result:=Concat(result,TemporaryNodes[0]);
+          end else begin
+           result:=TemporaryNodes[0];
+          end;
          end;
         end;
        end else begin
