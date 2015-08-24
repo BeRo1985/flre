@@ -371,6 +371,9 @@ type EFLRE=class(Exception);
        FreeSubMatches:PFLREParallelNFAState;
        AllSubMatches:TList;
 
+       OnePassNFAWorkCaptures:TFLREOnePassNFACaptures;
+       OnePassNFAMatchCaptures:TFLREOnePassNFACaptures;
+
        DFAStackInstructions:TPFLREInstructions;
        DFAStateCache:TFLREDFAStateHashMap;
        DFAAnchoredStartState:PFLREDFAState;
@@ -463,8 +466,6 @@ type EFLRE=class(Exception);
        OnePassNFANodesCount:longint;
        OnePassNFAStart:PFLREOnePassNFAState;
        OnePassNFAStateSize:longint;
-       OnePassNFAWorkCaptures:TFLREOnePassNFACaptures;
-       OnePassNFAMatchCaptures:TFLREOnePassNFACaptures;
        OnePassNFACharClassActions:PFLREOnePassNFAStateCharClassAction;
        OnePassNFAReady:longbool;
 
@@ -4127,6 +4128,14 @@ begin
 
  AllSubMatches:=TList.Create;
 
+ OnePassNFAWorkCaptures:=nil;
+ OnePassNFAMatchCaptures:=nil;
+
+ if Instance.OnePassNFAReady then begin
+  SetLength(OnePassNFAWorkCaptures,Instance.CountParens*2);
+  SetLength(OnePassNFAMatchCaptures,Instance.CountParens*2);
+ end;
+
  DFAStackInstructions:=nil;
  DFAStateCache:=TFLREDFAStateHashMap.Create;
  DFAAnchoredStartState:=nil;
@@ -4212,6 +4221,9 @@ begin
  FreeSubMatches:=nil;
 
  FreeAndNil(AllSubMatches);
+
+ SetLength(OnePassNFAWorkCaptures,0);
+ SetLength(OnePassNFAMatchCaptures,0);
 
  DFADestroyStatePool(DFAStatePoolUsed);
  DFADestroyStatePool(DFAStatePoolFree);
@@ -4791,8 +4803,6 @@ begin
  OnePassNFANodesCount:=0;
  OnePassNFAStart:=nil;
  OnePassNFAStateSize:=0;
- OnePassNFAWorkCaptures:=nil;
- OnePassNFAMatchCaptures:=nil;
  OnePassNFACharClassActions:=nil;
  OnePassNFAReady:=false;
 
@@ -4842,11 +4852,6 @@ begin
   CompileByteMapForOnePassNFAAndDFA;
 
   CompileOnePassNFA;
-
-  if OnePassNFAReady then begin
-   SetLength(OnePassNFAWorkCaptures,CountParens*2);
-   SetLength(OnePassNFAMatchCaptures,CountParens*2);
-  end;
 
   BitStateNFAReady:=(CountForwardInstructions>0) and (CountForwardInstructions<512);
   if BitStateNFAReady then begin
@@ -4905,8 +4910,6 @@ begin
  OnePassNFANodesCount:=0;
  OnePassNFAStart:=nil;
  OnePassNFAStateSize:=0;
- SetLength(OnePassNFAWorkCaptures,0);
- SetLength(OnePassNFAMatchCaptures,0);
 
  while assigned(OnePassNFACharClassActions) do begin
   NextCharClassAction:=OnePassNFACharClassActions^.AllNext;
@@ -8633,12 +8636,12 @@ begin
      (((Condition and sfMatchWins)<>0) or ((NextMatchCondition and sfEmptyAllFlags)<>0)) and
      (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
    for Counter:=0 to TwoCountOfCaptures-1 do begin
-    OnePassNFAMatchCaptures[Counter]:=OnePassNFAWorkCaptures[Counter];
+    ThreadLocalStorage.OnePassNFAMatchCaptures[Counter]:=ThreadLocalStorage.OnePassNFAWorkCaptures[Counter];
    end;
    if (MatchCondition and sfCapMask)<>0 then begin
     for Counter:=0 to TwoCountOfCaptures-1 do begin
      if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-      OnePassNFAMatchCaptures[Counter]:=CurrentPosition;
+      ThreadLocalStorage.OnePassNFAMatchCaptures[Counter]:=CurrentPosition;
      end;
     end;
    end;
@@ -8657,7 +8660,7 @@ begin
   if (Condition and sfCapMask)<>0 then begin
    for Counter:=0 to TwoCountOfCaptures-1 do begin
     if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-     OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
+     ThreadLocalStorage.OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
     end;
    end;
   end;
@@ -8671,12 +8674,12 @@ begin
    if ((MatchCondition and sfCapMask)<>0) and (TwoCountOfCaptures>0) then begin
     for Counter:=0 to TwoCountOfCaptures-1 do begin
      if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-      OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
+      ThreadLocalStorage.OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
      end;
     end;
    end;
    for Counter:=0 to TwoCountOfCaptures-1 do begin
-    OnePassNFAMatchCaptures[Counter]:=OnePassNFAWorkCaptures[Counter];
+    ThreadLocalStorage.OnePassNFAMatchCaptures[Counter]:=ThreadLocalStorage.OnePassNFAWorkCaptures[Counter];
    end;
    result:=true;
   end;
@@ -8685,8 +8688,8 @@ begin
  if result then begin
   SetLength(Captures,CountParens);
   for Counter:=0 to CountParens-1 do begin
-   Captures[Counter].Start:=OnePassNFAMatchCaptures[Counter*2];
-   Captures[Counter].Length:=OnePassNFAMatchCaptures[(Counter*2)+1]-OnePassNFAMatchCaptures[Counter*2];
+   Captures[Counter].Start:=ThreadLocalStorage.OnePassNFAMatchCaptures[Counter*2];
+   Captures[Counter].Length:=ThreadLocalStorage.OnePassNFAMatchCaptures[(Counter*2)+1]-ThreadLocalStorage.OnePassNFAMatchCaptures[Counter*2];
   end;
  end;
 
