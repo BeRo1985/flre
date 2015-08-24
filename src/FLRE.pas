@@ -2628,7 +2628,7 @@ end;
 {$endif}
 
 function UTF8RangeToRegEx(Lo,Hi:longword):ansistring;
-type TString6Chars=string[6];
+type TString6Chars=array[0..6] of ansichar;
 const Seq0010ffff:array[0..6,0..4,0..1] of longint=((($00,$7f),(-1,-1),(-1,-1),(-1,-1),(-1,-1)),        // 00-7F
                                                     (($c2,$df),($80,$bf),(-1,-1),(-1,-1),(-1,-1)),      // C2-DF 80-BF
                                                     (($e0,$e0),($a0,$bf),($80,$bf),(-1,-1),(-1,-1)),    // E0-E0 A0-BF 80-BF
@@ -2642,30 +2642,30 @@ var OutputCharSequence:ansistring;
  begin
   case CharValue of
    $00000000..$0000007f:begin
-    SetLength(result,1);
+    result[0]:=ansichar(byte(1));
     result[1]:=ansichar(byte(CharValue));
    end;
    $00000080..$000007ff:begin
-    SetLength(result,2);
+    result[0]:=ansichar(byte(2));
     result[1]:=ansichar(byte($c0 or ((CharValue shr 6) and $1f)));
     result[2]:=ansichar(byte($80 or (CharValue and $3f)));
    end;
 // {$ifdef PLREStrictUTF8}$00000800..$0000d7ff,$0000e000..$0000ffff{$else}$00000800..$0000ffff{$endif}:begin
    $00000800..$0000ffff:begin
-    SetLength(result,3);
+    result[0]:=ansichar(byte(3));
     result[1]:=ansichar(byte($e0 or ((CharValue shr 12) and $0f)));
     result[2]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
     result[3]:=ansichar(byte($80 or (CharValue and $3f)));
    end;
    $00010000..$0010ffff:begin
-    SetLength(result,4);
+    result[0]:=ansichar(byte(4));
     result[1]:=ansichar(byte($f0 or ((CharValue shr 18) and $07)));
     result[2]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
     result[3]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
     result[4]:=ansichar(byte($80 or (CharValue and $3f)));
    end;
    $00200000..$03ffffff:begin
-    SetLength(result,5);
+    result[0]:=ansichar(byte(5));
     result[1]:=ansichar(byte($f8 or ((CharValue shr 24) and $03)));
     result[2]:=ansichar(byte($80 or ((CharValue shr 18) and $3f)));
     result[3]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
@@ -2673,7 +2673,7 @@ var OutputCharSequence:ansistring;
     result[5]:=ansichar(byte($80 or (CharValue and $3f)));
    end;
    $04000000..$7fffffff:begin
-    SetLength(result,6);
+    result[0]:=ansichar(byte(6));
     result[1]:=ansichar(byte($fc or ((CharValue shr 30) and $01)));
     result[2]:=ansichar(byte($80 or ((CharValue shr 24) and $3f)));
     result[3]:=ansichar(byte($80 or ((CharValue shr 18) and $3f)));
@@ -2682,7 +2682,7 @@ var OutputCharSequence:ansistring;
     result[6]:=ansichar(byte($80 or (CharValue and $3f)));
    end;
    else begin
-    SetLength(result,3);
+    result[0]:=ansichar(byte(3));
     result[1]:=#$ef;
     result[2]:=#$bf;
     result[3]:=#$bd;
@@ -2761,8 +2761,8 @@ var OutputCharSequence:ansistring;
      end;
      StrLo:=ToString(Lo);
      StrHi:=ToString(Hi);
-     if length(StrLo)=length(StrHi) then begin
-      for i:=1 to length(StrLo) do begin
+     if byte(ansichar(StrLo[0]))=byte(ansichar(StrHi[0])) then begin
+      for i:=1 to byte(ansichar(StrLo[0])) do begin
        AddRange(byte(StrLo[i]),byte(StrHi[i]));
       end;
       OutputCharSequence:=OutputCharSequence+'|';
@@ -5309,7 +5309,7 @@ var SourcePosition,SourceLength:longint;
   end;
  end;
  function CompileUTF8Range(Lo,Hi:longword):PFLRENode;
- type TString6Chars=string[6];
+ type TString6Chars=array[0..6] of ansichar;
  const Seq0010ffff:array[0..6,0..4,0..1] of longint=((($00,$7f),(-1,-1),(-1,-1),(-1,-1),(-1,-1)),        // 00-7F
                                                      (($c2,$df),($80,$bf),(-1,-1),(-1,-1),(-1,-1)),      // C2-DF 80-BF
                                                      (($e0,$e0),($a0,$bf),($80,$bf),(-1,-1),(-1,-1)),    // E0-E0 A0-BF 80-BF
@@ -5317,7 +5317,6 @@ var SourcePosition,SourceLength:longint;
                                                      (($f0,$f0),($80,$bf),($80,$bf),($80,$bf),(-1,-1)),  // F0-F0 90-BF 80-BF 80-BF
                                                      (($f1,$f3),($80,$bf),($80,$bf),($80,$bf),(-1,-1)),  // F1-F3 80-BF 80-BF 80-BF
                                                      (($f4,$f4),($80,$bf),($80,$bf),($80,$bf),(-1,-1))); // F4-F4 80-8F 80-BF 80-BF
-       HexChars:array[$0..$f] of ansichar='0123456789ABCDEF';
  var OutputNode,NodeChain:PFLRENode;
   procedure Add(const NewNode:PFLRENode);
   begin
@@ -5344,30 +5343,30 @@ var SourcePosition,SourceLength:longint;
   begin
    case CharValue of
     $00000000..$0000007f:begin
-     SetLength(result,1);
+     result[0]:=ansichar(byte(1));
      result[1]:=ansichar(byte(CharValue));
     end;
     $00000080..$000007ff:begin
-     SetLength(result,2);
+     result[0]:=ansichar(byte(2));
      result[1]:=ansichar(byte($c0 or ((CharValue shr 6) and $1f)));
      result[2]:=ansichar(byte($80 or (CharValue and $3f)));
     end;
  // {$ifdef PLREStrictUTF8}$00000800..$0000d7ff,$0000e000..$0000ffff{$else}$00000800..$0000ffff{$endif}:begin
     $00000800..$0000ffff:begin
-     SetLength(result,3);
+     result[0]:=ansichar(byte(3));
      result[1]:=ansichar(byte($e0 or ((CharValue shr 12) and $0f)));
      result[2]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
      result[3]:=ansichar(byte($80 or (CharValue and $3f)));
     end;
     $00010000..$0010ffff:begin
-     SetLength(result,4);
+     result[0]:=ansichar(byte(4));
      result[1]:=ansichar(byte($f0 or ((CharValue shr 18) and $07)));
      result[2]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
      result[3]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
      result[4]:=ansichar(byte($80 or (CharValue and $3f)));
     end;
     $00200000..$03ffffff:begin
-     SetLength(result,5);
+     result[0]:=ansichar(byte(5));
      result[1]:=ansichar(byte($f8 or ((CharValue shr 24) and $03)));
      result[2]:=ansichar(byte($80 or ((CharValue shr 18) and $3f)));
      result[3]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
@@ -5375,7 +5374,7 @@ var SourcePosition,SourceLength:longint;
      result[5]:=ansichar(byte($80 or (CharValue and $3f)));
     end;
     $04000000..$7fffffff:begin
-     SetLength(result,6);
+     result[0]:=ansichar(byte(6));
      result[1]:=ansichar(byte($fc or ((CharValue shr 30) and $01)));
      result[2]:=ansichar(byte($80 or ((CharValue shr 24) and $3f)));
      result[3]:=ansichar(byte($80 or ((CharValue shr 18) and $3f)));
@@ -5384,7 +5383,7 @@ var SourcePosition,SourceLength:longint;
      result[6]:=ansichar(byte($80 or (CharValue and $3f)));
     end;
     else begin
-     SetLength(result,3);
+     result[0]:=ansichar(byte(3));
      result[1]:=#$ef;
      result[2]:=#$bf;
      result[3]:=#$bd;
@@ -5461,9 +5460,9 @@ var SourcePosition,SourceLength:longint;
       end;
       StrLo:=ToString(Lo);
       StrHi:=ToString(Hi);
-      if length(StrLo)=length(StrHi) then begin
-       for i:=1 to length(StrLo) do begin
-        AddRange(byte(StrLo[i]),byte(StrHi[i]));
+      if byte(ansichar(StrLo[0]))=byte(ansichar(StrHi[0])) then begin
+       for i:=1 to byte(ansichar(StrLo[0])) do begin
+        AddRange(byte(ansichar(StrLo[i])),byte(ansichar(StrHi[i])));
        end;
        AddSuffix;
       end;
