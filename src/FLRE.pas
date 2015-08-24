@@ -8347,7 +8347,7 @@ begin
   end;
   StackPointer:=0;
   if assigned(UnanchoredRootNode) then begin
-   Stack[StackPointer].Node:=UnanchoredRootNode;
+   Stack[StackPointer].Node:=AnchoredRootNode;
    Stack[StackPointer].Argument:=0;
    inc(StackPointer);
    FixedStringIsWholeRegExp:=true;
@@ -8502,8 +8502,8 @@ begin
     break;
    end;
   end;
-  if assigned(UnanchoredRootNode) then begin
-   FixedString:=NodeStrings[UnanchoredRootNode^.Index];
+  if assigned(AnchoredRootNode) then begin
+   FixedString:=NodeStrings[AnchoredRootNode^.Index];
   end else begin
    FixedString:='';
   end;
