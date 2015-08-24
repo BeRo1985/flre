@@ -362,6 +362,7 @@ type EFLRE=class(Exception);
        InputLength:longint;
        constructor Create(AInstance:TFLRE);
        destructor Destroy; override;
+       function GetSatisfyFlags(const Position:longint):longword;
      end;
 
      TFLRE=class
@@ -489,12 +490,12 @@ type EFLRE=class(Exception);
        procedure CompilePrefixCharClasses;
        procedure CompileByteMapForOnePassNFAAndDFA;
        procedure CompileOnePassNFA;
+       function IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
        function NewSubMatches(const Count:longint;const BitState:longword):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
        procedure DecRef(const SubMatches:PFLRESubMatches); {$ifdef caninline}inline;{$endif}
        function IncRef(const SubMatches:PFLRESubMatches):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
        function Update(const SubMatches:PFLRESubMatches;const Index,Position:longint):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
        function NewThread(const Instruction:PFLREInstruction;const SubMatches:PFLRESubMatches):TFLREThread; {$ifdef caninline}inline;{$endif}
-       function IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
        procedure AddThread(const ThreadLocalState:TFLREThreadLocalState;const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
        function DFACacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
        procedure DFAAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
@@ -4091,6 +4092,74 @@ end;
 destructor TFLREThreadLocalState.Destroy;
 begin
  inherited Destroy;
+end;
+
+function TFLREThreadLocalState.GetSatisfyFlags(const Position:longint):longword;
+var PreviousPosition:longint;
+    PreviousChar,CurrentChar:longword;
+begin
+ result:=0;
+ if rfUTF8 in Instance.Flags then begin
+  PreviousPosition:=Position;
+  UTF8PtrDec(Input,InputLength,PreviousPosition);
+  if (PreviousPosition>=0) and (PreviousPosition<=InputLength) then begin
+   PreviousChar:=UTF8PtrCodeUnitGetCharFallback(Input,InputLength,PreviousPosition);
+  end else begin
+   PreviousChar:=0;
+  end;
+  if (Position>=0) and (Position<InputLength) then begin
+   CurrentChar:=UTF8PtrCodeUnitGetCharFallback(Input,InputLength,Position);
+  end else begin
+   CurrentChar:=0;
+  end;
+ end else begin
+  PreviousPosition:=Position-1;
+  if (PreviousPosition>=0) and (PreviousPosition<=InputLength) then begin
+   PreviousChar:=byte(ansichar(Input[PreviousPosition]));
+  end else begin
+   PreviousChar:=0;
+  end;
+  if (Position>=0) and (Position<InputLength) then begin
+   CurrentChar:=byte(ansichar(Input[Position]));
+  end else begin
+   CurrentChar:=0;
+   PreviousChar:=0;
+  end;
+ end;
+ if Position<=0 then begin
+  result:=result or (sfEmptyBeginText or sfEmptyBeginLine);
+ end else begin
+  case PreviousChar of
+   $0a,$0d,$85,$2028,$2029:begin
+    result:=result or sfEmptyBeginLine;
+   end;
+  end;
+ end;
+ if Position>=InputLength then begin
+  result:=result or (sfEmptyEndText or sfEmptyEndLine);
+ end else begin
+  case CurrentChar of
+   $0a,$0d,$85,$2028,$2029:begin
+    result:=result or sfEmptyEndLine;
+   end;
+  end;
+ end;
+ if InputLength>0 then begin
+  if Position=0 then begin
+   if Instance.IsWordChar(CurrentChar) then begin
+    result:=result or sfEmptyWordBoundary;
+   end;
+  end else if Position>=InputLength then begin
+   if Instance.IsWordChar(PreviousChar) then begin
+    result:=result or sfEmptyWordBoundary;
+   end;
+  end else if Instance.IsWordChar(PreviousChar)<>Instance.IsWordChar(CurrentChar) then begin
+   result:=result or sfEmptyWordBoundary;
+  end;
+ end;
+ if (result and sfEmptyWordBoundary)=0 then begin
+  result:=result or sfEmptyNonWordBoundary;
+ end;
 end;
 
 constructor TFLRE.Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[]);
@@ -7825,6 +7894,26 @@ begin
  end;
 end;
 
+function TFLRE.IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
+begin
+ if CharValue=$ffffffff then begin
+  result:=false;
+ end else begin
+  if rfUTF8 in Flags then begin
+   result:=UnicodeIsWord(CharValue);
+  end else begin
+   case CharValue of
+    ord('a')..ord('z'),ord('A')..ord('Z'),ord('0')..ord('9'),ord('_'):begin
+     result:=true;
+    end;
+    else begin
+     result:=false;
+    end;
+   end;
+  end;
+ end;
+end;
+
 function TFLRE.NewSubMatches(const Count:longint;const BitState:longword):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
 begin
  if assigned(FreeSubMatches) then begin
@@ -7928,28 +8017,8 @@ begin
  result.SubMatches:=SubMatches;
 end;
 
-function TFLRE.IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
-begin
- if CharValue=$ffffffff then begin
-  result:=false;
- end else begin
-  if rfUTF8 in Flags then begin
-   result:=UnicodeIsWord(CharValue);
-  end else begin
-   case CharValue of
-    ord('a')..ord('z'),ord('A')..ord('Z'),ord('0')..ord('9'),ord('_'):begin
-     result:=true;
-    end;
-    else begin
-     result:=false;
-    end;
-   end;
-  end;
- end;
-end;
-
 procedure TFLRE.AddThread(const ThreadLocalState:TFLREThreadLocalState;const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
-var Thread:PFLREThread; 
+var Thread:PFLREThread;
     CurrentChar,OtherChar:longword;
     OtherPosition:longint;
     BooleanValue:boolean;
@@ -7995,8 +8064,8 @@ begin
         end;
        end;
       end else begin
-       case ThreadLocalState.Input[OtherPosition] of
-        #10,#13:begin
+       case byte(ansichar(ThreadLocalState.Input[OtherPosition])) of
+        $0a,$0d,$85:begin
          Instruction:=Instruction^.Next;
          continue;
         end;
@@ -8026,8 +8095,8 @@ begin
         end;
        end;
       end else begin
-       case ThreadLocalState.Input[OtherPosition] of
-        #10,#13:begin
+       case byte(ansichar(ThreadLocalState.Input[OtherPosition])) of
+        $0a,$0d,$85:begin
          Instruction:=Instruction^.Next;
          continue;
         end;
@@ -8549,36 +8618,8 @@ var State,Nodes:PFLREOnePassNFAState;
     NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
     Input:pansichar;
  function Satisfy(Condition:longword):boolean;
- var Flags:longword;
  begin
-  Flags:=0;
-  if CurrentPosition<=0 then begin
-   Flags:=Flags or (sfEmptyBeginText or sfEmptyBeginLine);
-  end else if Input[CurrentPosition-1] in [#10,#13] then begin
-   Flags:=Flags or sfEmptyBeginLine;
-  end;
-  if CurrentPosition>InputLength then begin
-   Flags:=Flags or (sfEmptyEndText or sfEmptyEndLine);
-  end else if (CurrentPosition<InputLength) and (Input[CurrentPosition] in [#10,#13]) then begin
-   Flags:=Flags or sfEmptyEndLine;
-  end;
-  if InputLength>0 then begin
-   if CurrentPosition=0 then begin
-    if IsWordChar(0) then begin
-     Flags:=Flags or sfEmptyWordBoundary;
-    end;
-   end else if CurrentPosition>=InputLength then begin
-    if IsWordChar(CurrentPosition-1) then begin
-     Flags:=Flags or sfEmptyWordBoundary;
-    end;
-   end else if IsWordChar(CurrentPosition-1)<>IsWordChar(CurrentPosition) then begin
-    Flags:=Flags or sfEmptyWordBoundary;
-   end;
-  end;
-  if (Flags and sfEmptyWordBoundary)=0 then begin
-   Flags:=Flags or sfEmptyNonWordBoundary;
-  end;
-  result:=((Condition and sfEmptyAllFlags) and not Flags)=0;
+  result:=((Condition and sfEmptyAllFlags) and not ThreadLocalState.GetSatisfyFlags(CurrentPosition))=0;
  end;
 begin
  TwoCountOfCaptures:=CountParens*2;
@@ -8599,6 +8640,7 @@ begin
  CurrentPosition:=StartPosition;
 
  while CurrentPosition<UntilExcludingPosition do begin
+ 
   Condition:=State^.Action[LocalByteMap^[byte(ansichar(Input[CurrentPosition]))]];
   MatchCondition:=NextMatchCondition;
 
@@ -8707,60 +8749,8 @@ var InputLength,BasePosition,Len:longint;
      CurrentChar,LocalFlags:longword;
      InputIsUTF8:boolean;
   function Satisfy(const NextFlags:longword;const Position:longint):boolean;
-  var LocalFlags,LastChar,CurrentChar,NextChar:longword;
-      Index,NextPosition:longint;
   begin
-   LastChar:=$ffffffff;
-   CurrentChar:=$ffffffff;
-   NextChar:=$ffffffff;
-   if Position>=0 then begin
-    if Position>0 then begin
-     LastChar:=byte(ansichar(Input[Position-1]));
-    end;
-    CurrentChar:=byte(ansichar(Input[Position]));
-    NextPosition:=Position+1;
-    if NextPosition<InputLength then begin
-     NextChar:=byte(ansichar(Input[NextPosition]));
-    end;
-   end;
-   LocalFlags:=0;
-   if Position<=0 then begin
-    LocalFlags:=LocalFlags or (sfEmptyBeginText or sfEmptyBeginLine);
-   end else begin
-    case LastChar of
-     $000a,$00d,$2028,$2029:begin
-      LocalFlags:=LocalFlags or sfEmptyBeginLine;
-     end;
-    end;
-   end;
-   if Position>(InputLength-1) then begin
-    LocalFlags:=LocalFlags or (sfEmptyEndText or sfEmptyEndLine);
-   end else begin
-    case CurrentChar of
-     $000a,$00d,$2028,$2029:begin
-      LocalFlags:=LocalFlags or sfEmptyEndLine;
-     end;
-    end;
-   end;
-   if InputLength>0 then begin
-    if Position=0 then begin
-     if IsWordChar(Position) then begin
-      LocalFlags:=LocalFlags or sfEmptyWordBoundary;
-     end;
-    end else if Position>InputLength then begin
-     if IsWordChar(Position-1) then begin
-      LocalFlags:=LocalFlags or sfEmptyWordBoundary;
-     end;
-    end else if IsWordChar(Position-1)<>IsWordChar(Position) then begin
-     LocalFlags:=LocalFlags or sfEmptyWordBoundary;
-    end;
-   end;
-   if (LocalFlags and sfEmptyWordBoundary)=0 then begin
-    LocalFlags:=LocalFlags or sfEmptyNonWordBoundary;
-   end;
-   if NextChar<>0 then begin
-   end;
-   result:=((NextFlags and sfEmptyAllFlags) and not LocalFlags)=0;
+   result:=((NextFlags and sfEmptyAllFlags) and not ThreadLocalState.GetSatisfyFlags(Position))=0;
   end;
  begin
   result:=false;
