@@ -498,7 +498,7 @@ type EFLRE=class(Exception);
        NamedGroupStringList:TStringList;
        NamedGroupStringIntegerPairHashMap:TFLREStringIntegerPairHashMap;
 
-       ThreadLocalStorageInstanceCriticalSection:TCriticalSection;
+       ThreadLocalStorageInstanceManagerCriticalSection:TCriticalSection;
 
        ThreadLocalStorageInstances:TFLREThreadLocalStorageInstance;
        FreeThreadLocalStorageInstances:TFLREThreadLocalStorageInstance;
@@ -533,19 +533,27 @@ type EFLRE=class(Exception);
        function IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
 
        function SearchMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
+
       public
+
        constructor Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[]);
        destructor Destroy; override;
+
        function PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchAll(const Input:pointer;const InputLength:longint;var Captures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
        function PtrReplaceAll(const Input:pointer;const InputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
+
        function Match(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchNext(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchAll(const Input:ansistring;var Captures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function ReplaceAll(const AInput,AReplacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
+
+      published
+
        property NamedGroups:TStringList read NamedGroupStringList;
        property NamedGroupIndices:TFLREStringIntegerPairHashMap read NamedGroupStringIntegerPairHashMap;
+
      end;
 
 implementation
@@ -5431,7 +5439,7 @@ begin
  NamedGroupStringList:=TStringList.Create;
  NamedGroupStringIntegerPairHashMap:=TFLREStringIntegerPairHashMap.Create;
 
- ThreadLocalStorageInstanceCriticalSection:=TCriticalSection.Create;
+ ThreadLocalStorageInstanceManagerCriticalSection:=TCriticalSection.Create;
 
  ThreadLocalStorageInstances:=nil;
  FreeThreadLocalStorageInstances:=nil;
@@ -5526,7 +5534,7 @@ begin
  NamedGroupStringList.Free;
  NamedGroupStringIntegerPairHashMap.Free;
 
- ThreadLocalStorageInstanceCriticalSection.Free;
+ ThreadLocalStorageInstanceManagerCriticalSection.Free;
 
  inherited Destroy;
 end;
@@ -9015,7 +9023,7 @@ var MatchBegin,MatchEnd:longint;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
  result:=false;
- ThreadLocalStorageInstanceCriticalSection.Enter;
+ ThreadLocalStorageInstanceManagerCriticalSection.Enter;
  try
   ThreadLocalStorageInstance:=FreeThreadLocalStorageInstances;
   if assigned(ThreadLocalStorageInstance) then begin
@@ -9026,7 +9034,7 @@ begin
    ThreadLocalStorageInstances:=ThreadLocalStorageInstance;
   end;
  finally
-  ThreadLocalStorageInstanceCriticalSection.Leave;
+  ThreadLocalStorageInstanceManagerCriticalSection.Leave;
  end;
  try
   ThreadLocalStorageInstance.Input:=AInput;
@@ -9104,12 +9112,12 @@ begin
    break;
   until true;
  finally
-  ThreadLocalStorageInstanceCriticalSection.Enter;
+  ThreadLocalStorageInstanceManagerCriticalSection.Enter;
   try
    ThreadLocalStorageInstance.FreeNext:=FreeThreadLocalStorageInstances;
    FreeThreadLocalStorageInstances:=ThreadLocalStorageInstance;
   finally
-   ThreadLocalStorageInstanceCriticalSection.Leave;
+   ThreadLocalStorageInstanceManagerCriticalSection.Leave;
   end;
  end;
 end;
