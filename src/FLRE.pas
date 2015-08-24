@@ -1128,6 +1128,156 @@ begin
 end;
 {$endif}
 
+function UTF8RangeToRegEx(Lo,Hi:longword):ansistring;
+type TString6Chars=string[6];
+const Seq0010ffff:array[0..6,0..4,0..1] of longint=((($00,$7f),(-1,-1),(-1,-1),(-1,-1),(-1,-1)),        // 00-7F
+                                                    (($c2,$df),($80,$bf),(-1,-1),(-1,-1),(-1,-1)),      // C2-DF 80-BF
+                                                    (($e0,$e0),($a0,$bf),($80,$bf),(-1,-1),(-1,-1)),    // E0-E0 A0-BF 80-BF
+                                                    (($e1,$ef),($80,$bf),($80,$bf),(-1,-1),(-1,-1)),    // E1-EF 80-BF 80-BF
+                                                    (($f0,$f0),($80,$bf),($80,$bf),($80,$bf),(-1,-1)),  // F0-F0 90-BF 80-BF 80-BF
+                                                    (($f1,$f3),($80,$bf),($80,$bf),($80,$bf),(-1,-1)),  // F1-F3 80-BF 80-BF 80-BF
+                                                    (($f4,$f4),($80,$bf),($80,$bf),($80,$bf),(-1,-1))); // F4-F4 80-8F 80-BF 80-BF
+      HexChars:array[$0..$f] of ansichar='0123456789ABCDEF';
+var OutputCharSequence:ansistring;
+ function ToString(CharValue:longword):TString6Chars;
+ begin
+  case CharValue of
+   $00000000..$0000007f:begin
+    SetLength(result,1);
+    result[1]:=ansichar(byte(CharValue));
+   end;
+   $00000080..$000007ff:begin
+    SetLength(result,2);
+    result[1]:=ansichar(byte($c0 or ((CharValue shr 6) and $1f)));
+    result[2]:=ansichar(byte($80 or (CharValue and $3f)));
+   end;
+// {$ifdef PLREStrictUTF8}$00000800..$0000d7ff,$0000e000..$0000ffff{$else}$00000800..$0000ffff{$endif}:begin
+   $00000800..$0000ffff:begin
+    SetLength(result,3);
+    result[1]:=ansichar(byte($e0 or ((CharValue shr 12) and $0f)));
+    result[2]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
+    result[3]:=ansichar(byte($80 or (CharValue and $3f)));
+   end;
+   $00010000..$0010ffff:begin
+    SetLength(result,4);
+    result[1]:=ansichar(byte($f0 or ((CharValue shr 18) and $07)));
+    result[2]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
+    result[3]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
+    result[4]:=ansichar(byte($80 or (CharValue and $3f)));
+   end;
+   $00200000..$03ffffff:begin
+    SetLength(result,5);
+    result[1]:=ansichar(byte($f8 or ((CharValue shr 24) and $03)));
+    result[2]:=ansichar(byte($80 or ((CharValue shr 18) and $3f)));
+    result[3]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
+    result[4]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
+    result[5]:=ansichar(byte($80 or (CharValue and $3f)));
+   end;
+   $04000000..$7fffffff:begin
+    SetLength(result,6);
+    result[1]:=ansichar(byte($fc or ((CharValue shr 30) and $01)));
+    result[2]:=ansichar(byte($80 or ((CharValue shr 24) and $3f)));
+    result[3]:=ansichar(byte($80 or ((CharValue shr 18) and $3f)));
+    result[4]:=ansichar(byte($80 or ((CharValue shr 12) and $3f)));
+    result[5]:=ansichar(byte($80 or ((CharValue shr 6) and $3f)));
+    result[6]:=ansichar(byte($80 or (CharValue and $3f)));
+   end;
+   else begin
+    SetLength(result,3);
+    result[1]:=#$ef;
+    result[2]:=#$bf;
+    result[3]:=#$bd;
+   end;
+  end;
+ end;
+ procedure AddRange(Lo,Hi:byte);
+ var Data:array[0..11] of ansichar;
+ begin
+  Data:='[\x00-\x00]';
+  Data[3]:=HexChars[(Lo shr 4) and $f];
+  Data[4]:=HexChars[Lo and $f];
+  Data[8]:=HexChars[(Hi shr 4) and $f];
+  Data[9]:=HexChars[Hi and $f];
+  OutputCharSequence:=OutputCharSequence+Data;
+ end;
+ procedure ProcessRange(Lo,Hi:longword);
+ var i,m:longword;
+     StrLo,StrHi:TString6Chars;
+ begin
+  if Hi>$0010ffff then begin
+   Hi:=$0010ffff;
+  end;
+  if Lo<=Hi then begin
+    if (Lo=$00000000) and (Hi=$0010ffff) then begin
+    for m:=low(Seq0010ffff) to high(Seq0010ffff) do begin
+     for i:=low(Seq0010ffff[m]) to high(Seq0010ffff[m]) do begin
+      if Seq0010ffff[m,i,0]<0 then begin
+       break;
+      end;
+      AddRange(byte(Seq0010ffff[m,i,0]),byte(Seq0010ffff[m,i,1]));
+     end;
+     OutputCharSequence:=OutputCharSequence+'|';
+    end;
+   end else if (Lo=$00000080) and (Hi=$0010ffff) then begin
+    for m:=1 to high(Seq0010ffff) do begin
+     for i:=low(Seq0010ffff[m]) to high(Seq0010ffff[m]) do begin
+      if Seq0010ffff[m,i,0]<0 then begin
+       break;
+      end;
+      AddRange(byte(Seq0010ffff[m,i,0]),byte(Seq0010ffff[m,i,1]));
+     end;
+     OutputCharSequence:=OutputCharSequence+'|';
+    end;
+   end else begin
+    for i:=1 to 3 do begin
+     if i=1 then begin
+      m:=7;
+     end else begin
+      m:=(7-i)+(6*(i-1));
+     end;
+     m:=(1 shl m)-1;
+     if (Lo<=m) and (m<Hi) then begin
+      ProcessRange(Lo,m);
+      ProcessRange(m+1,Hi);
+      exit;
+     end;
+    end;
+    if Hi<128 then begin
+     AddRange(Lo,Hi);
+     OutputCharSequence:=OutputCharSequence+'|';
+    end else begin
+     for i:=1 to 3 do begin
+      m:=(1 shl (6*i))-1;
+      if (Lo and not m)<>(Hi and not m) then begin
+       if (Lo and m)<>0 then begin
+        ProcessRange(Lo,Lo or m);
+        ProcessRange((Lo or m)+1,Hi);
+        exit;
+       end else if (Hi and m)<>m then begin
+        ProcessRange(Lo,(Hi and not m)-1);
+        ProcessRange(Hi and not m,Hi);
+        exit;
+       end;
+      end;
+     end;
+     StrLo:=ToString(Lo);
+     StrHi:=ToString(Hi);
+     if length(StrLo)=length(StrHi) then begin
+      for i:=1 to length(StrLo) do begin
+       AddRange(byte(StrLo[i]),byte(StrHi[i]));
+      end;
+      OutputCharSequence:=OutputCharSequence+'|';
+     end;
+    end;
+   end;
+  end;
+ end;
+begin
+ OutputCharSequence:='';
+ ProcessRange(Lo,Hi);
+ result:=copy(OutputCharSequence,1,length(OutputCharSequence)-1);
+end;
+
 function HashDFAState(const Key:PFLREDFAState):longword;
 begin
  if assigned(Key) and (Key.CountInstructions>0) then begin
@@ -2973,7 +3123,7 @@ begin
  if SourcePosition<=SourceLength then begin
   CountParens:=1;
   AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
-  while OptimizeNode(@AnchoredRootNode) do begin
+  while assigned(AnchoredRootNode) and OptimizeNode(@AnchoredRootNode) do begin
   end;
   if rfLONGEST in Flags then begin
    UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntDOT,nil,nil,nil,0),nil,nil,qkGREEDY),AnchoredRootNode,nil,0);
