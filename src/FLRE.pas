@@ -7324,6 +7324,14 @@ var SourcePosition,SourceLength:longint;
                Include(Flags,rfCASEINSENSITIVE);
               end;
              end;
+             'n':begin
+              inc(SourcePosition);
+              if IsNegative then begin
+               Exclude(Flags,rfNAMED);
+              end else begin
+               Include(Flags,rfNAMED);
+              end;
+             end;
              'm':begin
               inc(SourcePosition);
               if IsNegative then begin
@@ -7743,7 +7751,7 @@ var SourcePosition,SourceLength:longint;
        if not assigned(result) then begin
         raise EFLRE.Create('Syntax error');
        end;
-       if (SourcePosition<=SourceLength) and (Source[SourcePosition]='?') then begin
+       if ((SourcePosition<=SourceLength) and (Source[SourcePosition]='?')) xor (rfUNGREEDY in Flags) then begin
         inc(SourcePosition);
         result:=NewStar(result,qkLAZY);
         if rfLONGEST in Flags then begin
@@ -7762,7 +7770,7 @@ var SourcePosition,SourceLength:longint;
        if not assigned(result) then begin
         raise EFLRE.Create('Syntax error');
        end;
-       if (SourcePosition<=SourceLength) and (Source[SourcePosition]='?') then begin
+       if ((SourcePosition<=SourceLength) and (Source[SourcePosition]='?')) xor (rfUNGREEDY in Flags) then begin
         inc(SourcePosition);
         result:=NewPlus(result,qkLAZY);
         if rfLONGEST in Flags then begin
@@ -7781,7 +7789,7 @@ var SourcePosition,SourceLength:longint;
        if not assigned(result) then begin
         raise EFLRE.Create('Syntax error');
        end;
-       if (SourcePosition<=SourceLength) and (Source[SourcePosition]='?') then begin
+       if ((SourcePosition<=SourceLength) and (Source[SourcePosition]='?')) xor (rfUNGREEDY in Flags) then begin
         inc(SourcePosition);
         result:=NewQuest(result,qkLAZY);
         if rfLONGEST in Flags then begin
