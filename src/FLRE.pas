@@ -374,6 +374,14 @@ type EFLRE=class(Exception);
        OnePassNFAWorkCaptures:TFLREOnePassNFACaptures;
        OnePassNFAMatchCaptures:TFLREOnePassNFACaptures;
 
+       BitStateNFAVisited:TFLREBitStateNFAVisited;
+       BitStateNFACountVisited:longint;
+       BitStateNFAJobs:TFLREBitStateNFAJobs;
+       BitStateNFACountJobs:longint;
+       BitStateNFAMaxJob:longint;
+       BitStateNFAWorkCaptures:TFLREBitStateNFACaptures;
+       BitStateNFAMatchCaptures:TFLREBitStateNFACaptures;
+
        DFAStackInstructions:TPFLREInstructions;
        DFAStateCache:TFLREDFAStateHashMap;
        DFAAnchoredStartState:PFLREDFAState;
@@ -412,6 +420,12 @@ type EFLRE=class(Exception);
        function DFATakeOverState(TakeOverFrom:PFLREDFAState):PFLREDFAState;
        procedure DFAFreeState(State:PFLREDFAState);
        procedure DFAReset;
+
+       function SearchMatchParallelNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
+       function SearchMatchOnePassNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
+       function SearchMatchBitStateNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
+       function SearchMatchDFA(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+       function SearchMatchReversedDFA(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
 
      end;
 
@@ -469,13 +483,6 @@ type EFLRE=class(Exception);
        OnePassNFACharClassActions:PFLREOnePassNFAStateCharClassAction;
        OnePassNFAReady:longbool;
 
-       BitStateNFAVisited:TFLREBitStateNFAVisited;
-       BitStateNFACountVisited:longint;
-       BitStateNFAJobs:TFLREBitStateNFAJobs;
-       BitStateNFACountJobs:longint;
-       BitStateNFAMaxJob:longint;
-       BitStateNFAWorkCaptures:TFLREBitStateNFACaptures;
-       BitStateNFAMatchCaptures:TFLREBitStateNFACaptures;
        BitStateNFAReady:longbool;
 
        DFANeedVerification:longbool;
@@ -525,11 +532,6 @@ type EFLRE=class(Exception);
 
        function IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
 
-       function SearchMatchParallelNFA(const ThreadLocalStorage:TFLREThreadLocalStorage;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
-       function SearchMatchOnePassNFA(const ThreadLocalStorage:TFLREThreadLocalStorage;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
-       function SearchMatchBitStateNFA(const ThreadLocalStorage:TFLREThreadLocalStorage;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
-       function SearchMatchDFA(const ThreadLocalStorage:TFLREThreadLocalStorage;const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-       function SearchMatchReversedDFA(const ThreadLocalStorage:TFLREThreadLocalStorage;const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
        function SearchMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
       public
        constructor Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[]);
@@ -4135,6 +4137,18 @@ begin
   SetLength(OnePassNFAMatchCaptures,Instance.CountParens*2);
  end;
 
+ BitStateNFACountVisited:=0;
+ BitStateNFAJobs:=nil;
+ BitStateNFACountJobs:=0;
+ BitStateNFAMaxJob:=0;
+ BitStateNFAWorkCaptures:=nil;
+ BitStateNFAMatchCaptures:=nil;
+
+ if Instance.BitStateNFAReady then begin
+  SetLength(BitStateNFAWorkCaptures,Instance.CountParens*2);
+  SetLength(BitStateNFAMatchCaptures,Instance.CountParens*2);
+ end;
+
  DFAStackInstructions:=nil;
  DFAStateCache:=TFLREDFAStateHashMap.Create;
  DFAAnchoredStartState:=nil;
@@ -4223,6 +4237,10 @@ begin
 
  SetLength(OnePassNFAWorkCaptures,0);
  SetLength(OnePassNFAMatchCaptures,0);
+
+ SetLength(BitStateNFAJobs,0);
+ SetLength(BitStateNFAWorkCaptures,0);
+ SetLength(BitStateNFAMatchCaptures,0);
 
  DFADestroyStatePool(DFAStatePoolUsed);
  DFADestroyStatePool(DFAStatePoolFree);
@@ -4766,6 +4784,602 @@ begin
 
 end;
 
+function TFLREThreadLocalStorage.SearchMatchParallelNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
+var LocalInputLength,CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosition:longint;
+    CurrentThreadList,NewThreadList,TemporaryThreadList:PFLREThreadList;
+    State,Matched,BestState:PFLREParallelNFAState;
+    CurrentThread:PFLREThread;
+    Thread:TFLREThread;
+    Instruction:PFLREInstruction;
+    CurrentChar:ansichar;
+    Capture:PFLRECapture;
+    BitState:longword;
+    LocalInput:pansichar;
+begin
+ result:=false;
+
+ LocalInput:=Input;
+ LocalInputLength:=InputLength;
+
+ CurrentThreadList:=@ThreadLists[0];
+ NewThreadList:=@ThreadLists[1];
+
+ CurrentThreadList^.Count:=0;
+ NewThreadList^.Count:=0;
+
+ State:=ParallelNFAStateAllocate(Instance.CountSubMatches,0);
+
+ inc(Generation);
+ if UnanchoredStart then begin
+  ParallelNFAAddThread(CurrentThreadList,Instance.UnanchoredStartInstruction,State,StartPosition);
+ end else begin
+  ParallelNFAAddThread(CurrentThreadList,Instance.AnchoredStartInstruction,State,StartPosition);
+ end;
+
+ Matched:=nil;
+
+ BestState:=nil;
+
+ LastPosition:=-1;
+
+ for CurrentPosition:=StartPosition to UntilExcludingPosition-1 do begin
+  if CurrentThreadList^.Count=0 then begin
+   break;
+  end;
+  CurrentChar:=LocalInput[CurrentPosition];
+  inc(Generation);
+  for ThreadIndex:=0 to CurrentThreadList^.Count-1 do begin
+   CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
+   Instruction:=CurrentThread^.Instruction;
+   State:=CurrentThread^.State;
+   case Instruction^.IndexAndOpcode and $ff of
+    opSINGLECHAR:begin
+     if (CurrentPosition>=LocalInputLength) or (byte(ansichar(CurrentChar))<>Instruction^.Value) then begin
+      ParallelNFAStateRelease(State);
+     end else begin
+      ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
+     end;
+    end;
+    opCHAR:begin
+     if (CurrentPosition>=LocalInputLength) or not (CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
+      ParallelNFAStateRelease(State);
+     end else begin
+      ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
+     end;
+    end;
+    opANY:begin
+     if CurrentPosition>=LocalInputLength then begin
+      ParallelNFAStateRelease(State);
+     end else begin
+      ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
+     end;
+    end;
+    opMATCH:begin
+     if rfLONGEST in Instance.Flags then begin
+      if not assigned(BestState) then begin
+       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.BitState);
+      end;
+      if State^.BitState<>0 then begin
+       if LastPosition<CurrentPosition then begin
+        LastPosition:=CurrentPosition;
+        BestState^.BitState:=State^.BitState;
+        Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
+       end;
+      end;
+     end else begin
+      if assigned(Matched) then begin
+       ParallelNFAStateRelease(Matched);
+      end;
+      Matched:=State;
+      for Counter:=ThreadIndex+1 to CurrentThreadList^.Count-1 do begin
+       ParallelNFAStateRelease(CurrentThreadList^.Threads[Counter].State);
+      end;
+      break;
+     end;
+    end;
+   end;
+  end;
+  TemporaryThreadList:=CurrentThreadList;
+  CurrentThreadList:=NewThreadList;
+  NewThreadList:=TemporaryThreadList;
+  NewThreadList^.Count:=0;
+ end;
+
+ if CurrentThreadList^.Count<>0 then begin
+  inc(Generation);
+  for ThreadIndex:=0 to CurrentThreadList^.Count-1 do begin
+   CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
+   Instruction:=CurrentThread^.Instruction;
+   State:=CurrentThread^.State;
+   case Instruction^.IndexAndOpcode and $ff of
+    opSINGLECHAR,opCHAR,opANY:begin
+     ParallelNFAStateRelease(State);
+    end;
+    opMATCH:begin
+     if rfLONGEST in Instance.Flags then begin
+      if not assigned(BestState) then begin
+       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.BitState);
+      end;
+      if State^.BitState<>0 then begin
+       if LastPosition<UntilExcludingPosition then begin
+        LastPosition:=UntilExcludingPosition;
+        BestState^.BitState:=State^.BitState;
+        Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
+       end;
+      end;
+     end else begin
+      if assigned(Matched) then begin
+       ParallelNFAStateRelease(Matched);
+      end;
+      Matched:=State;
+      for Counter:=ThreadIndex+1 to CurrentThreadList^.Count-1 do begin
+       ParallelNFAStateRelease(CurrentThreadList^.Threads[Counter].State);
+      end;
+      break;
+     end;
+    end;
+   end;
+  end;
+ end;
+
+ if assigned(BestState) then begin
+  if assigned(Matched) then begin
+   ParallelNFAStateRelease(Matched);
+  end;
+  Matched:=BestState;
+ end;
+
+ if assigned(Matched) then begin
+  SetLength(Captures,Instance.CountParens);
+  BitState:=Matched^.BitState;
+  for Counter:=0 to Instance.CountParens-1 do begin
+   Capture:=@Captures[Counter];
+   if (BitState and longword($80000000))<>0 then begin
+    CurrentPosition:=Matched^.SubMatches[Counter shl 1];
+    CurrentLength:=Matched^.SubMatches[(Counter shl 1) or 1]-CurrentPosition;
+   end else begin
+    if (BitState and (longword(1) shl (Counter shl 1)))<>0 then begin
+     CurrentPosition:=Matched^.SubMatches[Counter shl 1];
+    end else begin
+     CurrentPosition:=0;
+    end;
+    if (BitState and (longword(1) shl ((Counter shl 1) or 1)))<>0 then begin
+     CurrentLength:=Matched^.SubMatches[(Counter shl 1) or 1]-CurrentPosition;
+    end else begin
+     CurrentLength:=0;
+    end;
+   end;
+   if CurrentLength<1 then begin
+    Capture^.Start:=0;
+    Capture^.Length:=0;
+   end else begin
+    Capture^.Start:=CurrentPosition;
+    Capture^.Length:=CurrentLength;
+   end;
+  end;
+  ParallelNFAStateRelease(Matched);
+  result:=true;
+ end;
+
+end;
+
+function TFLREThreadLocalStorage.SearchMatchOnePassNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
+var State,Nodes:PFLREOnePassNFAState;
+    LocalInputLength,CurrentPosition,StateSize,TwoCountOfCaptures,Counter:longint;
+    LocalByteMap:PFLREByteMap;
+    Done:boolean;
+    NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
+    LocalInput:pansichar;
+ function Satisfy(Condition:longword):boolean;
+ begin
+  result:=((Condition and sfEmptyAllFlags) and not GetSatisfyFlags(CurrentPosition))=0;
+ end;
+begin
+
+ TwoCountOfCaptures:=Instance.CountParens*2;
+
+ LocalInput:=Input;
+ LocalInputLength:=InputLength;
+
+ State:=Instance.OnePassNFAStart;
+ Nodes:=Instance.OnePassNFANodes;
+ StateSize:=Instance.OnePassNFAStateSize;
+ LocalByteMap:=@Instance.ByteMap;
+
+ result:=false;
+ Done:=false;
+
+ NextMatchCondition:=State^.MatchCondition;
+ Condition:=0;
+ CurrentPosition:=StartPosition;
+
+ while CurrentPosition<UntilExcludingPosition do begin
+ 
+  Condition:=State^.Action[LocalByteMap^[byte(ansichar(LocalInput[CurrentPosition]))]];
+  MatchCondition:=NextMatchCondition;
+
+  if ((Condition and sfEmptyAllFlags)=0) or Satisfy(Condition) then begin
+   NextIndex:=Condition shr sfIndexShift;
+   State:=pointer(@pansichar(Nodes)[StateSize*longint(NextIndex)]);
+   NextMatchCondition:=State^.MatchCondition;
+  end else begin
+   State:=nil;
+   NextMatchCondition:=sfImpossible;
+  end;
+
+  if (MatchCondition<>sfImpossible) and
+     (((Condition and sfMatchWins)<>0) or ((NextMatchCondition and sfEmptyAllFlags)<>0)) and
+     (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
+   for Counter:=0 to TwoCountOfCaptures-1 do begin
+    OnePassNFAMatchCaptures[Counter]:=OnePassNFAWorkCaptures[Counter];
+   end;
+   if (MatchCondition and sfCapMask)<>0 then begin
+    for Counter:=0 to TwoCountOfCaptures-1 do begin
+     if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
+      OnePassNFAMatchCaptures[Counter]:=CurrentPosition;
+     end;
+    end;
+   end;
+   result:=true;
+   if ((Condition and sfMatchWins)<>0) and not (rfLONGEST in Instance.Flags) then begin
+    Done:=true;
+    break;
+   end;
+  end;
+
+  if not assigned(State) then begin
+   Done:=true;
+   break;
+  end;
+
+  if (Condition and sfCapMask)<>0 then begin
+   for Counter:=0 to TwoCountOfCaptures-1 do begin
+    if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
+     OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
+    end;
+   end;
+  end;
+
+  inc(CurrentPosition);
+ end;
+ 
+ if assigned(State) and not Done then begin
+  MatchCondition:=State^.MatchCondition;
+  if (MatchCondition<>sfImpossible) and (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
+   if ((MatchCondition and sfCapMask)<>0) and (TwoCountOfCaptures>0) then begin
+    for Counter:=0 to TwoCountOfCaptures-1 do begin
+     if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin
+      OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
+     end;
+    end;
+   end;
+   for Counter:=0 to TwoCountOfCaptures-1 do begin
+    OnePassNFAMatchCaptures[Counter]:=OnePassNFAWorkCaptures[Counter];
+   end;
+   result:=true;
+  end;
+ end;
+
+ if result then begin
+  SetLength(Captures,Instance.CountParens);
+  for Counter:=0 to Instance.CountParens-1 do begin
+   Captures[Counter].Start:=OnePassNFAMatchCaptures[Counter*2];
+   Captures[Counter].Length:=OnePassNFAMatchCaptures[(Counter*2)+1]-OnePassNFAMatchCaptures[Counter*2];
+  end;
+ end;
+
+end;
+
+function TFLREThreadLocalStorage.SearchMatchBitStateNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
+var LocalInputLength,BasePosition,Len:longint;
+    LocalInput:PAnsiChar;
+ function ShouldVisit(const Instruction:PFLREInstruction;const Position:longint):boolean; {$ifdef caninline}inline;{$endif}
+ var i:longword;
+ begin
+  i:=(ptruint(Instruction^.IndexAndOpcode shr 8)*longword(Len+1))+longword(longint(Position-BasePosition));
+  result:=(BitStateNFAVisited[i shr 5] and (1 shl (i and 31)))=0;
+  if result then begin
+   BitStateNFAVisited[i shr 5]:=BitStateNFAVisited[i shr 5] or (1 shl (i and 31));
+  end;
+ end;
+ procedure Push(const Instruction:PFLREInstruction;const Position,Argument:longint);
+ var Job:PFLREBitStateNFAJob;
+ begin
+  if assigned(Instruction) and not ((Argument=0) and not ShouldVisit(Instruction,Position)) then begin
+   if BitStateNFACountJobs>=length(BitStateNFAJobs) then begin
+    SetLength(BitStateNFAJobs,(BitStateNFACountJobs+1)*2);
+   end;
+   Job:=@BitStateNFAJobs[BitStateNFACountJobs];
+   inc(BitStateNFACountJobs);
+   Job^.Instruction:=Instruction;
+   Job^.Position:=Position;
+   Job^.Argument:=Argument;
+  end;
+ end;
+ function TrySearch(StartInstruction:PFLREInstruction;var Position:longint):boolean;
+ var Job:PFLREBitStateNFAJob;
+     Instruction:PFLREInstruction;
+     Argument,i,LastPosition:longint;
+     CurrentChar,LocalFlags:longword;
+     InputIsUTF8:boolean;
+  function Satisfy(const NextFlags:longword;const Position:longint):boolean;
+  begin
+   result:=((NextFlags and sfEmptyAllFlags) and not GetSatisfyFlags(Position))=0;
+  end;
+ begin
+  result:=false;
+
+  LastPosition:=-1;
+
+  BitStateNFACountJobs:=0;
+  Push(StartInstruction,Position,0);
+
+  while BitStateNFACountJobs>0 do begin
+   dec(BitStateNFACountJobs);
+   Job:=@BitStateNFAJobs[BitStateNFACountJobs];
+
+   Instruction:=Job^.Instruction;
+   Position:=Job^.Position;
+   Argument:=Job^.Argument;
+
+   repeat
+
+    case Instruction^.IndexAndOpcode and $ff of
+     opSPLIT:begin
+      case Argument of
+       0:begin
+        Push(Instruction,Position,1);
+        Instruction:=Instruction^.Next;
+        if ShouldVisit(Instruction,Position) then begin
+         continue;
+        end;
+       end;
+       1:begin
+        Argument:=0;
+        Instruction:=Instruction^.OtherNext;
+        if ShouldVisit(Instruction,Position) then begin
+         continue;
+        end;
+       end;
+      end;
+     end;
+     opSINGLECHAR:begin
+      if (Position<InputLength) and (byte(ansichar(Input[Position]))=Instruction^.Value) then begin
+       inc(Position);
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
+     opCHAR:begin
+      if (Position<InputLength) and (Input[Position] in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
+       inc(Position);
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
+     opANY:begin
+      if Position<InputLength then begin
+       inc(Position);
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
+     opMATCH:begin
+      result:=true;
+      if rfLONGEST in Instance.Flags then begin
+       if LastPosition<Position then begin
+        LastPosition:=Position;
+        for i:=0 to (Instance.CountParens*2)-1 do begin
+         BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
+        end;
+       end;
+      end else begin
+       for i:=0 to (Instance.CountParens*2)-1 do begin
+        BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
+       end;
+       exit;
+      end;
+     end;
+     opJMP:begin
+      Instruction:=Instruction^.Next;
+      if ShouldVisit(Instruction,Position) then begin
+       continue;
+      end;
+     end;
+     opSAVE:begin
+      case Argument of
+       0:begin
+        Push(Instruction,BitStateNFAWorkCaptures[Instruction^.Value],1);
+        BitStateNFAWorkCaptures[Instruction^.Value]:=Position;
+        Instruction:=Instruction^.Next;
+        if ShouldVisit(Instruction,Position) then begin
+         continue;
+        end;
+       end;
+       1:begin
+        BitStateNFAWorkCaptures[Instruction^.Value]:=Position;
+       end;
+      end;
+     end;
+     opBOL:begin
+      if Satisfy(sfEmptyBeginLine,Position) then begin
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
+     opEOL:begin
+      if Satisfy(sfEmptyEndLine,Position) then begin
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
+     opBOT:begin
+      if Satisfy(sfEmptyBeginText,Position) then begin
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
+     opEOT:begin
+      if Satisfy(sfEmptyEndText,Position) then begin
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
+     opBRK:begin
+      if Satisfy(sfEmptyWordBoundary,Position) then begin
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
+     opNBRK:begin
+      if Satisfy(sfEmptyNonWordBoundary,Position) then begin
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
+    end;
+
+    break;
+   until false;
+
+  end;
+
+ end;
+var VisitedLength:longword;
+    Position,LastPosition,Counter:longint;
+    StartInstruction:PFLREInstruction;
+begin
+ result:=BitStateNFAError;
+
+ LocalInput:=Input;
+ LocalInputLength:=InputLength;
+
+ Len:=UntilExcludingPosition-StartPosition;
+ if Len<1 then begin
+  exit;
+ end;
+
+ BasePosition:=StartPosition;
+ Position:=StartPosition;
+
+ VisitedLength:=longword(qword((qword(Len+1)*longword(Instance.CountForwardInstructions))+31) shr 5);
+ if longword(VisitedLength)>longword(SizeOf(TFLREBitStateNFAVisited) div SizeOf(longword)) then begin
+  // Too big for 32kb visited bitmap
+  exit;
+ end;
+ FillChar(BitStateNFAVisited[0],VisitedLength*SizeOf(longword),#0);
+
+ if UnanchoredStart then begin
+  StartInstruction:=Instance.UnanchoredStartInstruction;
+ end else begin
+  StartInstruction:=Instance.AnchoredStartInstruction;
+ end;
+
+ if TrySearch(StartInstruction,Position) then begin
+  SetLength(Captures,Instance.CountParens);
+  for Counter:=0 to Instance.CountParens-1 do begin
+   Captures[Counter].Start:=BitStateNFAMatchCaptures[Counter*2];
+   Captures[Counter].Length:=BitStateNFAMatchCaptures[(Counter*2)+1]-BitStateNFAMatchCaptures[Counter*2];
+  end;
+  result:=BitStateNFAMatch;
+ end else begin
+  result:=BitStateNFAFail;
+ end;
+
+end;
+
+function TFLREThreadLocalStorage.SearchMatchDFA(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+var Position:longint;
+    State,LastState:PFLREDFAState;
+    LocalInput:pansichar;
+    LocalByteMap:PFLREByteMap;
+begin
+ result:=DFAFail;
+ LocalInput:=Input;
+ LocalByteMap:=@Instance.ByteMap;
+ if UnanchoredStart then begin
+  State:=DFAUnanchoredStartState;
+ end else begin
+  State:=DFAAnchoredStartState;
+ end;
+ for Position:=StartPosition to UntilExcludingPosition-1 do begin
+  LastState:=State;
+  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+  if not assigned(State) then begin
+   State:=DFAProcessNextState(LastState,LocalInput[Position],false);
+   if not assigned(State) then begin
+    result:=DFAError;
+    exit;
+   end;
+  end;
+  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
+   if (State^.Flags and sfDFADead)<>0 then begin
+    if result<>DFAMatch then begin
+     result:=DFAFail;
+    end;
+    exit;
+   end;
+   if (State^.Flags and sfDFAMatchWins)<>0 then begin
+    MatchEnd:=Position;
+    result:=DFAMatch;
+   end;
+  end;
+ end;
+end;
+
+function TFLREThreadLocalStorage.SearchMatchReversedDFA(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
+var Position:longint;
+    State,LastState:PFLREDFAState;
+    LocalInput:pansichar;
+    LocalByteMap:PFLREByteMap;
+begin
+ result:=DFAFail;
+ LocalInput:=Input;
+ LocalByteMap:=@Instance.ByteMap;
+ State:=DFAReversedStartState;
+ for Position:=StartPosition downto UntilIncludingPosition do begin
+  LastState:=State;
+  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+  if not assigned(State) then begin
+   State:=DFAProcessNextState(LastState,LocalInput[Position],true);
+   if not assigned(State) then begin
+    result:=DFAError;
+    exit;
+   end;
+  end;
+  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
+   if (State^.Flags and sfDFADead)<>0 then begin
+    if result<>DFAMatch then begin
+     result:=DFAFail;
+    end;
+    exit;
+   end;
+   if (State^.Flags and sfDFAMatchWins)<>0 then begin
+    MatchBegin:=Position;
+    result:=DFAMatch;
+   end;
+  end;
+ end;
+end;
+
 constructor TFLRE.Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[]);
 begin
  inherited Create;
@@ -4805,12 +5419,6 @@ begin
  OnePassNFACharClassActions:=nil;
  OnePassNFAReady:=false;
 
- BitStateNFACountVisited:=0;
- BitStateNFAJobs:=nil;
- BitStateNFACountJobs:=0;
- BitStateNFAMaxJob:=0;
- BitStateNFAWorkCaptures:=nil;
- BitStateNFAMatchCaptures:=nil;
  BitStateNFAReady:=false;
 
  DFANeedVerification:=false;
@@ -4853,10 +5461,6 @@ begin
   CompileOnePassNFA;
 
   BitStateNFAReady:=(CountForwardInstructions>0) and (CountForwardInstructions<512);
-  if BitStateNFAReady then begin
-   SetLength(BitStateNFAWorkCaptures,CountParens*2);
-   SetLength(BitStateNFAMatchCaptures,CountParens*2);
-  end;
 
   BeginningWildcardLoop:=BeginningJump and BeginningSplit and BeginningWildcard;
   if rfLAZY in Flags then begin
@@ -4916,10 +5520,6 @@ begin
   OnePassNFACharClassActions:=NextCharClassAction;
  end;
  OnePassNFACharClassActions:=nil;
-
- SetLength(BitStateNFAJobs,0);
- SetLength(BitStateNFAWorkCaptures,0);
- SetLength(BitStateNFAMatchCaptures,0);
 
  SetLength(FixedStringBoyerMooreNext,0);
 
@@ -8409,599 +9009,6 @@ begin
  end;
 end;
 
-function TFLRE.SearchMatchParallelNFA(const ThreadLocalStorage:TFLREThreadLocalStorage;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
-var InputLength,CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosition:longint;
-    CurrentThreadList,NewThreadList,TemporaryThreadList:PFLREThreadList;
-    State,Matched,BestState:PFLREParallelNFAState;
-    CurrentThread:PFLREThread;
-    Thread:TFLREThread;
-    Instruction:PFLREInstruction;
-    CurrentChar:ansichar;
-    Capture:PFLRECapture;
-    BitState:longword;
-    Input:pansichar;
-begin
- result:=false;
-
- Input:=ThreadLocalStorage.Input;
- InputLength:=ThreadLocalStorage.InputLength;
-
- CurrentThreadList:=@ThreadLocalStorage.ThreadLists[0];
- NewThreadList:=@ThreadLocalStorage.ThreadLists[1];
-
- CurrentThreadList^.Count:=0;
- NewThreadList^.Count:=0;
-
- State:=ThreadLocalStorage.ParallelNFAStateAllocate(CountSubMatches,0);
-
- inc(ThreadLocalStorage.Generation);
- if UnanchoredStart then begin
-  ThreadLocalStorage.ParallelNFAAddThread(CurrentThreadList,UnanchoredStartInstruction,State,StartPosition);
- end else begin
-  ThreadLocalStorage.ParallelNFAAddThread(CurrentThreadList,AnchoredStartInstruction,State,StartPosition);
- end;
-
- Matched:=nil;
-
- BestState:=nil;
-
- LastPosition:=-1;
-
- for CurrentPosition:=StartPosition to UntilExcludingPosition-1 do begin
-  if CurrentThreadList^.Count=0 then begin
-   break;
-  end;
-  CurrentChar:=Input[CurrentPosition];
-  inc(ThreadLocalStorage.Generation);
-  for ThreadIndex:=0 to CurrentThreadList^.Count-1 do begin
-   CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
-   Instruction:=CurrentThread^.Instruction;
-   State:=CurrentThread^.State;
-   case Instruction^.IndexAndOpcode and $ff of
-    opSINGLECHAR:begin
-     if (CurrentPosition>=InputLength) or (byte(ansichar(CurrentChar))<>Instruction^.Value) then begin
-      ThreadLocalStorage.ParallelNFAStateRelease(State);
-     end else begin
-      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
-     end;
-    end;
-    opCHAR:begin
-     if (CurrentPosition>=InputLength) or not (CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
-      ThreadLocalStorage.ParallelNFAStateRelease(State);
-     end else begin
-      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
-     end;
-    end;
-    opANY:begin
-     if CurrentPosition>=InputLength then begin
-      ThreadLocalStorage.ParallelNFAStateRelease(State);
-     end else begin
-      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
-     end;
-    end;
-    opMATCH:begin
-     if rfLONGEST in Flags then begin
-      if not assigned(BestState) then begin
-       BestState:=ThreadLocalStorage.ParallelNFAStateAllocate(CountSubMatches,State^.BitState);
-      end;
-      if State^.BitState<>0 then begin
-       if LastPosition<CurrentPosition then begin
-        LastPosition:=CurrentPosition;
-        BestState^.BitState:=State^.BitState;
-        Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
-       end;
-      end;
-     end else begin
-      if assigned(Matched) then begin
-       ThreadLocalStorage.ParallelNFAStateRelease(Matched);
-      end;
-      Matched:=State;
-      for Counter:=ThreadIndex+1 to CurrentThreadList^.Count-1 do begin
-       ThreadLocalStorage.ParallelNFAStateRelease(CurrentThreadList^.Threads[Counter].State);
-      end;
-      break;
-     end;
-    end;
-   end;
-  end;
-  TemporaryThreadList:=CurrentThreadList;
-  CurrentThreadList:=NewThreadList;
-  NewThreadList:=TemporaryThreadList;
-  NewThreadList^.Count:=0;
- end;
-
- if CurrentThreadList^.Count<>0 then begin
-  inc(ThreadLocalStorage.Generation);
-  for ThreadIndex:=0 to CurrentThreadList^.Count-1 do begin
-   CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
-   Instruction:=CurrentThread^.Instruction;
-   State:=CurrentThread^.State;
-   case Instruction^.IndexAndOpcode and $ff of
-    opSINGLECHAR,opCHAR,opANY:begin
-     ThreadLocalStorage.ParallelNFAStateRelease(State);
-    end;
-    opMATCH:begin
-     if rfLONGEST in Flags then begin
-      if not assigned(BestState) then begin
-       BestState:=ThreadLocalStorage.ParallelNFAStateAllocate(CountSubMatches,State^.BitState);
-      end;
-      if State^.BitState<>0 then begin
-       if LastPosition<UntilExcludingPosition then begin
-        LastPosition:=UntilExcludingPosition;
-        BestState^.BitState:=State^.BitState;
-        Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
-       end;
-      end;
-     end else begin
-      if assigned(Matched) then begin
-       ThreadLocalStorage.ParallelNFAStateRelease(Matched);
-      end;
-      Matched:=State;
-      for Counter:=ThreadIndex+1 to CurrentThreadList^.Count-1 do begin
-       ThreadLocalStorage.ParallelNFAStateRelease(CurrentThreadList^.Threads[Counter].State);
-      end;
-      break;
-     end;
-    end;
-   end;
-  end;
- end;
-
- if assigned(BestState) then begin
-  if assigned(Matched) then begin
-   ThreadLocalStorage.ParallelNFAStateRelease(Matched);
-  end;
-  Matched:=BestState;
- end;
-
- if assigned(Matched) then begin
-  SetLength(Captures,CountParens);
-  BitState:=Matched^.BitState;
-  for Counter:=0 to CountParens-1 do begin
-   Capture:=@Captures[Counter];
-   if (BitState and longword($80000000))<>0 then begin
-    CurrentPosition:=Matched^.SubMatches[Counter shl 1];
-    CurrentLength:=Matched^.SubMatches[(Counter shl 1) or 1]-CurrentPosition;
-   end else begin
-    if (BitState and (longword(1) shl (Counter shl 1)))<>0 then begin
-     CurrentPosition:=Matched^.SubMatches[Counter shl 1];
-    end else begin
-     CurrentPosition:=0;
-    end;
-    if (BitState and (longword(1) shl ((Counter shl 1) or 1)))<>0 then begin
-     CurrentLength:=Matched^.SubMatches[(Counter shl 1) or 1]-CurrentPosition;
-    end else begin
-     CurrentLength:=0;
-    end;
-   end;
-   if CurrentLength<1 then begin
-    Capture^.Start:=0;
-    Capture^.Length:=0;
-   end else begin
-    Capture^.Start:=CurrentPosition;
-    Capture^.Length:=CurrentLength;
-   end;
-  end;
-  ThreadLocalStorage.ParallelNFAStateRelease(Matched);
-  result:=true;
- end;
-
-end;
-
-function TFLRE.SearchMatchOnePassNFA(const ThreadLocalStorage:TFLREThreadLocalStorage;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
-var State,Nodes:PFLREOnePassNFAState;
-    InputLength,CurrentPosition,StateSize,TwoCountOfCaptures,Counter:longint;
-    LocalByteMap:PFLREByteMap;
-    Done:boolean;
-    NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
-    Input:pansichar;
- function Satisfy(Condition:longword):boolean;
- begin
-  result:=((Condition and sfEmptyAllFlags) and not ThreadLocalStorage.GetSatisfyFlags(CurrentPosition))=0;
- end;
-begin
- TwoCountOfCaptures:=CountParens*2;
-
- Input:=ThreadLocalStorage.Input;
- InputLength:=ThreadLocalStorage.InputLength;
- 
- State:=OnePassNFAStart;
- Nodes:=OnePassNFANodes;
- StateSize:=OnePassNFAStateSize;
- LocalByteMap:=@ByteMap;
-
- result:=false;
- Done:=false;
-
- NextMatchCondition:=State^.MatchCondition;
- Condition:=0;
- CurrentPosition:=StartPosition;
-
- while CurrentPosition<UntilExcludingPosition do begin
- 
-  Condition:=State^.Action[LocalByteMap^[byte(ansichar(Input[CurrentPosition]))]];
-  MatchCondition:=NextMatchCondition;
-
-  if ((Condition and sfEmptyAllFlags)=0) or Satisfy(Condition) then begin
-   NextIndex:=Condition shr sfIndexShift;
-   State:=pointer(@pansichar(Nodes)[StateSize*longint(NextIndex)]);
-   NextMatchCondition:=State^.MatchCondition;
-  end else begin
-   State:=nil;
-   NextMatchCondition:=sfImpossible;
-  end;
-
-  if (MatchCondition<>sfImpossible) and
-     (((Condition and sfMatchWins)<>0) or ((NextMatchCondition and sfEmptyAllFlags)<>0)) and
-     (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
-   for Counter:=0 to TwoCountOfCaptures-1 do begin
-    ThreadLocalStorage.OnePassNFAMatchCaptures[Counter]:=ThreadLocalStorage.OnePassNFAWorkCaptures[Counter];
-   end;
-   if (MatchCondition and sfCapMask)<>0 then begin
-    for Counter:=0 to TwoCountOfCaptures-1 do begin
-     if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-      ThreadLocalStorage.OnePassNFAMatchCaptures[Counter]:=CurrentPosition;
-     end;
-    end;
-   end;
-   result:=true;
-   if ((Condition and sfMatchWins)<>0) and not (rfLONGEST in Flags) then begin
-    Done:=true;
-    break;
-   end;
-  end;
-
-  if not assigned(State) then begin
-   Done:=true;
-   break;
-  end;
-
-  if (Condition and sfCapMask)<>0 then begin
-   for Counter:=0 to TwoCountOfCaptures-1 do begin
-    if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-     ThreadLocalStorage.OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
-    end;
-   end;
-  end;
-
-  inc(CurrentPosition);
- end;
- 
- if assigned(State) and not Done then begin
-  MatchCondition:=State^.MatchCondition;
-  if (MatchCondition<>sfImpossible) and (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
-   if ((MatchCondition and sfCapMask)<>0) and (TwoCountOfCaptures>0) then begin
-    for Counter:=0 to TwoCountOfCaptures-1 do begin
-     if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-      ThreadLocalStorage.OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
-     end;
-    end;
-   end;
-   for Counter:=0 to TwoCountOfCaptures-1 do begin
-    ThreadLocalStorage.OnePassNFAMatchCaptures[Counter]:=ThreadLocalStorage.OnePassNFAWorkCaptures[Counter];
-   end;
-   result:=true;
-  end;
- end;
-
- if result then begin
-  SetLength(Captures,CountParens);
-  for Counter:=0 to CountParens-1 do begin
-   Captures[Counter].Start:=ThreadLocalStorage.OnePassNFAMatchCaptures[Counter*2];
-   Captures[Counter].Length:=ThreadLocalStorage.OnePassNFAMatchCaptures[(Counter*2)+1]-ThreadLocalStorage.OnePassNFAMatchCaptures[Counter*2];
-  end;
- end;
-
-end;
-
-function TFLRE.SearchMatchBitStateNFA(const ThreadLocalStorage:TFLREThreadLocalStorage;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
-var InputLength,BasePosition,Len:longint;
-    Input:PAnsiChar;
- function ShouldVisit(const Instruction:PFLREInstruction;const Position:longint):boolean; {$ifdef caninline}inline;{$endif}
- var i:longword;
- begin
-  i:=(ptruint(Instruction^.IndexAndOpcode shr 8)*longword(Len+1))+longword(longint(Position-BasePosition));
-  result:=(BitStateNFAVisited[i shr 5] and (1 shl (i and 31)))=0;
-  if result then begin
-   BitStateNFAVisited[i shr 5]:=BitStateNFAVisited[i shr 5] or (1 shl (i and 31));
-  end;
- end;
- procedure Push(const Instruction:PFLREInstruction;const Position,Argument:longint);
- var Job:PFLREBitStateNFAJob;
- begin
-  if assigned(Instruction) and not ((Argument=0) and not ShouldVisit(Instruction,Position)) then begin
-   if BitStateNFACountJobs>=length(BitStateNFAJobs) then begin
-    SetLength(BitStateNFAJobs,(BitStateNFACountJobs+1)*2);
-   end;
-   Job:=@BitStateNFAJobs[BitStateNFACountJobs];
-   inc(BitStateNFACountJobs);
-   Job^.Instruction:=Instruction;
-   Job^.Position:=Position;
-   Job^.Argument:=Argument;
-  end;
- end;
- function TrySearch(StartInstruction:PFLREInstruction;var Position:longint):boolean;
- var Job:PFLREBitStateNFAJob;
-     Instruction:PFLREInstruction;
-     Argument,i,LastPosition:longint;
-     CurrentChar,LocalFlags:longword;
-     InputIsUTF8:boolean;
-  function Satisfy(const NextFlags:longword;const Position:longint):boolean;
-  begin
-   result:=((NextFlags and sfEmptyAllFlags) and not ThreadLocalStorage.GetSatisfyFlags(Position))=0;
-  end;
- begin
-  result:=false;
-
-  LastPosition:=-1;
-
-  BitStateNFACountJobs:=0;
-  Push(StartInstruction,Position,0);
-
-  while BitStateNFACountJobs>0 do begin
-   dec(BitStateNFACountJobs);
-   Job:=@BitStateNFAJobs[BitStateNFACountJobs];
-
-   Instruction:=Job^.Instruction;
-   Position:=Job^.Position;
-   Argument:=Job^.Argument;
-
-   repeat
-
-    case Instruction^.IndexAndOpcode and $ff of
-     opSPLIT:begin
-      case Argument of
-       0:begin
-        Push(Instruction,Position,1);
-        Instruction:=Instruction^.Next;
-        if ShouldVisit(Instruction,Position) then begin
-         continue;
-        end;
-       end;
-       1:begin
-        Argument:=0;
-        Instruction:=Instruction^.OtherNext;
-        if ShouldVisit(Instruction,Position) then begin
-         continue;
-        end;
-       end;
-      end;
-     end;
-     opSINGLECHAR:begin
-      if (Position<InputLength) and (byte(ansichar(Input[Position]))=Instruction^.Value) then begin
-       inc(Position);
-       Instruction:=Instruction^.Next;
-       if ShouldVisit(Instruction,Position) then begin
-        continue;
-       end;
-      end;
-     end;
-     opCHAR:begin
-      if (Position<InputLength) and (Input[Position] in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
-       inc(Position);
-       Instruction:=Instruction^.Next;
-       if ShouldVisit(Instruction,Position) then begin
-        continue;
-       end;
-      end;
-     end;
-     opANY:begin
-      if Position<InputLength then begin
-       inc(Position);
-       Instruction:=Instruction^.Next;
-       if ShouldVisit(Instruction,Position) then begin
-        continue;
-       end;
-      end;
-     end;
-     opMATCH:begin
-      result:=true;
-      if rfLONGEST in Flags then begin
-       if LastPosition<Position then begin
-        LastPosition:=Position;
-        for i:=0 to (CountParens*2)-1 do begin
-         BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
-        end;
-       end;                                                
-      end else begin
-       for i:=0 to (CountParens*2)-1 do begin
-        BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
-       end;
-       exit;
-      end;
-     end;
-     opJMP:begin
-      Instruction:=Instruction^.Next;
-      if ShouldVisit(Instruction,Position) then begin
-       continue;
-      end;
-     end;
-     opSAVE:begin
-      case Argument of
-       0:begin
-        Push(Instruction,BitStateNFAWorkCaptures[Instruction^.Value],1);
-        BitStateNFAWorkCaptures[Instruction^.Value]:=Position;
-        Instruction:=Instruction^.Next;
-        if ShouldVisit(Instruction,Position) then begin
-         continue;
-        end;
-       end;
-       1:begin
-        BitStateNFAWorkCaptures[Instruction^.Value]:=Position;
-       end;
-      end;
-     end;
-     opBOL:begin
-      if Satisfy(sfEmptyBeginLine,Position) then begin
-       Instruction:=Instruction^.Next;
-       if ShouldVisit(Instruction,Position) then begin
-        continue;
-       end;
-      end;
-     end;
-     opEOL:begin
-      if Satisfy(sfEmptyEndLine,Position) then begin
-       Instruction:=Instruction^.Next;
-       if ShouldVisit(Instruction,Position) then begin
-        continue;
-       end;
-      end;
-     end;
-     opBOT:begin
-      if Satisfy(sfEmptyBeginText,Position) then begin
-       Instruction:=Instruction^.Next;
-       if ShouldVisit(Instruction,Position) then begin
-        continue;
-       end;
-      end;
-     end;
-     opEOT:begin
-      if Satisfy(sfEmptyEndText,Position) then begin
-       Instruction:=Instruction^.Next;
-       if ShouldVisit(Instruction,Position) then begin
-        continue;
-       end;
-      end;
-     end;
-     opBRK:begin
-      if Satisfy(sfEmptyWordBoundary,Position) then begin
-       Instruction:=Instruction^.Next;
-       if ShouldVisit(Instruction,Position) then begin
-        continue;
-       end;
-      end;
-     end;
-     opNBRK:begin
-      if Satisfy(sfEmptyNonWordBoundary,Position) then begin
-       Instruction:=Instruction^.Next;
-       if ShouldVisit(Instruction,Position) then begin
-        continue;
-       end;
-      end;
-     end;
-    end;
-
-    break;
-   until false;
-
-  end;
-
- end;
-var VisitedLength:longword;
-    Position,LastPosition,Counter:longint;
-    StartInstruction:PFLREInstruction;
-begin
- result:=BitStateNFAError;
-
- Input:=ThreadLocalStorage.Input;
- InputLength:=ThreadLocalStorage.InputLength;
-
- Len:=UntilExcludingPosition-StartPosition;
- if Len<1 then begin
-  exit;
- end;
-
- BasePosition:=StartPosition;
- Position:=StartPosition;
-
- VisitedLength:=longword(qword((qword(Len+1)*longword(CountForwardInstructions))+31) shr 5);
- if longword(VisitedLength)>longword(SizeOf(TFLREBitStateNFAVisited) div SizeOf(longword)) then begin
-  // Too big for 32kb visited bitmap
-  exit;
- end;
- FillChar(BitStateNFAVisited[0],VisitedLength*SizeOf(longword),#0);
-
- if UnanchoredStart then begin
-  StartInstruction:=UnanchoredStartInstruction;
- end else begin
-  StartInstruction:=AnchoredStartInstruction;
- end;
-
- if TrySearch(StartInstruction,Position) then begin
-  SetLength(Captures,CountParens);
-  for Counter:=0 to CountParens-1 do begin
-   Captures[Counter].Start:=BitStateNFAMatchCaptures[Counter*2];
-   Captures[Counter].Length:=BitStateNFAMatchCaptures[(Counter*2)+1]-BitStateNFAMatchCaptures[Counter*2];
-  end;
-  result:=BitStateNFAMatch;
- end else begin
-  result:=BitStateNFAFail;
- end;
-
-end;
-
-function TFLRE.SearchMatchDFA(const ThreadLocalStorage:TFLREThreadLocalStorage;const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-var InputLength,Position:longint;
-    State,LastState:PFLREDFAState;
-    Input:pansichar;
-begin
- result:=DFAFail;
- Input:=ThreadLocalStorage.Input;
- InputLength:=ThreadLocalStorage.InputLength;
- if UnanchoredStart then begin
-  State:=ThreadLocalStorage.DFAUnanchoredStartState;
- end else begin
-  State:=ThreadLocalStorage.DFAAnchoredStartState;
- end;
- for Position:=StartPosition to UntilExcludingPosition-1 do begin
-  LastState:=State;
-  State:=State^.NextStates[ByteMap[byte(ansichar(Input[Position]))]];
-  if not assigned(State) then begin
-   State:=ThreadLocalStorage.DFAProcessNextState(LastState,Input[Position],false);
-   if not assigned(State) then begin
-    result:=DFAError;
-    exit;
-   end;
-  end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
-   if (State^.Flags and sfDFADead)<>0 then begin
-    if result<>DFAMatch then begin
-     result:=DFAFail;
-    end;
-    exit;
-   end;
-   if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchEnd:=Position;
-    result:=DFAMatch;
-   end;
-  end;
- end;
-end;
-
-function TFLRE.SearchMatchReversedDFA(const ThreadLocalStorage:TFLREThreadLocalStorage;const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-var InputLength,Position:longint;
-    State,LastState:PFLREDFAState;
-    Input:pansichar;
-begin
- result:=DFAFail;
- Input:=ThreadLocalStorage.Input;
- InputLength:=ThreadLocalStorage.InputLength;
- State:=ThreadLocalStorage.DFAReversedStartState;
- for Position:=StartPosition downto UntilIncludingPosition do begin
-  LastState:=State;
-  State:=State^.NextStates[ByteMap[byte(ansichar(Input[Position]))]];
-  if not assigned(State) then begin
-   State:=ThreadLocalStorage.DFAProcessNextState(LastState,Input[Position],true);
-   if not assigned(State) then begin
-    result:=DFAError;
-    exit;
-   end;
-  end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
-   if (State^.Flags and sfDFADead)<>0 then begin
-    if result<>DFAMatch then begin
-     result:=DFAFail;
-    end;
-    exit;
-   end;
-   if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchBegin:=Position;
-    result:=DFAMatch;
-   end;
-  end;
- end;
-end;
-
 function TFLRE.SearchMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
 var MatchBegin,MatchEnd:longint;
     HaveResult:boolean;
@@ -9025,11 +9032,11 @@ begin
   ThreadLocalStorage.Input:=AInput;
   ThreadLocalStorage.InputLength:=AInputLength;
   repeat
-   case SearchMatchDFA(ThreadLocalStorage,StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
+   case ThreadLocalStorage.SearchMatchDFA(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
     DFAMatch:begin
      if UnanchoredStart then begin
       // For unanchored searchs, we must do also a "backward" DFA search
-      case SearchMatchReversedDFA(ThreadLocalStorage,MatchEnd,StartPosition,MatchBegin) of
+      case ThreadLocalStorage.SearchMatchReversedDFA(MatchEnd,StartPosition,MatchBegin) of
        DFAMatch:begin
         if MatchBegin<StartPosition then begin
          MatchBegin:=StartPosition;
@@ -9076,10 +9083,10 @@ begin
     end;
    end;
    if OnePassNFAReady and not UnanchoredStart then begin
-    result:=SearchMatchOnePassNFA(ThreadLocalStorage,Captures,StartPosition,UntilExcludingPosition);
+    result:=ThreadLocalStorage.SearchMatchOnePassNFA(Captures,StartPosition,UntilExcludingPosition);
    end else begin
     if BitStateNFAReady then begin
-     case SearchMatchBitStateNFA(ThreadLocalStorage,Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
+     case ThreadLocalStorage.SearchMatchBitStateNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
       BitStateNFAFail:begin
        result:=false;
        break;
@@ -9092,7 +9099,7 @@ begin
       end;*)
      end;
     end;
-    result:=SearchMatchParallelNFA(ThreadLocalStorage,Captures,StartPosition,UntilExcludingPosition,UnanchoredStart);
+    result:=ThreadLocalStorage.SearchMatchParallelNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart);
    end;
    break;
   until true;
