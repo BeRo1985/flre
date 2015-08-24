@@ -397,8 +397,7 @@ type EFLRE=class(Exception);
        function SubMatchesUse(const SubMatches:PFLRESubMatches):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
        function SubMatchesUpdate(const SubMatches:PFLRESubMatches;const Index,Position:longint):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
 
-       function NewThread(const Instruction:PFLREInstruction;const SubMatches:PFLRESubMatches):TFLREThread; {$ifdef caninline}inline;{$endif}
-       procedure AddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
+       procedure ParallelNFAAddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
 
        function DFACacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
        procedure DFAAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
@@ -4411,13 +4410,7 @@ begin
  result^.SubMatches[Index]:=Position;
 end;
 
-function TFLREThreadLocalStorage.NewThread(const Instruction:PFLREInstruction;const SubMatches:PFLRESubMatches):TFLREThread; {$ifdef caninline}inline;{$endif}
-begin
- result.Instruction:=Instruction;
- result.SubMatches:=SubMatches;
-end;
-
-procedure TFLREThreadLocalStorage.AddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
+procedure TFLREThreadLocalStorage.ParallelNFAAddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
  function Satisfy(const NextFlags:longword;const Position:longint):boolean;
  begin
   result:=((NextFlags and sfEmptyAllFlags) and not GetSatisfyFlags(Position))=0;
@@ -4436,7 +4429,7 @@ begin
      continue;
     end;
     opSPLIT:begin
-     AddThread(ThreadList,Instruction^.Next,SubMatchesUse(SubMatches),Position);
+     ParallelNFAAddThread(ThreadList,Instruction^.Next,SubMatchesUse(SubMatches),Position);
      Instruction:=Instruction^.OtherNext;
      continue;
     end;
@@ -8441,9 +8434,9 @@ begin
 
  inc(ThreadLocalStorage.Generation);
  if UnanchoredStart then begin
-  ThreadLocalStorage.AddThread(CurrentThreadList,UnanchoredStartInstruction,SubMatches,StartPosition);
+  ThreadLocalStorage.ParallelNFAAddThread(CurrentThreadList,UnanchoredStartInstruction,SubMatches,StartPosition);
  end else begin
-  ThreadLocalStorage.AddThread(CurrentThreadList,AnchoredStartInstruction,SubMatches,StartPosition);
+  ThreadLocalStorage.ParallelNFAAddThread(CurrentThreadList,AnchoredStartInstruction,SubMatches,StartPosition);
  end;
 
  Matched:=nil;
@@ -8467,21 +8460,21 @@ begin
      if (CurrentPosition>=InputLength) or (byte(ansichar(CurrentChar))<>Instruction^.Value) then begin
       ThreadLocalStorage.SubMatchesRelease(SubMatches);
      end else begin
-      ThreadLocalStorage.AddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
+      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
      end;
     end;
     opCHAR:begin
      if (CurrentPosition>=InputLength) or not (CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
       ThreadLocalStorage.SubMatchesRelease(SubMatches);
      end else begin
-      ThreadLocalStorage.AddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
+      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
      end;
     end;
     opANY:begin
      if CurrentPosition>=InputLength then begin
       ThreadLocalStorage.SubMatchesRelease(SubMatches);
      end else begin
-      ThreadLocalStorage.AddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
+      ThreadLocalStorage.ParallelNFAAddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
      end;
     end;
     opMATCH:begin
