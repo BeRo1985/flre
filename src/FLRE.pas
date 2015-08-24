@@ -6199,14 +6199,31 @@ var SourcePosition,SourceLength:longint;
        end;
       end;
       '.':begin
-       if rfSINGLELINE in Flags then begin
-        result:=NewNode(ntANY,nil,nil,nil,0);
-       end else begin
-        result:=NewNode(ntCHAR,nil,nil,nil,0);
-        result^.CharClass:=AllCharClass-[#10,#13];
-        inc(SourcePosition);
-       end;
        inc(SourcePosition);
+       if rfUTF8 in Flags then begin
+        UnicodeCharClass:=nil;
+        try
+         UnicodeCharClass:=TFLREUnicodeCharClass.Create(self);
+         if rfSINGLELINE in Flags then begin
+          UnicodeCharClass.AddRange($00000000,$ffffffff);
+         end else begin
+          UnicodeCharClass.AddChar(10);
+          UnicodeCharClass.AddChar(13);
+          UnicodeCharClass.Invert;
+          UnicodeCharClass.Inverted:=false;
+         end;
+         result:=NewUnicodeCharClass(UnicodeCharClass);
+        finally
+         FreeAndNil(UnicodeCharClass);
+        end;
+       end else begin
+        if rfSINGLELINE in Flags then begin
+         result:=NewNode(ntANY,nil,nil,nil,0);
+        end else begin
+         result:=NewNode(ntCHAR,nil,nil,nil,0);
+         result^.CharClass:=AllCharClass-[#10,#13];
+        end;
+       end;
       end;
       '^':begin
        if rfMULTILINE in Flags then begin
