@@ -368,8 +368,8 @@ type EFLRE=class(Exception);
        Generation:int64;
        InstructionGenerations:TFLREInstructionGenerations;
 
-       FreeSubMatches:PFLREParallelNFAState;
-       AllSubMatches:TList;
+       FreeParallelNFAStates:PFLREParallelNFAState;
+       AllParallelNFAStates:TList;
 
        OnePassNFAWorkCaptures:TFLREOnePassNFACaptures;
        OnePassNFAMatchCaptures:TFLREOnePassNFACaptures;
@@ -4124,9 +4124,8 @@ begin
  SetLength(ThreadLists[0].Threads,(AInstance.CountForwardInstructions+1)*4);
  SetLength(ThreadLists[1].Threads,(AInstance.CountForwardInstructions+1)*4);
 
- FreeSubMatches:=nil;
-
- AllSubMatches:=TList.Create;
+ FreeParallelNFAStates:=nil;
+ AllParallelNFAStates:=TList.Create;
 
  OnePassNFAWorkCaptures:=nil;
  OnePassNFAMatchCaptures:=nil;
@@ -4211,16 +4210,16 @@ destructor TFLREThreadLocalStorage.Destroy;
 var State:PFLREParallelNFAState;
 begin
 
- while assigned(FreeSubMatches) do begin
-  State:=FreeSubMatches;
-  FreeSubMatches:=FreeSubMatches^.Next;
+ while assigned(FreeParallelNFAStates) do begin
+  State:=FreeParallelNFAStates;
+  FreeParallelNFAStates:=FreeParallelNFAStates^.Next;
   SetLength(State^.SubMatches,0);
   Finalize(State^);
   FreeMem(State);
  end;
- FreeSubMatches:=nil;
+ FreeParallelNFAStates:=nil;
 
- FreeAndNil(AllSubMatches);
+ FreeAndNil(AllParallelNFAStates);
 
  SetLength(OnePassNFAWorkCaptures,0);
  SetLength(OnePassNFAMatchCaptures,0);
@@ -4327,14 +4326,14 @@ end;
 
 function TFLREThreadLocalStorage.ParallelNFAStateAllocate(const Count:longint;const BitState:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 begin
- if assigned(FreeSubMatches) then begin
-  result:=FreeSubMatches;
-  FreeSubMatches:=result^.Next;
+ if assigned(FreeParallelNFAStates) then begin
+  result:=FreeParallelNFAStates;
+  FreeParallelNFAStates:=result^.Next;
  end else begin
   GetMem(result,SizeOf(TFLREParallelNFAState));
   FillChar(result^,SizeOf(TFLREParallelNFAState),#0);
   SetLength(result^.SubMatches,Instance.CountSubMatches);
-  AllSubMatches.Add(result);
+  AllParallelNFAStates.Add(result);
  end;
  result^.ReferenceCounter:=1;
  result^.Count:=Count;
@@ -4351,8 +4350,8 @@ procedure TFLREThreadLocalStorage.ParallelNFAStateRelease(const State:PFLREParal
 begin
  dec(State^.ReferenceCounter);
  if State^.ReferenceCounter=0 then begin
-  State^.Next:=FreeSubMatches;
-  FreeSubMatches:=State;
+  State^.Next:=FreeParallelNFAStates;
+  FreeParallelNFAStates:=State;
  end;
 end;
 
