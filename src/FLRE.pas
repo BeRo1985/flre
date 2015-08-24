@@ -6499,23 +6499,6 @@ begin
     break;
    end;
   end;
-  if rfCASEINSENSITIVE in Flags then begin
-   for Counter:=0 to Nodes.Count-1 do begin
-    Node:=Nodes[Counter];
-    if Node^.NodeType=ntCHAR then begin
-     for CurrentChar:=ansichar('a') to ansichar('z') do begin
-      if CurrentChar in Node^.CharClass then begin
-       Include(Node^.CharClass,ansichar(byte(byte(ansichar(CurrentChar))+(byte(ansichar('A'))-byte(ansichar('a'))))));
-      end;
-     end;
-     for CurrentChar:=ansichar('A') to ansichar('Z') do begin
-      if CurrentChar in Node^.CharClass then begin
-       Include(Node^.CharClass,ansichar(byte(byte(ansichar(CurrentChar))+(byte(ansichar('a'))-byte(ansichar('A'))))));
-      end;
-     end;
-    end;
-   end;
-  end;
   if SourcePosition<=SourceLength then begin
    raise EFLRE.Create('Syntax error');
   end;
