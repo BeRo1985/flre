@@ -413,9 +413,6 @@ type EFLRE=class(Exception);
        CountObviousPrefixCharClasses:longint;
        PrefixPatternBitMasks:TFLRECharPatternBitMasks;
 
-       Input:pansichar;
-       InputLength:longint;
-
        ByteMap:TFLREByteMap;
        UnByteMap:TFLREByteMap;
        ByteCharSetMap:TFLRECharClass;
@@ -497,8 +494,8 @@ type EFLRE=class(Exception);
        function IncRef(const SubMatches:PFLRESubMatches):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
        function Update(const SubMatches:PFLRESubMatches;const Index,Position:longint):PFLRESubMatches; {$ifdef caninline}inline;{$endif}
        function NewThread(const Instruction:PFLREInstruction;const SubMatches:PFLRESubMatches):TFLREThread; {$ifdef caninline}inline;{$endif}
-       function IsWordChar(const Position:longint):boolean; {$ifdef caninline}inline;{$endif}
-       procedure AddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
+       function IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
+       procedure AddThread(const ThreadLocalState:TFLREThreadLocalState;const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
        function DFACacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
        procedure DFAAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
        function DFAProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
@@ -509,22 +506,22 @@ type EFLRE=class(Exception);
        function DFATakeOverState(TakeOverFrom:PFLREDFAState):PFLREDFAState;
        procedure DFAFreeState(State:PFLREDFAState);
        procedure DFAReset;
-       function SearchMatchParallelNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
-       function SearchMatchOnePassNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
-       function SearchMatchBitStateNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
-       function SearchMatchDFA(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-       function SearchMatchReversedDFA(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-       function SearchMatch(var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
+       function SearchMatchParallelNFA(const ThreadLocalState:TFLREThreadLocalState;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
+       function SearchMatchOnePassNFA(const ThreadLocalState:TFLREThreadLocalState;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
+       function SearchMatchBitStateNFA(const ThreadLocalState:TFLREThreadLocalState;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
+       function SearchMatchDFA(const ThreadLocalState:TFLREThreadLocalState;const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+       function SearchMatchReversedDFA(const ThreadLocalState:TFLREThreadLocalState;const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
+       function SearchMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
       public
        constructor Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[]);
        destructor Destroy; override;
-       function PtrMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
-       function PtrMatchNext(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
-       function PtrMatchAll(const AInput:pointer;const AInputLength:longint;var Captures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
-       function PtrReplaceAll(const AInput:pointer;const AInputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
-       function Match(const AInput:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
-       function MatchNext(const AInput:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
-       function MatchAll(const AInput:ansistring;var Captures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
+       function PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
+       function PtrMatchAll(const Input:pointer;const InputLength:longint;var Captures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
+       function PtrReplaceAll(const Input:pointer;const InputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
+       function Match(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+       function MatchNext(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+       function MatchAll(const Input:ansistring;var Captures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function ReplaceAll(const AInput,AReplacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
        property NamedGroups:TStringList read NamedGroupStringList;
        property NamedGroupIndices:TFLREStringIntegerPairHashMap read NamedGroupStringIntegerPairHashMap;
@@ -1195,6 +1192,25 @@ begin
  end;
 end;
 
+procedure UTF8PtrSafeInc(const s:PAnsiChar;var Len,CodeUnit:longint);
+var StartCodeUnit,State:longword;
+begin
+ if CodeUnit>=0 then begin
+  StartCodeUnit:=CodeUnit;
+  State:=ucACCEPT;
+  while CodeUnit<Len do begin
+   State:=UTF8DFATransitions[State+UTF8DFACharClasses[s[CodeUnit]]];
+   inc(CodeUnit);
+   if State<=ucERROR then begin
+    break;
+   end;
+  end;
+  if State<>ucACCEPT then begin
+   CodeUnit:=StartCodeUnit+1;
+  end;
+ end;
+end;
+
 procedure UTF8Inc(const s:ansistring;var CodeUnit:longint);
 begin
  if (CodeUnit>0) and (CodeUnit<=length(s)) then begin
@@ -1451,6 +1467,33 @@ begin
   end;
   if State<>ucACCEPT then begin
    result:=$fffd;
+  end;
+ end;
+end;
+
+function UTF8PtrCodeUnitGetCharFallback(const s:pansichar;Len,CodeUnit:longint):longword;
+var Value,CharClass,State:longword;
+    StartCodeUnit:longint;
+begin
+ result:=0;
+ if (CodeUnit>=0) and (CodeUnit<Len) then begin
+  StartCodeUnit:=CodeUnit;
+  State:=ucACCEPT;
+  for CodeUnit:=CodeUnit to Len-1 do begin
+   Value:=byte(ansichar(s[CodeUnit]));
+   CharClass:=UTF8DFACharClasses[ansichar(Value)];
+   if State=ucACCEPT then begin
+    result:=Value and ($ff shr CharClass);
+   end else begin
+    result:=(result shl 6) or (Value and $3f);
+   end;
+   State:=UTF8DFATransitions[State+CharClass];
+   if State<=ucERROR then begin
+    break;
+   end;
+  end;
+  if State<>ucACCEPT then begin
+   result:=byte(ansichar(s[StartCodeUnit]));
   end;
  end;
 end;
@@ -7885,13 +7928,31 @@ begin
  result.SubMatches:=SubMatches;
 end;
 
-function TFLRE.IsWordChar(const Position:longint):boolean; {$ifdef caninline}inline;{$endif}
+function TFLRE.IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
 begin
- result:=((Position>=0) and (Position<InputLength)) and (Input[Position] in ['A'..'Z','a'..'z']);
+ if CharValue=$ffffffff then begin
+  result:=false;
+ end else begin
+  if rfUTF8 in Flags then begin
+   result:=UnicodeIsWord(CharValue);
+  end else begin
+   case CharValue of
+    ord('a')..ord('z'),ord('A')..ord('Z'),ord('0')..ord('9'),ord('_'):begin
+     result:=true;
+    end;
+    else begin
+     result:=false;
+    end;
+   end;
+  end;
+ end;
 end;
 
-procedure TFLRE.AddThread(const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
-var Thread:PFLREThread;
+procedure TFLRE.AddThread(const ThreadLocalState:TFLREThreadLocalState;const ThreadList:PFLREThreadList;Instruction:PFLREInstruction;SubMatches:PFLRESubMatches;const Position:longint);
+var Thread:PFLREThread; 
+    CurrentChar,OtherChar:longword;
+    OtherPosition:longint;
+    BooleanValue:boolean;
 begin
  while assigned(Instruction) do begin
   if Instruction^.Generation=Generation then begin
@@ -7905,7 +7966,7 @@ begin
      continue;
     end;
     opSPLIT:begin
-     AddThread(ThreadList,Instruction^.Next,IncRef(SubMatches),Position);
+     AddThread(ThreadLocalState,ThreadList,Instruction^.Next,IncRef(SubMatches),Position);
      Instruction:=Instruction^.OtherNext;
      continue;
     end;
@@ -7915,19 +7976,63 @@ begin
      continue;
     end;
     opBOL:begin
-     if (Position=0) or ((Position>0) and (Input[Position-1] in [#10,#13])) then begin
+     if rfUTF8 in Flags then begin
+      OtherPosition:=Position;
+      UTF8PtrDec(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
+     end else begin
+      OtherPosition:=Position-1;
+     end;
+     if Position<0 then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
+      if rfUTF8 in Flags then begin
+       CurrentChar:=UTF8PtrCodeUnitGetChar(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
+       case CurrentChar of
+        $0a,$0c,$0d,$85,$2028,$2029:begin
+         Instruction:=Instruction^.Next;
+         continue;
+        end;
+       end;
+      end else begin
+       case ThreadLocalState.Input[OtherPosition] of
+        #10,#13:begin
+         Instruction:=Instruction^.Next;
+         continue;
+        end;
+       end;
+      end;
       DecRef(SubMatches);
       break;
      end;
     end;
     opEOL:begin
-     if ((Position+1)>=InputLength) or (((Position+1)<InputLength) and (Input[Position+1] in [#10,#13])) then begin
+     if rfUTF8 in Flags then begin
+      OtherPosition:=Position;
+      UTF8PtrSafeInc(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
+     end else begin
+      OtherPosition:=Position+1;
+     end;
+     if OtherPosition>=ThreadLocalState.InputLength then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
+      if rfUTF8 in Flags then begin
+       CurrentChar:=UTF8PtrCodeUnitGetChar(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
+       case CurrentChar of
+        $0a,$0c,$0d,$85,$2028,$2029:begin
+         Instruction:=Instruction^.Next;
+         continue;
+        end;
+       end;
+      end else begin
+       case ThreadLocalState.Input[OtherPosition] of
+        #10,#13:begin
+         Instruction:=Instruction^.Next;
+         continue;
+        end;
+       end;
+      end;
       DecRef(SubMatches);
       break;
      end;
@@ -7942,7 +8047,13 @@ begin
      end;
     end;
     opEOT:begin
-     if (Position+1)>=InputLength then begin
+     if rfUTF8 in Flags then begin
+      OtherPosition:=Position;
+      UTF8PtrSafeInc(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
+     end else begin
+      OtherPosition:=Position+1;
+     end;
+     if OtherPosition>=ThreadLocalState.InputLength then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
@@ -7950,17 +8061,37 @@ begin
       break;
      end;
     end;
-    opBRK:begin
-     if IsWordChar(Position-1)<>IsWordChar(Position) then begin
-      Instruction:=Instruction^.Next;
-      continue;
+    opBRK,opNBRK:begin
+     if (Position>=0) and (Position<=ThreadLocalState.InputLength) then begin
+      if rfUTF8 in Flags then begin
+       CurrentChar:=UTF8PtrCodeUnitGetChar(ThreadLocalState.Input,ThreadLocalState.InputLength,Position);
+      end else begin
+       CurrentChar:=byte(ansichar(ThreadLocalState.Input[Position]));
+      end;
      end else begin
-      DecRef(SubMatches);
-      break;
+      CurrentChar:=$ffffffff;
      end;
-    end;
-    opNBRK:begin
-     if IsWordChar(Position-1)=IsWordChar(Position) then begin
+     if (Position=0) or ((Position+1)=ThreadLocalState.InputLength) then begin
+      BooleanValue:=IsWordChar(CurrentChar);
+     end else begin
+      if rfUTF8 in Flags then begin
+       OtherPosition:=Position;
+       UTF8PtrDec(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
+       if (OtherPosition>0) and (OtherPosition<=ThreadLocalState.InputLength) then begin
+        OtherChar:=UTF8PtrCodeUnitGetCharFallback(ThreadLocalState.Input,ThreadLocalState.InputLength,OtherPosition);
+       end else begin
+        OtherChar:=$ffffffff;
+       end;
+      end else begin
+       if (Position>0) and (Position<=ThreadLocalState.InputLength) then begin
+        OtherChar:=byte(ansichar(ThreadLocalState.Input[Position-1]));
+       end else begin
+        OtherChar:=$ffffffff;
+       end;
+      end;
+      BooleanValue:=IsWordChar(CurrentChar)=IsWordChar(OtherChar);
+     end;
+     if BooleanValue xor ((Instruction^.IndexAndOpcode and $ff)=opBRK) then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
@@ -8231,8 +8362,8 @@ begin
 
 end;
 
-function TFLRE.SearchMatchParallelNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
-var CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosition:longint;
+function TFLRE.SearchMatchParallelNFA(const ThreadLocalState:TFLREThreadLocalState;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
+var InputLength,CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosition:longint;
     CurrentThreadList,NewThreadList,TemporaryThreadList:PFLREThreadList;
     SubMatches,Matched,BestSubMatches:PFLRESubMatches;
     CurrentThread:PFLREThread;
@@ -8241,11 +8372,12 @@ var CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosition:longint;
     CurrentChar:ansichar;
     Capture:PFLRECapture;
     BitState:longword;
-    LocalInput:pansichar;
+    Input:pansichar;
 begin
  result:=false;
 
- LocalInput:=Input;
+ Input:=ThreadLocalState.Input;
+ InputLength:=ThreadLocalState.InputLength;
 
  CurrentThreadList:=@ThreadLists[0];
  NewThreadList:=@ThreadLists[1];
@@ -8257,9 +8389,9 @@ begin
 
  inc(Generation);
  if UnanchoredStart then begin
-  AddThread(CurrentThreadList,UnanchoredStartInstruction,SubMatches,StartPosition);
+  AddThread(ThreadLocalState,CurrentThreadList,UnanchoredStartInstruction,SubMatches,StartPosition);
  end else begin
-  AddThread(CurrentThreadList,AnchoredStartInstruction,SubMatches,StartPosition);
+  AddThread(ThreadLocalState,CurrentThreadList,AnchoredStartInstruction,SubMatches,StartPosition);
  end;
 
  Matched:=nil;
@@ -8272,7 +8404,7 @@ begin
   if CurrentThreadList^.Count=0 then begin
    break;
   end;
-  CurrentChar:=LocalInput[CurrentPosition];
+  CurrentChar:=Input[CurrentPosition];
   inc(Generation);
   for ThreadIndex:=0 to CurrentThreadList^.Count-1 do begin
    CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
@@ -8283,21 +8415,21 @@ begin
      if (CurrentPosition>=InputLength) or (byte(ansichar(CurrentChar))<>Instruction^.Value) then begin
       DecRef(SubMatches);
      end else begin
-      AddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
+      AddThread(ThreadLocalState,NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
      end;
     end;
     opCHAR:begin
      if (CurrentPosition>=InputLength) or not (CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
       DecRef(SubMatches);
      end else begin
-      AddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
+      AddThread(ThreadLocalState,NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
      end;
     end;
     opANY:begin
      if CurrentPosition>=InputLength then begin
       DecRef(SubMatches);
      end else begin
-      AddThread(NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
+      AddThread(ThreadLocalState,NewThreadList,Instruction^.Next,SubMatches,CurrentPosition+1);
      end;
     end;
     opMATCH:begin
@@ -8409,13 +8541,13 @@ begin
 
 end;
 
-function TFLRE.SearchMatchOnePassNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
+function TFLRE.SearchMatchOnePassNFA(const ThreadLocalState:TFLREThreadLocalState;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
 var State,Nodes:PFLREOnePassNFAState;
-    CurrentPosition,StateSize,TwoCountOfCaptures,Counter:longint;
+    InputLength,CurrentPosition,StateSize,TwoCountOfCaptures,Counter:longint;
     LocalByteMap:PFLREByteMap;
     Done:boolean;
     NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
-    LocalInput:pansichar;
+    Input:pansichar;
  function Satisfy(Condition:longword):boolean;
  var Flags:longword;
  begin
@@ -8451,6 +8583,9 @@ var State,Nodes:PFLREOnePassNFAState;
 begin
  TwoCountOfCaptures:=CountParens*2;
 
+ Input:=ThreadLocalState.Input;
+ InputLength:=ThreadLocalState.InputLength;
+ 
  State:=OnePassNFAStart;
  Nodes:=OnePassNFANodes;
  StateSize:=OnePassNFAStateSize;
@@ -8462,9 +8597,9 @@ begin
  NextMatchCondition:=State^.MatchCondition;
  Condition:=0;
  CurrentPosition:=StartPosition;
- LocalInput:=Input;
+
  while CurrentPosition<UntilExcludingPosition do begin
-  Condition:=State^.Action[LocalByteMap^[byte(ansichar(LocalInput[CurrentPosition]))]];
+  Condition:=State^.Action[LocalByteMap^[byte(ansichar(Input[CurrentPosition]))]];
   MatchCondition:=NextMatchCondition;
 
   if ((Condition and sfEmptyAllFlags)=0) or Satisfy(Condition) then begin
@@ -8539,8 +8674,9 @@ begin
 
 end;
 
-function TFLRE.SearchMatchBitStateNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
-var BasePosition,Len:longint;
+function TFLRE.SearchMatchBitStateNFA(const ThreadLocalState:TFLREThreadLocalState;var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
+var InputLength,BasePosition,Len:longint;
+    Input:PAnsiChar;
  function ShouldVisit(const Instruction:PFLREInstruction;const Position:longint):boolean; {$ifdef caninline}inline;{$endif}
  var i:longword;
  begin
@@ -8789,6 +8925,9 @@ var VisitedLength:longword;
 begin
  result:=BitStateNFAError;
 
+ Input:=ThreadLocalState.Input;
+ InputLength:=ThreadLocalState.InputLength;
+
  Len:=UntilExcludingPosition-StartPosition;
  if Len<1 then begin
   exit;
@@ -8823,11 +8962,14 @@ begin
 
 end;
 
-function TFLRE.SearchMatchDFA(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-var Position:longint;
+function TFLRE.SearchMatchDFA(const ThreadLocalState:TFLREThreadLocalState;const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+var InputLength,Position:longint;
     State,LastState:PFLREDFAState;
+    Input:pansichar;
 begin
  result:=DFAFail;
+ Input:=ThreadLocalState.Input;
+ InputLength:=ThreadLocalState.InputLength;
  if UnanchoredStart then begin
   State:=DFAUnanchoredStartState;
  end else begin
@@ -8858,11 +9000,14 @@ begin
  end;
 end;
 
-function TFLRE.SearchMatchReversedDFA(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-var Position:longint;
+function TFLRE.SearchMatchReversedDFA(const ThreadLocalState:TFLREThreadLocalState;const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
+var InputLength,Position:longint;
     State,LastState:PFLREDFAState;
+    Input:pansichar;
 begin
  result:=DFAFail;
+ Input:=ThreadLocalState.Input;
+ InputLength:=ThreadLocalState.InputLength;
  State:=DFAReversedStartState;
  for Position:=StartPosition downto UntilIncludingPosition do begin
   LastState:=State;
@@ -8889,7 +9034,7 @@ begin
  end;
 end;
 
-function TFLRE.SearchMatch(var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
+function TFLRE.SearchMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
 var MatchBegin,MatchEnd:longint;
     HaveResult:boolean;
     ThreadLocalState:TFLREThreadLocalState;
@@ -8909,12 +9054,14 @@ begin
   ThreadLocalStateCriticalSection.Leave;
  end;
  try
+  ThreadLocalState.Input:=AInput;
+  ThreadLocalState.InputLength:=AInputLength;
   repeat
-   case SearchMatchDFA(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
+   case SearchMatchDFA(ThreadLocalState,StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
     DFAMatch:begin
      if UnanchoredStart then begin
       // For unanchored searchs, we must do also a "backward" DFA search
-      case SearchMatchReversedDFA(MatchEnd,StartPosition,MatchBegin) of
+      case SearchMatchReversedDFA(ThreadLocalState,MatchEnd,StartPosition,MatchBegin) of
        DFAMatch:begin
         if MatchBegin<StartPosition then begin
          MatchBegin:=StartPosition;
@@ -8961,10 +9108,10 @@ begin
     end;
    end;
    if OnePassNFAReady and not UnanchoredStart then begin
-    result:=SearchMatchOnePassNFA(Captures,StartPosition,UntilExcludingPosition);
+    result:=SearchMatchOnePassNFA(ThreadLocalState,Captures,StartPosition,UntilExcludingPosition);
    end else begin
     if BitStateNFAReady then begin
-     case SearchMatchBitStateNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
+     case SearchMatchBitStateNFA(ThreadLocalState,Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
       BitStateNFAFail:begin
        result:=false;
        break;
@@ -8977,7 +9124,7 @@ begin
       end;*)
      end;
     end;
-    result:=SearchMatchParallelNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart);
+    result:=SearchMatchParallelNFA(ThreadLocalState,Captures,StartPosition,UntilExcludingPosition,UnanchoredStart);
    end;
    break;
   until true;
@@ -8992,19 +9139,15 @@ begin
  end;
 end;
 
-function TFLRE.PtrMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
+function TFLRE.PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
 begin
- Input:=AInput;
- InputLength:=AInputLength;
- result:=SearchMatch(Captures,StartPosition,InputLength,false);
+ result:=SearchMatch(Input,InputLength,Captures,StartPosition,InputLength,false);
 end;
 
-function TFLRE.PtrMatchNext(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
+function TFLRE.PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
 var CurrentPosition:longint;
 begin
  result:=false;
- Input:=AInput;
- InputLength:=AInputLength;
  CurrentPosition:=StartPosition;
  if (CurrentPosition>=0) and (CurrentPosition<InputLength) then begin
   repeat
@@ -9034,7 +9177,7 @@ begin
     end else if CountPrefixCharClasses>0 then begin
      case CountPrefixCharClasses of
       1:begin
-       while (CurrentPosition<InputLength) and not (Input[CurrentPosition] in PrefixCharClasses[0]) do begin
+       while (CurrentPosition<InputLength) and not (PAnsiChar(Input)[CurrentPosition] in PrefixCharClasses[0]) do begin
         inc(CurrentPosition);
        end;
       end;
@@ -9047,7 +9190,7 @@ begin
      end;
     end;
    end;
-   if SearchMatch(Captures,CurrentPosition,InputLength,DoUnanchoredStart) then begin
+   if SearchMatch(Input,InputLength,Captures,CurrentPosition,InputLength,DoUnanchoredStart) then begin
     result:=true;
     exit;
    end;
@@ -9056,7 +9199,7 @@ begin
  end;
 end;
 
-function TFLRE.PtrMatchAll(const AInput:pointer;const AInputLength:longint;var Captures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
+function TFLRE.PtrMatchAll(const Input:pointer;const InputLength:longint;var Captures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
 var CurrentPosition,CountMultiCaptures,Next:longint;
     MatchResult:TFLRECaptures;
 begin
@@ -9067,7 +9210,7 @@ begin
   SetLength(Captures,0);
   CurrentPosition:=StartPosition;
   if CurrentPosition>=0 then begin
-   while (CurrentPosition<AInputLength) and (Limit<>0) and PtrMatchNext(AInput,AInputLength,MatchResult,CurrentPosition) do begin
+   while (CurrentPosition<InputLength) and (Limit<>0) and PtrMatchNext(Input,InputLength,MatchResult,CurrentPosition) do begin
     Next:=CurrentPosition+1;
     CurrentPosition:=MatchResult[0].Start+MatchResult[0].Length;
     if CurrentPosition<Next then begin
@@ -9090,7 +9233,7 @@ begin
  end;
 end;
 
-function TFLRE.PtrReplaceAll(const AInput:pointer;const AInputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
+function TFLRE.PtrReplaceAll(const Input:pointer;const InputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
 var CurrentPosition,Next,LastPosition,i,j,e:longint;
     Captures:TFLRECaptures;
     SimpleReplacement:boolean;
@@ -9103,7 +9246,7 @@ begin
   CurrentPosition:=StartPosition;
   LastPosition:=CurrentPosition;
   if CurrentPosition>=0 then begin
-   while (CurrentPosition<AInputLength) and (Limit<>0) and PtrMatchNext(AInput,AInputLength,Captures,CurrentPosition) do begin
+   while (CurrentPosition<InputLength) and (Limit<>0) and PtrMatchNext(Input,InputLength,Captures,CurrentPosition) do begin
     Next:=CurrentPosition+1;
     if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
      CurrentPosition:=Captures[0].Start+Captures[0].Length;
@@ -9112,7 +9255,7 @@ begin
      end;
     end else begin
      if LastPosition<Captures[0].Start then begin
-      result:=result+PtrCopy(PAnsiChar(AInput),LastPosition,Captures[0].Start-LastPosition);
+      result:=result+PtrCopy(PAnsiChar(Input),LastPosition,Captures[0].Start-LastPosition);
      end;
      CurrentPosition:=Captures[0].Start+Captures[0].Length;
      if CurrentPosition<Next then begin
@@ -9151,31 +9294,31 @@ begin
             end;
            end;
            '&':begin
-            result:=result+PtrCopy(PAnsiChar(AInput),Captures[0].Start,Captures[0].Length);
+            result:=result+PtrCopy(PAnsiChar(Input),Captures[0].Start,Captures[0].Length);
             inc(i);
            end;
            '`':begin
-            result:=result+PtrCopy(PAnsiChar(AInput),0,Captures[0].Start-1);
+            result:=result+PtrCopy(PAnsiChar(Input),0,Captures[0].Start-1);
             inc(i);
            end;
            '''':begin
-            result:=result+PtrCopy(PAnsiChar(AInput),Captures[0].Start+Captures[0].Length,(AInputLength-(Captures[0].Start+Captures[0].Length))+1);
+            result:=result+PtrCopy(PAnsiChar(Input),Captures[0].Start+Captures[0].Length,(InputLength-(Captures[0].Start+Captures[0].Length))+1);
             inc(i);
            end;
            '_':begin
-            result:=result+AnsiString(PAnsiChar(AInput));
+            result:=result+AnsiString(PAnsiChar(Input));
             inc(i);
            end;
            '-':begin
             if length(Captures)>1 then begin
-             result:=result+PtrCopy(PAnsiChar(AInput),Captures[1].Start,Captures[1].Length);
+             result:=result+PtrCopy(PAnsiChar(Input),Captures[1].Start,Captures[1].Length);
             end;
             inc(i);
            end;
            '+':begin
             if length(Captures)>1 then begin
              e:=length(Captures)-1;
-             result:=result+PtrCopy(PAnsiChar(AInput),Captures[e].Start,Captures[e].Length);
+             result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
             end;
             inc(i);
            end;
@@ -9199,7 +9342,7 @@ begin
               i:=j;
              end else begin
               if (e>=0) and (e<length(Captures)) then begin
-               result:=result+PtrCopy(PAnsiChar(AInput),Captures[e].Start,Captures[e].Length);
+               result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
               end;
              end;
             end else begin
@@ -9255,7 +9398,7 @@ begin
              i:=j;
             end else begin
              if (e>=0) and (e<length(Captures)) then begin
-              result:=result+PtrCopy(PAnsiChar(AInput),Captures[e].Start,Captures[e].Length);
+              result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
              end;
             end;
            end;
@@ -9279,7 +9422,7 @@ begin
              end;
             end;
             if (e>=0) and (e<length(Captures)) then begin
-             result:=result+PtrCopy(PAnsiChar(AInput),Captures[e].Start,Captures[e].Length);
+             result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
             end;
            end;
            else begin
@@ -9301,8 +9444,8 @@ begin
      dec(Limit);
     end;
    end;
-   if LastPosition<AInputLength then begin
-    result:=result+PtrCopy(PAnsiChar(AInput),LastPosition,AInputLength-LastPosition);
+   if LastPosition<InputLength then begin
+    result:=result+PtrCopy(PAnsiChar(Input),LastPosition,InputLength-LastPosition);
    end;
   end;
  finally
@@ -9310,10 +9453,10 @@ begin
  end;
 end;
 
-function TFLRE.Match(const AInput:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+function TFLRE.Match(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
 var Counter:longint;
 begin
- result:=PtrMatch(pansichar(@AInput[1]),length(AInput),Captures,StartPosition-1);
+ result:=PtrMatch(pansichar(@Input[1]),length(Input),Captures,StartPosition-1);
  for Counter:=0 to length(Captures)-1 do begin
   if Captures[Counter].Length>0 then begin
    inc(Captures[Counter].Start);
@@ -9321,10 +9464,10 @@ begin
  end;
 end;
 
-function TFLRE.MatchNext(const AInput:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+function TFLRE.MatchNext(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
 var Counter:longint;
 begin
- result:=PtrMatchNext(pansichar(@AInput[1]),length(AInput),Captures,StartPosition-1);
+ result:=PtrMatchNext(pansichar(@Input[1]),length(Input),Captures,StartPosition-1);
  for Counter:=0 to length(Captures)-1 do begin
   if Captures[Counter].Length>0 then begin
    inc(Captures[Counter].Start);
@@ -9332,10 +9475,10 @@ begin
  end;
 end;
 
-function TFLRE.MatchAll(const AInput:ansistring;var Captures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+function TFLRE.MatchAll(const Input:ansistring;var Captures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
 var Counter,SubCounter:longint;
 begin
- result:=PtrMatchAll(pansichar(@AInput[1]),length(AInput),Captures,StartPosition-1,Limit);
+ result:=PtrMatchAll(pansichar(@Input[1]),length(Input),Captures,StartPosition-1,Limit);
  for Counter:=0 to length(Captures)-1 do begin
   for SubCounter:=0 to length(Captures[Counter])-1 do begin
    if Captures[Counter,SubCounter].Length>0 then begin
