@@ -356,6 +356,33 @@ type EFLRE=class(Exception);
 
      TFLREInstructionGenerations=array of int64;
 
+     TFLREPrefilterNode=class;
+
+     TFLREPrefilterNodeList=class(TList)
+      protected
+       function GetNodeItem(Index:longint):TFLREPrefilterNode;
+       procedure SetNodeItem(Index:longint;Value:TFLREPrefilterNode);
+      public
+       property Items[Index:longint]:TFLREPrefilterNode read GetNodeItem write SetNodeItem; default;
+     end;
+
+     TFLREPrefilterNodeOperation=(FLREpfnoANY,FLREpfnoATOM,FLREpfnoAND,FLREpfnoOR);
+
+     TFLREPrefilterNode=class
+      public
+       Operation:TFLREPrefilterNodeOperation;
+       Subs:TFLREPrefilterNodeList;
+       Atom:ansistring;
+       Exact:boolean;
+       constructor Create;
+       destructor Destroy; override;
+       function Clone:TFLREPrefilterNode;
+       function Expression:ansistring;
+       function ShortExpression:ansistring;
+       function SQLBooleanFullTextExpression:ansistring;
+       function SQLExpression(const Field:ansistring):ansistring;
+     end;
+
      TFLREThreadLocalStorageInstance=class
       private
        AllNext:TFLREThreadLocalStorageInstance;
@@ -512,6 +539,9 @@ type EFLRE=class(Exception);
        RangeHigh:ansistring;
        HasRange:boolean;
 
+       PrefilterRootNode:TFLREPrefilterNode;
+       HasPrefilter:boolean;
+
        function NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
        procedure FreeNode(var Node:PFLRENode);
 
@@ -540,6 +570,9 @@ type EFLRE=class(Exception);
        procedure CompileByteMapForOnePassNFAAndDFA;
        procedure CompileOnePassNFA;
 
+       function PrefilterOptimize(Node:TFLREPrefilterNode):TFLREPrefilterNode;
+       function CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
+
        function IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
 
        function SearchMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
@@ -561,6 +594,11 @@ type EFLRE=class(Exception);
 
        function GetRangeLow:ansistring;
        function GetRangeHigh:ansistring;
+
+       function GetPrefilterExpression:ansistring;
+       function GetPrefilterShortExpression:ansistring;
+       function GetPrefilterSQLBooleanFullTextExpression:ansistring;
+       function GetPrefilterSQLExpression(Field:ansistring):ansistring;
 
       published
 
@@ -4126,6 +4164,378 @@ begin
  result:=CompareCharClasses(self,TFLREUnicodeCharClass(OtherObject))=0;
 end;
 
+function TFLREPrefilterNodeList.GetNodeItem(Index:longint):TFLREPrefilterNode;
+begin
+ result:=TFLREPrefilterNode(inherited Items[Index]);
+end;
+
+procedure TFLREPrefilterNodeList.SetNodeItem(Index:longint;Value:TFLREPrefilterNode);
+begin
+ inherited Items[Index]:=Value;
+end;
+
+constructor TFLREPrefilterNode.Create;
+begin
+ inherited Create;
+ Operation:=FLREpfnoANY;
+ Subs:=TFLREPrefilterNodeList.Create;
+ Atom:='';
+ Exact:=false;
+end;
+
+destructor TFLREPrefilterNode.Destroy;
+var Counter:longint;
+begin
+ for Counter:=0 to Subs.Count-1 do begin
+  Subs[Counter].Free;
+ end;
+ FreeAndNil(Subs);
+ Atom:='';
+ inherited Destroy;
+end;
+
+function TFLREPrefilterNode.Clone:TFLREPrefilterNode;
+var Counter:longint;
+begin
+ result:=TFLREPrefilterNode.Create;
+ result.Operation:=Operation;
+ result.Atom:=Atom;
+ result.Exact:=Exact;
+ for Counter:=0 to Subs.Count-1 do begin
+  result.Subs.Add(Subs[Counter].Clone);
+ end;
+end;
+
+function TFLREPrefilterNode.Expression:ansistring;
+var Counter:longint;
+    s:ansistring;
+begin
+ result:='';
+ case Operation of
+  FLREpfnoATOM:begin
+   result:=Atom;
+   Counter:=1;
+   while Counter<=length(result) do begin
+    case result[Counter] of
+     '\','"':begin
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #0:begin
+      result[Counter]:='0';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     else begin
+      inc(Counter);
+     end;
+    end;
+   end;
+   result:='"'+result+'"';
+  end;
+  FLREpfnoANY:begin
+   result:='*';
+  end;
+  FLREpfnoAND:begin
+   case Subs.Count of
+    0:begin
+     result:='';
+    end;
+    1:begin
+     result:=Subs[0].Expression;
+    end;
+    else begin
+     for Counter:=0 to Subs.Count-1 do begin
+      s:=Subs[Counter].Expression;
+      if length(s)>0 then begin
+       if length(result)>0 then begin
+        result:=result+' AND ';
+       end;
+       result:=result+s;
+      end;
+     end;
+     result:='('+result+')';
+    end;
+   end;
+  end;
+  FLREpfnoOR:begin
+   case Subs.Count of
+    0:begin
+     result:='';
+    end;
+    1:begin
+     result:=Subs[0].Expression;
+    end;
+    else begin
+     for Counter:=0 to Subs.Count-1 do begin
+      s:=Subs[Counter].Expression;
+      if length(s)>0 then begin
+       if length(result)>0 then begin
+        result:=result+' OR ';
+       end;
+       result:=result+s;
+      end;
+     end;
+     result:='('+result+')';
+    end;
+   end;
+  end;
+ end;
+end;
+
+function TFLREPrefilterNode.ShortExpression:ansistring;
+var Counter:longint;
+    s:ansistring;
+begin
+ result:='';
+ case Operation of
+  FLREpfnoATOM:begin
+   result:=Atom;
+   Counter:=1;
+   while Counter<=length(result) do begin
+    case result[Counter] of
+     '\','(',')','|','*':begin
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #0:begin
+      result[Counter]:='0';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     else begin
+      inc(Counter);
+     end;
+    end;
+   end;
+  end;
+  FLREpfnoANY:begin
+   result:='*';
+  end;
+  FLREpfnoAND:begin
+   case Subs.Count of
+    0:begin
+     result:='';
+    end;
+    1:begin
+     result:=Subs[0].ShortExpression;
+    end;
+    else begin
+     for Counter:=0 to Subs.Count-1 do begin
+      result:=result+Subs[Counter].ShortExpression;
+     end;
+     result:='('+result+')';
+    end;
+   end;
+  end;
+  FLREpfnoOR:begin
+   case Subs.Count of
+    0:begin
+     result:='';
+    end;
+    1:begin
+     result:=Subs[0].ShortExpression;
+    end;
+    else begin
+     for Counter:=0 to Subs.Count-1 do begin
+      s:=Subs[Counter].ShortExpression;
+      if length(s)>0 then begin
+       if length(result)>0 then begin
+        result:=result+'|';
+       end;
+       result:=result+s;
+      end;
+     end;
+     result:='('+result+')';
+    end;
+   end;
+  end;
+ end;
+end;
+
+function TFLREPrefilterNode.SQLBooleanFullTextExpression:ansistring;
+var Counter:longint;
+    s:ansistring;
+begin
+ result:='';
+ case Operation of
+  FLREpfnoATOM:begin
+   result:=Atom;
+   Counter:=1;
+   while Counter<=length(result) do begin
+    case result[Counter] of
+     '\','"','''','%':begin
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #$1a:begin
+      result[Counter]:='Z';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #$13:begin
+      result[Counter]:='r';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #$10:begin
+      result[Counter]:='n';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #$00:begin
+      result[Counter]:='0';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     else begin
+      inc(Counter);
+     end;
+    end;
+   end;
+   result:='"'+result+'"';
+  end;
+  FLREpfnoANY:begin
+   result:='';
+  end;
+  FLREpfnoAND:begin
+   case Subs.Count of
+    0:begin
+     result:='';
+    end;
+    1:begin
+     result:=Subs[0].SQLBooleanFullTextExpression;
+    end;
+    else begin
+     for Counter:=0 to Subs.Count-1 do begin
+      s:=Subs[Counter].SQLBooleanFullTextExpression;
+      if length(s)>0 then begin
+       if length(result)>0 then begin
+        result:=result+' ';
+       end;
+       result:=result+'+'+s;
+      end;
+     end;
+     result:='('+result+')';
+    end;
+   end;
+  end;
+  FLREpfnoOR:begin
+   case Subs.Count of
+    0:begin
+     result:='';
+    end;
+    1:begin
+     result:=Subs[0].SQLBooleanFullTextExpression;
+    end;
+    else begin
+     for Counter:=0 to Subs.Count-1 do begin
+      s:=Subs[Counter].SQLBooleanFullTextExpression;
+      if length(s)>0 then begin
+       if length(result)>0 then begin
+        result:=result+' ';
+       end;
+       result:=result+s;
+      end;
+     end;
+     result:='('+result+')';
+    end;
+   end;
+  end;
+ end;
+end;
+
+function TFLREPrefilterNode.SQLExpression(const Field:ansistring):ansistring;
+var Counter:longint;
+    s:ansistring;
+begin
+ result:='';
+ case Operation of
+  FLREpfnoATOM:begin
+   result:=Atom;
+   Counter:=1;
+   while Counter<=length(result) do begin
+    case result[Counter] of
+     '\','"','''','%':begin
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #$1a:begin
+      result[Counter]:='Z';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #$13:begin
+      result[Counter]:='r';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #$10:begin
+      result[Counter]:='n';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     #$00:begin
+      result[Counter]:='0';
+      System.Insert('\',result,Counter);
+      inc(Counter,2);
+     end;
+     else begin
+      inc(Counter);
+     end;
+    end;
+   end;
+   if length(result)>0 then begin
+    result:='('+Field+' LIKE ''%'+result+'%'')';
+   end;
+  end;
+  FLREpfnoAND:begin
+   case Subs.Count of
+    0:begin
+     result:='';
+    end;
+    1:begin
+     result:=Subs[0].SQLExpression(Field);
+    end;
+    else begin
+     for Counter:=0 to Subs.Count-1 do begin
+      s:=Subs[Counter].SQLExpression(Field);
+      if length(s)>0 then begin
+       if length(result)>0 then begin
+        result:=result+' AND ';
+       end;
+       result:=result+s;
+      end;
+     end;
+     result:='('+result+')';
+    end;
+   end;
+  end;
+  FLREpfnoOR:begin
+   case Subs.Count of
+    0:begin
+     result:='';
+    end;
+    1:begin
+     result:=Subs[0].SQLExpression(Field);
+    end;
+    else begin
+     for Counter:=0 to Subs.Count-1 do begin
+      s:=Subs[Counter].SQLExpression(Field);
+      if length(s)>0 then begin
+       if length(result)>0 then begin
+        result:=result+' OR ';
+       end;
+       result:=result+s;
+      end;
+     end;
+     result:='('+result+')';
+    end;
+   end;
+  end;
+ end;
+end;
+
 constructor TFLREThreadLocalStorageInstance.Create(AInstance:TFLRE);
 var Index:longint;
     FLREDFAStateCreateTempDFAState:TFLREDFAState;
@@ -5575,6 +5985,9 @@ begin
  RangeHigh:='';
  HasRange:=false;
 
+ PrefilterRootNode:=nil;
+ HasPrefilter:=false;
+
  try
 
   try
@@ -5671,6 +6084,8 @@ begin
  
  RangeLow:='';
  RangeHigh:='';
+
+ PrefilterRootNode.Free;
 
  inherited Destroy;
 end;
@@ -9318,6 +9733,408 @@ begin
  end;
 end;
 
+function TFLRE.PrefilterOptimize(Node:TFLREPrefilterNode):TFLREPrefilterNode;
+var OK:boolean;
+    Counter:longint;
+    Temp:TFLREPrefilterNode;
+begin
+ result:=Node;
+ while assigned(result) do begin
+  for Counter:=0 to result.Subs.Count do begin
+   result.Subs[Counter]:=PrefilterOptimize(result.Subs[Counter]);
+  end;
+  case result.Operation of
+   FLREpfnoAND,FLREpfnoOR:begin
+    OK:=false;
+    Counter:=0;
+    while Counter<result.Subs.Count do begin
+     Temp:=result.Subs[Counter];
+     if not assigned(Temp) then begin
+      result.Subs.Delete(Counter);
+      OK:=true;
+     end else if Temp.Operation=FLREpfnoANY then begin
+      Temp.Destroy;
+      result.Subs.Delete(Counter);
+      result.Exact:=false;
+      OK:=true;
+     end else begin
+      inc(Counter);
+     end;
+    end;
+    case result.Subs.Count of
+     0:begin
+      result.Destroy;
+      result:=nil;
+     end;
+     1:begin
+      Temp:=result.Subs[0];
+      Temp.Exact:=Temp.Exact and result.Exact;
+      result.Subs.Clear;
+      result.Destroy;
+      result:=Temp;
+     end;
+     else begin
+      if OK then begin
+       continue;
+      end;
+     end;
+    end;
+   end;
+  end;
+  break;
+ end;
+end;
+
+function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
+ function Process(Node:PFLRENode):TFLREPrefilterNode;
+ var Left,Right,Temp,OtherTemp:TFLREPrefilterNode;
+     Counter,SubCounter,IndexCounter,Count:longint;
+     CharClass:TFLRECharClass;
+     SingleChar,CurrentChar:ansichar;
+     CharValue:longword;
+     OK,ParentLoop:boolean;
+ begin
+  result:=nil;
+  if assigned(Node) then begin
+
+   // Convertion and generation pass ===============================================================================
+
+   case Node^.NodeType of
+    ntCAT:begin
+     Left:=Process(Node^.Left);
+     Right:=Process(Node^.Right);
+     if assigned(Left) and assigned(Right) then begin
+      if ((Left.Operation=FLREpfnoATOM) and (Right.Operation=FLREpfnoATOM)) and (Left.Exact and Right.Exact) then begin
+       result:=Left;
+       result.Atom:=result.Atom+Right.Atom;
+       FreeAndNil(Right);
+      end else if (Left.Operation=FLREpfnoAND) and (Right.Operation=FLREpfnoAND) then begin
+       result:=Left;
+       for Counter:=0 to Right.Subs.Count-1 do begin
+        result.Subs.Add(Right.Subs[Counter]);
+        result.Exact:=result.Exact and Right.Subs[Counter].Exact;
+       end;
+       Right.Subs.Clear;
+       FreeAndNil(Right);
+      end else if Left.Operation=FLREpfnoAND then begin
+       result:=Left;
+       result.Subs.Add(Right);
+       result.Exact:=result.Exact and Right.Exact;
+      end else if Right.Operation=FLREpfnoAND then begin
+       result:=Right;
+       result.Subs.Insert(0,Left);
+       result.Exact:=result.Exact and Left.Exact;
+      end else begin
+       result:=TFLREPrefilterNode.Create;
+       result.Operation:=FLREpfnoAND;
+       result.Exact:=Left.Exact and Right.Exact;
+       result.Subs.Add(Left);
+       result.Subs.Add(Right);
+      end;
+     end else if assigned(Left) then begin
+      result:=Left;
+     end else if assigned(Right) then begin
+      result:=Right;
+     end;
+    end;
+    ntALT:begin
+     Left:=Process(Node^.Left);
+     Right:=Process(Node^.Right);
+     if assigned(Left) and assigned(Right) then begin
+      if (Left.Operation=FLREpfnoOR) and (Right.Operation=FLREpfnoOR) then begin
+       result:=Left;
+       for Counter:=0 to Right.Subs.Count-1 do begin
+        result.Subs.Add(Right.Subs[Counter]);
+        result.Exact:=result.Exact and Right.Subs[Counter].Exact;
+       end;
+       Right.Subs.Clear;
+       FreeAndNil(Right);
+      end else if Left.Operation=FLREpfnoOR then begin
+       result:=Left;
+       result.Subs.Add(Right);
+       result.Exact:=result.Exact and Right.Exact;
+      end else if Right.Operation=FLREpfnoOR then begin
+       result:=Right;
+       result.Subs.Insert(0,Left);
+       result.Exact:=result.Exact and Left.Exact;
+      end else begin
+       result:=TFLREPrefilterNode.Create;
+       result.Operation:=FLREpfnoOR;
+       result.Exact:=Left.Exact and Right.Exact;
+       result.Subs.Add(Left);
+       result.Subs.Add(Right);
+      end;
+     end else if assigned(Left) then begin
+      result:=Left;
+     end else if assigned(Right) then begin
+      result:=Right;
+     end;
+    end;
+    ntPAREN:begin
+     result:=Process(Node^.Left);
+    end;
+    ntCHAR:begin
+     SingleChar:=#0;
+     Count:=0;
+     for CurrentChar:=#0 to #255 do begin
+      if CurrentChar in Node^.CharClass then begin
+       if Count=0 then begin
+        SingleChar:=CurrentChar;
+        inc(Count);
+       end else begin
+        inc(Count);
+       end;
+      end;
+     end;
+     if Count=1 then begin
+      result:=TFLREPrefilterNode.Create;
+      result.Operation:=FLREpfnoATOM;
+      result.Atom:=SingleChar;
+      result.Exact:=true;
+     end else begin
+      if Count<=10 then begin
+       result:=TFLREPrefilterNode.Create;
+       result.Operation:=FLREpfnoOR;
+       result.Exact:=true;
+       for CurrentChar:=#0 to #255 do begin
+        if CurrentChar in Node^.CharClass then begin
+         Left:=TFLREPrefilterNode.Create;
+         Left.Operation:=FLREpfnoATOM;
+         Left.Atom:=CurrentChar;
+         Left.Exact:=true;
+         result.Subs.Add(Left);
+        end;
+       end;
+      end else begin
+       result:=TFLREPrefilterNode.Create;
+       result.Operation:=FLREpfnoANY;
+       result.Exact:=false;
+      end;
+     end;
+    end;
+    ntANY:begin
+     result:=TFLREPrefilterNode.Create;
+     result.Operation:=FLREpfnoANY;
+     result.Exact:=false;
+    end;
+    ntQUEST,ntSTAR,ntBOL,ntEOL,ntBOT,ntEOT,ntBRK,ntNBRK,ntEXACT:begin
+     result:=TFLREPrefilterNode.Create;
+     result.Operation:=FLREpfnoANY;
+     result.Exact:=false;
+    end;
+    ntPLUS:begin
+     Left:=Process(Node^.Left);
+     Right:=TFLREPrefilterNode.Create;
+     Right.Operation:=FLREpfnoANY;
+     Right.Exact:=false;
+     result:=TFLREPrefilterNode.Create;
+     result.Operation:=FLREpfnoAND;
+     result.Subs.Add(Left);
+     result.Subs.Add(Right);
+     result.Exact:=false;
+    end;
+    else begin
+     result:=nil;
+    end;
+   end;
+
+   // Optimization pass ============================================================================================
+
+   while assigned(result) do begin
+
+    case result.Operation of
+
+     FLREpfnoAND:begin
+
+      for Counter:=0 to result.Subs.Count-1 do begin
+       result.Exact:=result.Exact and result.Subs[Counter].Exact;
+      end;
+
+      OK:=false;
+      Counter:=0;
+      while Counter<result.Subs.Count do begin
+       Left:=result.Subs[Counter];
+       if not assigned(Left) then begin
+        result.Subs.Delete(Counter);
+        OK:=true;
+       end else begin
+        inc(Counter);
+       end;
+      end;
+      if OK and (result.Subs.Count>1) then begin
+       continue;
+      end;
+
+      case result.Subs.Count of
+       0:begin
+        result.Destroy;
+        result:=nil;
+       end;
+       1:begin
+        Left:=result.Subs[0];
+        Left.Exact:=Left.Exact and result.Exact;
+        result.Subs.Clear;
+        result.Destroy;
+        result:=Left;
+       end;
+       else begin
+        ParentLoop:=false;
+        IndexCounter:=0;
+        while IndexCounter<(result.Subs.Count-1) do begin
+         Left:=result.Subs[IndexCounter];
+         Right:=result.Subs[IndexCounter+1];
+         if ((Left.Operation=FLREpfnoATOM) and (Right.Operation=FLREpfnoATOM)) and (Left.Exact and Right.Exact) then begin
+          Left.Atom:=Left.Atom+Right.Atom;
+          FreeAndNil(Right);
+          result.Subs.Delete(IndexCounter+1);
+          ParentLoop:=true;
+          continue;
+         end else if (Left.Operation=FLREpfnoANY) and (Right.Operation=FLREpfnoANY) then begin
+          FreeAndNil(Right);
+          result.Subs.Delete(IndexCounter+1);
+          ParentLoop:=true;
+          continue;
+         end else if ((Left.Operation=FLREpfnoATOM) and (Right.Operation=FLREpfnoOR)) and (Left.Exact and Right.Exact) then begin
+          OK:=true;
+          for Counter:=0 to Right.Subs.Count-1 do begin
+           if (Right.Subs[Counter].Operation<>FLREpfnoATOM) or not Right.Subs[Counter].Exact then begin
+            OK:=false;
+            break;
+           end;
+          end;
+          if OK then begin
+           for Counter:=0 to Right.Subs.Count-1 do begin
+            Right.Subs[Counter].Atom:=Left.Atom+Right.Subs[Counter].Atom;
+           end;
+           FreeAndNil(Left);
+           result.Subs.Delete(IndexCounter);
+           ParentLoop:=false;
+           continue;
+          end;
+         end else if ((Left.Operation=FLREpfnoOR) and (Right.Operation=FLREpfnoATOM)) and (Left.Exact and Right.Exact) then begin
+          OK:=true;
+          for Counter:=0 to Left.Subs.Count-1 do begin
+           if (Left.Subs[Counter].Operation<>FLREpfnoATOM) or not Left.Subs[Counter].Exact then begin
+            OK:=false;
+            break;
+           end;
+          end;
+          if OK then begin
+           for Counter:=0 to Left.Subs.Count-1 do begin
+            Left.Subs[Counter].Atom:=Left.Subs[Counter].Atom+Right.Atom;
+           end;
+           FreeAndNil(Right);
+           result.Subs.Delete(IndexCounter+1);
+           ParentLoop:=false;
+           continue;
+          end;
+         end else if (Left.Operation=FLREpfnoOR) and (Right.Operation=FLREpfnoOR) and (Left.Exact and Right.Exact) then begin
+          OK:=true;
+          for Counter:=0 to Left.Subs.Count-1 do begin
+           if (Left.Subs[Counter].Operation<>FLREpfnoATOM) or not Left.Subs[Counter].Exact then begin
+            OK:=false;
+            break;
+           end;
+          end;
+          if OK then begin
+           for Counter:=0 to Right.Subs.Count-1 do begin
+            if (Right.Subs[Counter].Operation<>FLREpfnoATOM) or not Right.Subs[Counter].Exact then begin
+             OK:=false;
+             break;
+            end;
+           end;
+           if OK then begin
+            OtherTemp:=TFLREPrefilterNode.Create;
+            OtherTemp.Operation:=FLREpfnoOR;
+            OtherTemp.Exact:=true;
+            for Counter:=0 to Left.Subs.Count-1 do begin
+             for SubCounter:=0 to Right.Subs.Count-1 do begin
+              Temp:=TFLREPrefilterNode.Create;
+              Temp.Operation:=FLREpfnoATOM;
+              Temp.Atom:=Left.Subs[Counter].Atom+Right.Subs[SubCounter].Atom;
+              Temp.Exact:=true;
+              OtherTemp.Subs.Add(Temp);
+             end;
+            end;
+            FreeAndNil(Left);
+            FreeAndNil(Right);
+            result.Subs[IndexCounter]:=OtherTemp;
+            result.Subs.Delete(IndexCounter+1);
+            continue;
+           end;
+          end;
+         end;
+         inc(IndexCounter);
+        end;
+        if ParentLoop then begin
+         continue;
+        end;
+       end;
+      end;
+
+     end;
+
+     FLREpfnoOR:begin
+
+      OK:=true;
+      for Counter:=0 to result.Subs.Count-1 do begin
+       Left:=result.Subs[Counter];
+       if assigned(Left) and ((Left.Operation=FLREpfnoANY) or not Left.Exact) then begin
+        OK:=false;
+        break;
+       end;
+      end;
+      if not OK then begin
+       result.Destroy;
+       result:=TFLREPrefilterNode.Create;
+       result.Operation:=FLREpfnoANY;
+       result.Exact:=false;
+       continue;
+      end;
+
+      OK:=false;
+      Counter:=0;
+      while Counter<result.Subs.Count do begin
+       Left:=result.Subs[Counter];
+       if not assigned(Left) then begin
+        result.Subs.Delete(Counter);
+        OK:=true;
+       end else begin
+        inc(Counter);
+       end;
+      end;
+      if OK and (result.Subs.Count>1) then begin
+       continue;
+      end;
+
+      case result.Subs.Count of
+       0:begin
+        result.Destroy;
+        result:=nil;
+       end;
+       1:begin
+        Left:=result.Subs[0];
+        Left.Exact:=Left.Exact and result.Exact;
+        result.Subs.Clear;
+        result.Destroy;
+        result:=Left;
+       end;
+      end;
+
+     end;
+    end;
+
+    break;
+   end;
+
+   // End ==========================================================================================================
+
+  end;
+ end;
+begin
+ result:=Process(RootNode);
+end;
+
 function TFLRE.IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
 begin
  if CharValue=$ffffffff then begin
@@ -9820,6 +10637,96 @@ begin
   result:=RangeHigh;
  finally
   CriticalSection.Leave;
+ end;
+end;
+
+function TFLRE.GetPrefilterExpression:ansistring;
+begin
+ result:='';
+ CriticalSection.Enter;
+ try
+  if not HasPrefilter then begin
+   PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
+   PrefilterRootNode:=PrefilterOptimize(PrefilterRootNode);
+   HasPrefilter:=true;
+  end;
+  if assigned(PrefilterRootNode) then begin
+   result:=PrefilterRootNode.Expression;
+   if (length(result)>0) and (result[1]='(') then begin
+    result:=copy(result,2,length(result)-2);
+   end;
+  end;
+ finally
+  CriticalSection.Leave;
+ end;
+end;
+
+function TFLRE.GetPrefilterShortExpression:ansistring;
+begin
+ result:='';
+ CriticalSection.Enter;
+ try
+  if not HasPrefilter then begin
+   PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
+   PrefilterRootNode:=PrefilterOptimize(PrefilterRootNode);
+   HasPrefilter:=true;
+  end;
+  if assigned(PrefilterRootNode) then begin
+   result:=PrefilterRootNode.ShortExpression;
+   if (length(result)>0) and (result[1]='(') then begin
+    result:=copy(result,2,length(result)-2);
+   end;
+  end;
+  if length(result)=0 then begin
+   result:='*';
+  end;
+ finally
+  CriticalSection.Leave;
+ end;
+end;
+
+function TFLRE.GetPrefilterSQLBooleanFullTextExpression:ansistring;
+begin
+ result:='';
+ CriticalSection.Enter;
+ try
+  if not HasPrefilter then begin
+   PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
+   PrefilterRootNode:=PrefilterOptimize(PrefilterRootNode);
+   HasPrefilter:=true;
+  end;
+  if assigned(PrefilterRootNode) then begin
+   result:=PrefilterRootNode.SQLBooleanFullTextExpression;
+   if (length(result)>0) and (result[1]='(') then begin
+    result:=copy(result,2,length(result)-2);
+   end;
+  end;
+ finally
+  CriticalSection.Leave;
+ end;
+end;
+
+function TFLRE.GetPrefilterSQLExpression(Field:ansistring):ansistring;
+begin
+ result:='';
+ CriticalSection.Enter;
+ try
+  if not HasPrefilter then begin
+   PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
+   PrefilterRootNode:=PrefilterOptimize(PrefilterRootNode);
+   HasPrefilter:=true;
+  end;
+  if assigned(PrefilterRootNode) then begin
+   if length(trim(String(Field)))=0 then begin
+    Field:='textfield';
+   end;
+   result:=PrefilterRootNode.SQLExpression(Field);
+  end;
+ finally
+  CriticalSection.Leave;
+ end;
+ if length(result)=0 then begin
+  result:='('+Field+' LIKE "%")';
  end;
 end;
 
