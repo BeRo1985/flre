@@ -589,7 +589,12 @@ type EFLRE=class(Exception);
 
        function IsWordChar(const CharValue:longword):boolean; {$ifdef caninline}inline;{$endif}
 
-       function SearchMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
+       function AcquireThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+       procedure ReleaseThreadLocalStorageInstance(const ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
+
+       function SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
+
+       function InternalPtrMatchNext(const ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
 
       public
 
@@ -10172,117 +10177,123 @@ begin
  end;
 end;
 
-function TFLRE.SearchMatch(const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
-var MatchBegin,MatchEnd:longint;
-    HaveResult:boolean;
-    ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+function TFLRE.AcquireThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
- result:=false;
  ThreadLocalStorageInstanceManagerCriticalSection.Enter;
  try
-  ThreadLocalStorageInstance:=FreeThreadLocalStorageInstances;
-  if assigned(ThreadLocalStorageInstance) then begin
-   FreeThreadLocalStorageInstances:=ThreadLocalStorageInstance.FreeNext;
+  result:=FreeThreadLocalStorageInstances;
+  if assigned(result) then begin
+   FreeThreadLocalStorageInstances:=result.FreeNext;
   end else begin
-   ThreadLocalStorageInstance:=TFLREThreadLocalStorageInstance.Create(self);
-   ThreadLocalStorageInstance.AllNext:=ThreadLocalStorageInstances;
-   ThreadLocalStorageInstances:=ThreadLocalStorageInstance;
+   result:=TFLREThreadLocalStorageInstance.Create(self);
+   result.AllNext:=ThreadLocalStorageInstances;
+   ThreadLocalStorageInstances:=result;
   end;
  finally
   ThreadLocalStorageInstanceManagerCriticalSection.Leave;
  end;
+end;
+
+procedure TFLRE.ReleaseThreadLocalStorageInstance(const ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
+begin
+ ThreadLocalStorageInstanceManagerCriticalSection.Enter;
  try
-  ThreadLocalStorageInstance.Input:=AInput;
-  ThreadLocalStorageInstance.InputLength:=AInputLength;
-  repeat
-   case ThreadLocalStorageInstance.SearchMatchDFA(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
-    DFAMatch:begin
-     if UnanchoredStart then begin
-      // For unanchored searchs, we must do also a "backward" DFA search
-      case ThreadLocalStorageInstance.SearchMatchReversedDFA(MatchEnd,StartPosition,MatchBegin) of
-       DFAMatch:begin
-        if MatchBegin<StartPosition then begin
-         MatchBegin:=StartPosition;
-        end;
-        if (CountCaptures=1) and not DFANeedVerification then begin
-         // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-         SetLength(Captures,1);
-         Captures[0].Start:=MatchBegin;
-         Captures[0].Length:=(MatchEnd-MatchBegin)+1;
-         result:=true;
-         break;
-        end else begin
-         // Otherwise if we have group captures or if we do need verify the found, set the new stat position *NFA algorithms
-         StartPosition:=MatchBegin;
-         UnanchoredStart:=true;
-        end;
-       end;
-      end;
-     end;
-     if (CountCaptures=1) and not (DFANeedVerification or UnanchoredStart) then begin
-      // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-      SetLength(Captures,1);
-      Captures[0].Start:=StartPosition;
-      Captures[0].Length:=(MatchEnd-StartPosition)+1;
-      result:=true;
-      break;
-     end else begin
-      // Otherwise if we have group captures or if we do need verify the found, limit search length for the slower *NFA algorithms
-      if UntilExcludingPosition>(MatchEnd+1) then begin
-       UntilExcludingPosition:=MatchEnd+1;
-      end;
-     end;
-    end;
-    DFAFail:begin
-     // No DFA match => stop
-     result:=false;
-     break;
-    end;
-    else {DFAError:}begin
-     // Internal error?
-{$ifdef debug}
-     Assert(false,'Internal error in DFA code');
-{$endif}
-    end;
-   end;
-   if OnePassNFAReady and not UnanchoredStart then begin
-    result:=ThreadLocalStorageInstance.SearchMatchOnePassNFA(Captures,StartPosition,UntilExcludingPosition);
-   end else begin
-    if BitStateNFAReady then begin
-     case ThreadLocalStorageInstance.SearchMatchBitStateNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
-      BitStateNFAFail:begin
-       result:=false;
-       break;
-      end;
-      BitStateNFAMatch:begin
-       result:=true;
-       break;
-      end;
-(*    else{BitStateNFAError:}begin
-      end;*)
-     end;
-    end;
-    result:=ThreadLocalStorageInstance.SearchMatchParallelNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart);
-   end;
-   break;
-  until true;
+  ThreadLocalStorageInstance.FreeNext:=FreeThreadLocalStorageInstances;
+  FreeThreadLocalStorageInstances:=ThreadLocalStorageInstance;
  finally
-  ThreadLocalStorageInstanceManagerCriticalSection.Enter;
-  try
-   ThreadLocalStorageInstance.FreeNext:=FreeThreadLocalStorageInstances;
-   FreeThreadLocalStorageInstances:=ThreadLocalStorageInstance;
-  finally
-   ThreadLocalStorageInstanceManagerCriticalSection.Leave;
+  ThreadLocalStorageInstanceManagerCriticalSection.Leave;
+ end;
+end;
+
+function TFLRE.SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AInput:pointer;const AInputLength:longint;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
+var MatchBegin,MatchEnd:longint;
+begin
+ result:=false;
+ ThreadLocalStorageInstance.Input:=AInput;
+ ThreadLocalStorageInstance.InputLength:=AInputLength;
+ case ThreadLocalStorageInstance.SearchMatchDFA(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
+  DFAMatch:begin
+   if UnanchoredStart then begin
+    // For unanchored searchs, we must do also a "backward" DFA search
+    case ThreadLocalStorageInstance.SearchMatchReversedDFA(MatchEnd,StartPosition,MatchBegin) of
+     DFAMatch:begin
+      if MatchBegin<StartPosition then begin
+       MatchBegin:=StartPosition;
+      end;
+      if (CountCaptures=1) and not DFANeedVerification then begin
+       // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
+       SetLength(Captures,1);
+       Captures[0].Start:=MatchBegin;
+       Captures[0].Length:=(MatchEnd-MatchBegin)+1;
+       result:=true;
+       exit;
+      end else begin
+       // Otherwise if we have group captures or if we do need verify the found, set the new stat position *NFA algorithms
+       StartPosition:=MatchBegin;
+       UnanchoredStart:=true;
+      end;
+     end;
+    end;
+   end;
+   if (CountCaptures=1) and not (DFANeedVerification or UnanchoredStart) then begin
+    // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
+    SetLength(Captures,1);
+    Captures[0].Start:=StartPosition;
+    Captures[0].Length:=(MatchEnd-StartPosition)+1;
+    result:=true;
+    exit;
+   end else begin
+    // Otherwise if we have group captures or if we do need verify the found, limit search length for the slower *NFA algorithms
+    if UntilExcludingPosition>(MatchEnd+1) then begin
+     UntilExcludingPosition:=MatchEnd+1;
+    end;
+   end;
   end;
+  DFAFail:begin
+   // No DFA match => stop
+   result:=false;
+   exit;
+  end;
+  else {DFAError:}begin
+   // Internal error?
+{$ifdef debug}
+   Assert(false,'Internal error in DFA code');
+{$endif}
+  end;
+ end;
+ if OnePassNFAReady and not UnanchoredStart then begin
+  result:=ThreadLocalStorageInstance.SearchMatchOnePassNFA(Captures,StartPosition,UntilExcludingPosition);
+ end else begin
+  if BitStateNFAReady then begin
+   case ThreadLocalStorageInstance.SearchMatchBitStateNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
+    BitStateNFAFail:begin
+     result:=false;
+     exit;
+    end;
+    BitStateNFAMatch:begin
+     result:=true;
+     exit;
+    end;
+(*  else{BitStateNFAError:}begin
+    end;*)
+   end;
+  end;
+  result:=ThreadLocalStorageInstance.SearchMatchParallelNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart);
  end;
 end;
 
 function TFLRE.PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
+var ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
- result:=SearchMatch(Input,InputLength,Captures,StartPosition,InputLength,false);
+ ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+ try
+  result:=SearchMatch(ThreadLocalStorageInstance,Input,InputLength,Captures,StartPosition,InputLength,false);
+ finally
+  ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
+ end;
 end;
 
-function TFLRE.PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
+function TFLRE.InternalPtrMatchNext(const ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
 var CurrentPosition:longint;
 begin
  result:=false;
@@ -10310,7 +10321,7 @@ begin
       Captures[0].Start:=CurrentPosition;
       Captures[0].Length:=FixedStringLength;
       result:=true;
-      exit;
+      break;
      end;
     end else if CountPrefixCharClasses>0 then begin
      case CountPrefixCharClasses of
@@ -10328,46 +10339,67 @@ begin
      end;
     end;
    end;
-   if SearchMatch(Input,InputLength,Captures,CurrentPosition,InputLength,DoUnanchoredStart) then begin
+   if SearchMatch(ThreadLocalStorageInstance,Input,InputLength,Captures,CurrentPosition,InputLength,DoUnanchoredStart) then begin
     result:=true;
-    exit;
+    break;
    end;
    inc(CurrentPosition);
   until (CurrentPosition>=InputLength) or (BeginningWildcardLoop or BeginningAnchor);
  end;
 end;
 
+function TFLRE.PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
+var ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+begin
+ if (StartPosition>=0) and (StartPosition<InputLength) then begin
+  ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+  try
+   result:=InternalPtrMatchNext(ThreadLocalStorageInstance,Input,InputLength,Captures,StartPosition);
+  finally
+   ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
+  end;
+ end else begin
+  result:=false;
+ end;
+end;
+
 function TFLRE.PtrMatchAll(const Input:pointer;const InputLength:longint;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
 var CurrentPosition,CountMultiCaptures,Next:longint;
     MatchResult:TFLRECaptures;
+    ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
  result:=false;
  MatchResult:=nil;
  CountMultiCaptures:=0;
- try
-  SetLength(MultiCaptures,0);
-  CurrentPosition:=StartPosition;
-  if CurrentPosition>=0 then begin
-   while (CurrentPosition<InputLength) and (Limit<>0) and PtrMatchNext(Input,InputLength,MatchResult,CurrentPosition) do begin
-    Next:=CurrentPosition+1;
-    CurrentPosition:=MatchResult[0].Start+MatchResult[0].Length;
-    if CurrentPosition<Next then begin
-     CurrentPosition:=Next;
+ SetLength(MultiCaptures,0);
+ CurrentPosition:=StartPosition;
+ if CurrentPosition>=0 then begin
+  try
+   ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+   try
+    while (CurrentPosition<InputLength) and (Limit<>0) and InternalPtrMatchNext(ThreadLocalStorageInstance,Input,InputLength,MatchResult,CurrentPosition) do begin
+     Next:=CurrentPosition+1;
+     CurrentPosition:=MatchResult[0].Start+MatchResult[0].Length;
+     if CurrentPosition<Next then begin
+      CurrentPosition:=Next;
+     end;
+     if CountMultiCaptures>=length(MultiCaptures) then begin
+      SetLength(MultiCaptures,(CountMultiCaptures+1)*2);
+     end;
+     MultiCaptures[CountMultiCaptures]:=copy(MatchResult);
+     inc(CountMultiCaptures);
+     if Limit>0 then begin
+      dec(Limit);
+     end;
     end;
-    if CountMultiCaptures>=length(MultiCaptures) then begin
-     SetLength(MultiCaptures,(CountMultiCaptures+1)*2);
-    end;
-    MultiCaptures[CountMultiCaptures]:=copy(MatchResult);
-    inc(CountMultiCaptures);
-    if Limit>0 then begin
-     dec(Limit);
-    end;
+    result:=CountMultiCaptures>0;
+   finally
+    ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
    end;
-   result:=CountMultiCaptures>0;
+  finally
+   SetLength(MatchResult,0);
+   SetLength(MultiCaptures,CountMultiCaptures);
   end;
- finally
-  SetLength(MatchResult,0);
-  SetLength(MultiCaptures,CountMultiCaptures);
  end;
 end;
 
@@ -10376,214 +10408,220 @@ var CurrentPosition,Next,LastPosition,i,j,e:longint;
     Captures:TFLRECaptures;
     SimpleReplacement:boolean;
     c,cc:ansichar;
+    ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
  result:='';
  Captures:=nil;
- try                       
+ try
   SimpleReplacement:=(PtrPosChar('$',Replacement,ReplacementLength)<0) and (PtrPosChar('\',Replacement,ReplacementLength)<0);
   CurrentPosition:=StartPosition;
   LastPosition:=CurrentPosition;
   if CurrentPosition>=0 then begin
-   while (CurrentPosition<InputLength) and (Limit<>0) and PtrMatchNext(Input,InputLength,Captures,CurrentPosition) do begin
-    Next:=CurrentPosition+1;
-    if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
-     CurrentPosition:=Captures[0].Start+Captures[0].Length;
-     if CurrentPosition<Next then begin
-      CurrentPosition:=Next;
-     end;
-    end else begin
-     if LastPosition<Captures[0].Start then begin
-      result:=result+PtrCopy(PAnsiChar(Input),LastPosition,Captures[0].Start-LastPosition);
-     end;
-     CurrentPosition:=Captures[0].Start+Captures[0].Length;
-     if CurrentPosition<Next then begin
-      CurrentPosition:=Next;
-     end;
-     LastPosition:=CurrentPosition;
-     if SimpleReplacement then begin
-      result:=result+PtrCopy(PAnsiChar(Replacement),0,ReplacementLength);
+   ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+   try
+    while (CurrentPosition<InputLength) and (Limit<>0) and InternalPtrMatchNext(ThreadLocalStorageInstance,Input,InputLength,Captures,CurrentPosition) do begin
+     Next:=CurrentPosition+1;
+     if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
+      CurrentPosition:=Captures[0].Start+Captures[0].Length;
+      if CurrentPosition<Next then begin
+       CurrentPosition:=Next;
+      end;
      end else begin
-      i:=0;
-      while i<ReplacementLength do begin
-       c:=PAnsiChar(Replacement)[i];
-       case c of
-        '$','\':begin
-         cc:=c;
-         inc(i);
-         if i<ReplacementLength then begin
-          c:=PAnsiChar(Replacement)[i];
-          case c of
-           '$':begin
-            if cc='$' then begin
-             result:=result+c;
-             inc(i);
-            end else begin
-             result:=result+'\$';
+      if LastPosition<Captures[0].Start then begin
+       result:=result+PtrCopy(PAnsiChar(Input),LastPosition,Captures[0].Start-LastPosition);
+      end;
+      CurrentPosition:=Captures[0].Start+Captures[0].Length;
+      if CurrentPosition<Next then begin
+       CurrentPosition:=Next;
+      end;
+      LastPosition:=CurrentPosition;
+      if SimpleReplacement then begin
+       result:=result+PtrCopy(PAnsiChar(Replacement),0,ReplacementLength);
+      end else begin
+       i:=0;
+       while i<ReplacementLength do begin
+        c:=PAnsiChar(Replacement)[i];
+        case c of
+         '$','\':begin
+          cc:=c;
+          inc(i);
+          if i<ReplacementLength then begin
+           c:=PAnsiChar(Replacement)[i];
+           case c of
+            '$':begin
+             if cc='$' then begin
+              result:=result+c;
+              inc(i);
+             end else begin
+              result:=result+'\$';
+              inc(i);
+             end;
+            end;
+            '\':begin
+             if cc='\' then begin
+              result:=result+c;
+              inc(i);
+             end else begin
+              result:=result+'$\';
+              inc(i);
+             end;
+            end;
+            '&':begin
+             result:=result+PtrCopy(PAnsiChar(Input),Captures[0].Start,Captures[0].Length);
              inc(i);
             end;
-           end;
-           '\':begin
-            if cc='\' then begin
-             result:=result+c;
-             inc(i);
-            end else begin
-             result:=result+'$\';
+            '`':begin
+             result:=result+PtrCopy(PAnsiChar(Input),0,Captures[0].Start-1);
              inc(i);
             end;
-           end;
-           '&':begin
-            result:=result+PtrCopy(PAnsiChar(Input),Captures[0].Start,Captures[0].Length);
-            inc(i);
-           end;
-           '`':begin
-            result:=result+PtrCopy(PAnsiChar(Input),0,Captures[0].Start-1);
-            inc(i);
-           end;
-           '''':begin
-            result:=result+PtrCopy(PAnsiChar(Input),Captures[0].Start+Captures[0].Length,(InputLength-(Captures[0].Start+Captures[0].Length))+1);
-            inc(i);
-           end;
-           '_':begin
-            result:=result+AnsiString(PAnsiChar(Input));
-            inc(i);
-           end;
-           '-':begin
-            if length(Captures)>1 then begin
-             result:=result+PtrCopy(PAnsiChar(Input),Captures[1].Start,Captures[1].Length);
+            '''':begin
+             result:=result+PtrCopy(PAnsiChar(Input),Captures[0].Start+Captures[0].Length,(InputLength-(Captures[0].Start+Captures[0].Length))+1);
+             inc(i);
             end;
-            inc(i);
-           end;
-           '+':begin
-            if length(Captures)>1 then begin
-             e:=length(Captures)-1;
-             result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
+            '_':begin
+             result:=result+AnsiString(PAnsiChar(Input));
+             inc(i);
             end;
-            inc(i);
-           end;
-           'g':begin
-            if cc='\' then begin
+            '-':begin
+             if length(Captures)>1 then begin
+              result:=result+PtrCopy(PAnsiChar(Input),Captures[1].Start,Captures[1].Length);
+             end;
+             inc(i);
+            end;
+            '+':begin
+             if length(Captures)>1 then begin
+              e:=length(Captures)-1;
+              result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
+             end;
+             inc(i);
+            end;
+            'g':begin
+             if cc='\' then begin
+              e:=-1;
+              inc(i);
+              j:=i;
+              while i<ReplacementLength do begin
+               if PAnsiChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
+                inc(i);
+               end else begin
+                break;
+               end;
+              end;
+              if j<i then begin
+               e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(Replacement),j,i-j));
+              end;
+              if e<0 then begin
+               result:=result+cc+'g';
+               i:=j;
+              end else begin
+               if (e>=0) and (e<length(Captures)) then begin
+                result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
+               end;
+              end;
+             end else begin
+              result:=result+cc+'g';
+              inc(i);
+             end;
+            end;
+            '{':begin
              e:=-1;
              inc(i);
              j:=i;
-             while i<ReplacementLength do begin
-              if PAnsiChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
-               inc(i);
-              end else begin
-               break;
+             if i<ReplacementLength then begin
+              case PAnsiChar(Replacement)[i] of
+               '0'..'9':begin
+                e:=0;
+                while i<ReplacementLength do begin
+                 c:=PAnsiChar(Replacement)[i];
+                 case c of
+                  '0'..'9':begin
+                   e:=(e*10)+(ord(c)-ord('0'));
+                   inc(i);
+                  end;
+                  else begin
+                   break;
+                  end;
+                 end;
+                end;
+                if (i<ReplacementLength) and (PAnsiChar(Replacement)[i]='}') then begin
+                 inc(i);
+                end else begin
+                 e:=-1;
+                end;
+               end;
+               else begin
+                while i<ReplacementLength do begin
+                 if PAnsiChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
+                  inc(i);
+                 end else begin
+                  break;
+                 end;
+                end;
+                if (j<i) and (PAnsiChar(Replacement)[i]='}') then begin
+                 e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(Replacement),j,i-j));
+                 inc(i);
+                end else begin
+                 e:=-1;
+                end;
+               end;
               end;
              end;
-             if j<i then begin
-              e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(Replacement),j,i-j));
-             end;
              if e<0 then begin
-              result:=result+cc+'g';
+              result:=result+cc+'{';
               i:=j;
              end else begin
               if (e>=0) and (e<length(Captures)) then begin
                result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
               end;
              end;
-            end else begin
-             result:=result+cc+'g';
-             inc(i);
             end;
-           end;
-           '{':begin
-            e:=-1;
-            inc(i);
-            j:=i;
-            if i<ReplacementLength then begin
-             case PAnsiChar(Replacement)[i] of
-              '0'..'9':begin
-               e:=0;
-               while i<ReplacementLength do begin
-                c:=PAnsiChar(Replacement)[i];
-                case c of
-                 '0'..'9':begin
-                  e:=(e*10)+(ord(c)-ord('0'));
-                  inc(i);
-                 end;
-                 else begin
-                  break;
-                 end;
-                end;
-               end;
-               if (i<ReplacementLength) and (PAnsiChar(Replacement)[i]='}') then begin
-                inc(i);
-               end else begin
-                e:=-1;
-               end;
-              end;
-              else begin
-               while i<ReplacementLength do begin
-                if PAnsiChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
+            '0'..'9':begin
+             if length(Captures)<10 then begin
+              e:=ord(c)-ord('0');
+              inc(i);
+             end else begin
+              e:=0;
+              while i<ReplacementLength do begin
+               c:=PAnsiChar(Replacement)[i];
+               case c of
+                '0'..'9':begin
+                 e:=(e*10)+(ord(c)-ord('0'));
                  inc(i);
-                end else begin
+                end;
+                else begin
                  break;
                 end;
                end;
-               if (j<i) and (PAnsiChar(Replacement)[i]='}') then begin
-                e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(Replacement),j,i-j));
-                inc(i);
-               end else begin
-                e:=-1;
-               end;
               end;
              end;
-            end;
-            if e<0 then begin
-             result:=result+cc+'{';
-             i:=j;
-            end else begin
              if (e>=0) and (e<length(Captures)) then begin
               result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
              end;
             end;
-           end;
-           '0'..'9':begin
-            if length(Captures)<10 then begin
-             e:=ord(c)-ord('0');
+            else begin
+             result:=result+c;
              inc(i);
-            end else begin
-             e:=0;
-             while i<ReplacementLength do begin
-              c:=PAnsiChar(Replacement)[i];
-              case c of
-               '0'..'9':begin
-                e:=(e*10)+(ord(c)-ord('0'));
-                inc(i);
-               end;
-               else begin
-                break;
-               end;
-              end;
-             end;
             end;
-            if (e>=0) and (e<length(Captures)) then begin
-             result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
-            end;
-           end;
-           else begin
-            result:=result+c;
-            inc(i);
            end;
           end;
          end;
-        end;
-        else begin
-         result:=result+c;
-         inc(i);
+         else begin
+          result:=result+c;
+          inc(i);
+         end;
         end;
        end;
       end;
      end;
+     if Limit>0 then begin
+      dec(Limit);
+     end;
     end;
-    if Limit>0 then begin
-     dec(Limit);
+    if LastPosition<InputLength then begin
+     result:=result+PtrCopy(PAnsiChar(Input),LastPosition,InputLength-LastPosition);
     end;
-   end;
-   if LastPosition<InputLength then begin
-    result:=result+PtrCopy(PAnsiChar(Input),LastPosition,InputLength-LastPosition);
+   finally
+    ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
    end;
   end;
  finally
