@@ -103,7 +103,7 @@ uses SysUtils,Classes,Math,SyncObjs,FLREUnicode;
 
 const FLREVersion=$00000001;
 
-      FLREVersionString='1.00.2015.08.24.1633';
+      FLREVersionString='1.00.2015.08.25.20.49.0000';
 
       MaxPrefixCharClasses=32;
 
