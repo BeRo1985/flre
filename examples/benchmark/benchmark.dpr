@@ -50,6 +50,7 @@ begin
      FLREInstance.MatchAll(s,Captures);
      t2:=GetTickCount;
      writeln(t2-t1:5,' ms ',length(Captures));
+     //writeln(FLREInstance.DumpRegularExpression);
     finally
      SetLength(Captures,0);
      FLREInstance.Free;

@@ -10621,7 +10621,7 @@ end;
 function TFLRE.DumpRegularExpression:ansistring;
  function ProcessNode(Node:PFLRENode):ansistring;
  const HexChars:array[$0..$f] of ansichar='0123456789abcdef';
- var Count:longint;
+ var Count,Counter,LowChar,HighChar:longint;
      SingleChar,CurrentChar:ansichar;
  begin
   result:='';
@@ -10629,7 +10629,7 @@ function TFLRE.DumpRegularExpression:ansistring;
    case Node^.NodeType of
     ntALT:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT,ntCAT] then begin
+      if Node^.Left^.NodeType in [ntCAT] then begin
        result:=result+'(?:'+ProcessNode(Node^.Left)+')';
       end else begin
        result:=result+ProcessNode(Node^.Left);
@@ -10637,7 +10637,7 @@ function TFLRE.DumpRegularExpression:ansistring;
      end;
      result:=result+'|';
      if assigned(Node^.Right) then begin
-      if Node^.Right^.NodeType in [ntALT,ntCAT] then begin
+      if Node^.Right^.NodeType in [ntCAT] then begin
        result:=result+'(?:'+ProcessNode(Node^.Right)+')';
       end else begin
        result:=result+ProcessNode(Node^.Right);
@@ -10646,14 +10646,14 @@ function TFLRE.DumpRegularExpression:ansistring;
     end;
     ntCAT:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT,ntCAT] then begin
+      if Node^.Left^.NodeType in [ntALT] then begin
        result:=result+'(?:'+ProcessNode(Node^.Left)+')';
       end else begin
        result:=result+ProcessNode(Node^.Left);
       end;
      end;
      if assigned(Node^.Right) then begin
-      if Node^.Right^.NodeType in [ntALT,ntCAT] then begin
+      if Node^.Right^.NodeType in [ntALT] then begin
        result:=result+'(?:'+ProcessNode(Node^.Right)+')';
       end else begin
        result:=result+ProcessNode(Node^.Right);
@@ -10675,12 +10675,52 @@ function TFLRE.DumpRegularExpression:ansistring;
       end;
      end;
      if Count=1 then begin
-      if SingleChar in ['a'..'z','A'..'Z','0'..'9','_','@'] then begin
+      if SingleChar in ['a'..'z','A'..'Z','0'..'9','_','@',' ','/'] then begin
        result:=result+SingleChar;
       end else begin
        result:=result+'\x'+HexChars[byte(ansichar(SingleChar)) shr 4]+HexChars[byte(ansichar(SingleChar)) and $f];
       end;
      end else begin
+      result:=result+'[';
+      Counter:=0;
+      while Counter<256 do begin
+       CurrentChar:=ansichar(byte(Counter));
+       if CurrentChar in Node^.CharClass then begin
+        LowChar:=Counter;
+        HighChar:=Counter;
+        while Counter<256 do begin
+         CurrentChar:=ansichar(byte(Counter));
+         if CurrentChar in Node^.CharClass then begin
+          HighChar:=Counter;
+          inc(Counter);
+         end else begin
+          break;
+         end;
+        end;
+        if LowChar=HighChar then begin
+         if ansichar(byte(LowChar)) in ['a'..'z','A'..'Z','0'..'9','_','@',' ','/'] then begin
+          result:=result+ansichar(byte(LowChar));
+         end else begin
+          result:=result+'\x'+HexChars[LowChar shr 4]+HexChars[LowChar and $f];
+         end;
+        end else begin
+         if ansichar(byte(LowChar)) in ['a'..'z','A'..'Z','0'..'9','_','@',' ','/'] then begin
+          result:=result+ansichar(byte(LowChar));
+         end else begin
+          result:=result+'\x'+HexChars[LowChar shr 4]+HexChars[LowChar and $f];
+         end;
+         result:=result+'-';
+         if ansichar(byte(HighChar)) in ['a'..'z','A'..'Z','0'..'9','_','@',' ','/'] then begin
+          result:=result+ansichar(byte(HighChar));
+         end else begin
+          result:=result+'\x'+HexChars[HighChar shr 4]+HexChars[HighChar and $f];
+         end;
+        end;
+       end else begin
+        inc(Counter);
+       end;
+      end;
+      result:=result+']';
      end;
     end;
     ntANY:begin
