@@ -627,7 +627,13 @@ function FLREGetVersionString:pansichar; {$ifdef win32}{$ifdef cpu386}stdcall;{$
 function FLRECreate(const RegularExpression:PAnsiChar;const Flags:longword;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 procedure FLREDestroy(const Instance:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 procedure FLREFree(const Data:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
-function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar;const LowRangeLength,HighRangeLength:PLongint):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetNamedGroupIndex(const Instance:pointer;const GroupName:pansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREDumpRegularExpression(const Instance:pointer;const RegularExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetPrefilterExpression(const Instance:pointer;const Expression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetPrefilterShortExpression(const Instance:pointer;const ShortExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetPrefilterSQLBooleanFullTextExpression(const Instance:pointer;const SQLBooleanFullTextExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetPrefilterSQLExpression(const Instance:pointer;const Field:pansichar;SQLExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar;const LowRangeLength,HighRangeLength:PLongint;const Error:PPAnsiChar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 
 implementation
 
@@ -11002,7 +11008,252 @@ begin
  FreeMem(Data);
 end;
 
-function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar;const LowRangeLength,HighRangeLength:PLongint):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetNamedGroupIndex(const Instance:pointer;const GroupName:pansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+begin
+ if assigned(Instance) then begin
+  result:=TFLRE(Instance).NamedGroupStringIntegerPairHashMap.GetValue(GroupName);
+ end else begin
+  result:=-1;
+ end;
+end;
+
+function FLREDumpRegularExpression(const Instance:pointer;const RegularExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+var s:ansistring;
+    Len:longint;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(RegularExpression) and assigned(RegularExpression^) then begin
+  FreeMem(RegularExpression^);
+  RegularExpression^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(RegularExpression) then begin
+    s:=TFLRE(Instance).DumpRegularExpression;
+    Len:=length(s);
+    if Len>0 then begin
+     GetMem(RegularExpression^,(Len+1)*SizeOf(AnsiChar));
+     Move(s[1],RegularExpression^[0],Len);
+     RegularExpression^[Len]:=#0;
+    end else begin
+     RegularExpression^:=nil;
+    end;
+    s:='';
+   end;
+   result:=1;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=AnsiString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLREGetPrefilterExpression(const Instance:pointer;const Expression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+var s:ansistring;
+    Len:longint;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(Expression) and assigned(Expression^) then begin
+  FreeMem(Expression^);
+  Expression^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(Expression) then begin
+    s:=TFLRE(Instance).GetPrefilterExpression;
+    Len:=length(s);
+    if Len>0 then begin
+     GetMem(Expression^,(Len+1)*SizeOf(AnsiChar));
+     Move(s[1],Expression^[0],Len);
+     Expression^[Len]:=#0;
+    end else begin
+     Expression^:=nil;
+    end;
+    s:='';
+   end;
+   result:=1;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=AnsiString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLREGetPrefilterShortExpression(const Instance:pointer;const ShortExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+var s:ansistring;
+    Len:longint;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(ShortExpression) and assigned(ShortExpression^) then begin
+  FreeMem(ShortExpression^);
+  ShortExpression^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(ShortExpression) then begin
+    s:=TFLRE(Instance).GetPrefilterShortExpression;
+    Len:=length(s);
+    if Len>0 then begin
+     GetMem(ShortExpression^,(Len+1)*SizeOf(AnsiChar));
+     Move(s[1],ShortExpression^[0],Len);
+     ShortExpression^[Len]:=#0;
+    end else begin
+     ShortExpression^:=nil;
+    end;
+    s:='';
+   end;
+   result:=1;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=AnsiString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLREGetPrefilterSQLBooleanFullTextExpression(const Instance:pointer;const SQLBooleanFullTextExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+var s:ansistring;
+    Len:longint;
+begin
+ result:=0;
+ if assigned(SQLBooleanFullTextExpression) and assigned(SQLBooleanFullTextExpression^) then begin
+  FreeMem(SQLBooleanFullTextExpression^);
+  SQLBooleanFullTextExpression^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(SQLBooleanFullTextExpression) then begin
+    s:=TFLRE(Instance).GetPrefilterSQLBooleanFullTextExpression;
+    Len:=length(s);
+    if Len>0 then begin
+     GetMem(SQLBooleanFullTextExpression^,(Len+1)*SizeOf(AnsiChar));
+     Move(s[1],SQLBooleanFullTextExpression^[0],Len);
+     SQLBooleanFullTextExpression^[Len]:=#0;
+    end else begin
+     SQLBooleanFullTextExpression^:=nil;
+    end;
+    s:='';
+   end;
+   result:=1;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=AnsiString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLREGetPrefilterSQLExpression(const Instance:pointer;const Field:pansichar;SQLExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+var s:ansistring;
+    Len:longint;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(SQLExpression) and assigned(SQLExpression^) then begin
+  FreeMem(SQLExpression^);
+  SQLExpression^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(SQLExpression) then begin
+    s:=TFLRE(Instance).GetPrefilterSQLExpression(Field);
+    Len:=length(s);
+    if Len>0 then begin
+     GetMem(SQLExpression^,(Len+1)*SizeOf(AnsiChar));
+     Move(s[1],SQLExpression^[0],Len);
+     SQLExpression^[Len]:=#0;
+    end else begin
+     SQLExpression^:=nil;
+    end;
+    s:='';
+   end;
+   result:=1;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=AnsiString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar;const LowRangeLength,HighRangeLength:PLongint;const Error:PPAnsiChar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 var LocalLowRange,LocalHighRange:ansistring;
 begin
  LocalLowRange:='';
