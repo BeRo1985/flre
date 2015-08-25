@@ -5004,6 +5004,9 @@ begin
      inc(StackPointer);
      Instruction:=Instruction^.Next;
     end;
+    opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK:begin
+     Instruction:=Instruction^.Next;
+    end;
     else begin
      if State.CountInstructions>=length(State.Instructions) then begin
       SetLength(State.Instructions,(State.CountInstructions+1)*2);
@@ -5021,7 +5024,7 @@ begin
   end;
  end;
 end;
-                                           
+
 function TFLREThreadLocalStorageInstance.DFAProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
 var Counter:longint;
     Instruction:PFLREInstruction;
@@ -5466,7 +5469,7 @@ begin
   if (MatchCondition<>sfImpossible) and (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
    if ((MatchCondition and sfCapMask)<>0) and (TwoCountOfCaptures>0) then begin
     for Counter:=0 to TwoCountOfCaptures-1 do begin
-     if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin
+     if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin   
       OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
      end;
     end;
