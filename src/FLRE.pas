@@ -559,6 +559,9 @@ type EFLRE=class(Exception);
        function MatchAll(const Input:ansistring;var Captures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function ReplaceAll(const AInput,AReplacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
 
+       function GetRangeLow:ansistring;
+       function GetRangeHigh:ansistring;
+
       published
 
        property NamedGroups:TStringList read NamedGroupStringList;
@@ -5586,8 +5589,6 @@ begin
 
   CountSubMatches:=(CountParens+1)*2;
 
-  CompileRange;
-
   CompilePrefix;
 
   CompileFixedStringSearch;
@@ -9794,6 +9795,32 @@ end;
 function TFLRE.ReplaceAll(const AInput,AReplacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
 begin
  result:=PtrReplaceAll(pansichar(@AInput[1]),length(AInput),pansichar(@AReplacement[1]),length(AReplacement),StartPosition-1,Limit);
+end;
+
+function TFLRE.GetRangeLow:ansistring;
+begin
+ CriticalSection.Enter;
+ try
+  if not HasRange then begin
+   CompileRange;
+  end;
+  result:=RangeLow;
+ finally
+  CriticalSection.Leave;
+ end;
+end;
+
+function TFLRE.GetRangeHigh:ansistring;
+begin
+ CriticalSection.Enter;
+ try
+  if not HasRange then begin
+   CompileRange;
+  end;
+  result:=RangeHigh;
+ finally
+  CriticalSection.Leave;
+ end;
 end;
 
 procedure InitializeFLRE;
