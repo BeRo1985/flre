@@ -639,6 +639,8 @@ function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLen
 function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const MultiCaptures:PPointer;const CountMultiCaptures,CountCaptures:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
 function FLREReplaceAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const ResultString:PPointer;const ResultStringLength:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
 
+procedure InitializeFLRE;
+
 implementation
 
 const MaxDFAStates=16384;
