@@ -107,7 +107,7 @@ const FLREVersion=$00000001;
 
       MaxPrefixCharClasses=32;
 
-      carfCASEINSENSITIVE=1 shl 0;
+      carfIGNORECASE=1 shl 0;
       carfSINGLELINE=1 shl 1;
       carfMULTILINE=1 shl 2;
       carfFREESPACING=1 shl 3;
@@ -152,7 +152,7 @@ type EFLRE=class(Exception);
      TFLRE=class;
 
      PFLREFlag=^TFLREFlag;
-     TFLREFlag=(rfCASEINSENSITIVE,
+     TFLREFlag=(rfIGNORECASE,
                 rfSINGLELINE,
                 rfMULTILINE,
                 rfFREESPACING,
@@ -624,9 +624,10 @@ type EFLRE=class(Exception);
 
 function FLREGetVersion:longword; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetVersionString:pansichar; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
-function FLRECreate(const RegularExpression:PAnsiChar;const Flags:longword;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLRECreate(const RegularExpression:PAnsiChar;const RegularExpressionLength:longint;const Flags:longword;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 procedure FLREDestroy(const Instance:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 procedure FLREFree(const Data:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetCountCaptures(const Instance:pointer):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetNamedGroupIndex(const Instance:pointer;const GroupName:pansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREDumpRegularExpression(const Instance:pointer;const RegularExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetPrefilterExpression(const Instance:pointer;const Expression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
@@ -5912,10 +5913,10 @@ begin
      end;
     end;
     'i':begin
-     if rfCASEINSENSITIVE in Flags then begin
+     if rfIGNORECASE in Flags then begin
       raise EFLRE.Create('Too many ignore-case regular expression modifier flags');
      end else begin
-      Include(Flags,rfCASEINSENSITIVE);
+      Include(Flags,rfIGNORECASE);
      end;
     end;
     'n':begin
@@ -6912,7 +6913,7 @@ var SourcePosition,SourceLength:longint;
  begin
   LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
   UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-  if (rfCASEINSENSITIVE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
+  if (rfIGNORECASE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
    if (rfUTF8 in Flags) and ((LowerCaseUnicodeChar>=$80) or (UpperCaseUnicodeChar>=$80)) then begin
     result:=NewAlt(NewCharEx(LowerCaseUnicodeChar),NewCharEx(UpperCaseUnicodeChar));
    end else begin
@@ -7191,7 +7192,7 @@ var SourcePosition,SourceLength:longint;
  begin
   result:=false;
 
-  IgnoreCase:=CanBeAlreadyCanonicalized and (rfCASEINSENSITIVE in Flags);
+  IgnoreCase:=CanBeAlreadyCanonicalized and (rfIGNORECASE in Flags);
 
   if (SourcePosition<=SourceLength) and (Source[SourcePosition]='[') then begin
    inc(SourcePosition);
@@ -7246,7 +7247,7 @@ var SourcePosition,SourceLength:longint;
  begin
   result:=false;
   if SourcePosition<=SourceLength then begin
-   IgnoreCase:=CanBeAlreadyCanonicalized and (rfCASEINSENSITIVE in Flags);
+   IgnoreCase:=CanBeAlreadyCanonicalized and (rfIGNORECASE in Flags);
    case Source[SourcePosition] of
     'a'..'z','A'..'Z':begin
      f:=UnicodeClassHashMap.GetValue(UTF32CharToUTF8(UnicodeToLower(byte(ansichar(Source[SourcePosition])))));
@@ -7279,7 +7280,7 @@ var SourcePosition,SourceLength:longint;
       if IsNegative and assigned(UnicodeCharClass.First) then begin
        UnicodeCharClass.Invert;
        UnicodeCharClass.Inverted:=false;
-       if CanBeAlreadyCanonicalized and (rfCASEINSENSITIVE in Flags) then begin
+       if CanBeAlreadyCanonicalized and (rfIGNORECASE in Flags) then begin
         UnicodeCharClass.Canonicalize;
        end;
       end;
@@ -7296,7 +7297,7 @@ var SourcePosition,SourceLength:longint;
  begin
   result:=nil;
   try
-   IgnoreCase:=CanBeAlreadyCanonicalized and (rfCASEINSENSITIVE in Flags);
+   IgnoreCase:=CanBeAlreadyCanonicalized and (rfIGNORECASE in Flags);
    result:=TFLREUnicodeCharClass.Create;
    if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9']) then begin
     i:=0;
@@ -7707,7 +7708,7 @@ var SourcePosition,SourceLength:longint;
     end else begin
      raise EFLRE.Create('Syntax error');
     end;
-    if (rfCASEINSENSITIVE in Flags) and not result.Canonicalized then begin
+    if (rfIGNORECASE in Flags) and not result.Canonicalized then begin
      result.Canonicalize;
     end;
     if InvertFlag then begin
@@ -7776,9 +7777,9 @@ var SourcePosition,SourceLength:longint;
              'i':begin
               inc(SourcePosition);
               if IsNegative then begin
-               Exclude(Flags,rfCASEINSENSITIVE);
+               Exclude(Flags,rfIGNORECASE);
               end else begin
-               Include(Flags,rfCASEINSENSITIVE);
+               Include(Flags,rfIGNORECASE);
               end;
              end;
              'n':begin
@@ -8064,7 +8065,7 @@ var SourcePosition,SourceLength:longint;
            UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
            LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
            UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-           if (rfCASEINSENSITIVE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
+           if (rfIGNORECASE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
             TemporaryNode:=NewAlt(NewUnicodeChar(LowerCaseUnicodeChar),NewUnicodeChar(UpperCaseUnicodeChar));
            end else begin
             TemporaryNode:=NewUnicodeChar(UnicodeChar);
@@ -8076,7 +8077,7 @@ var SourcePosition,SourceLength:longint;
           end;
          end;
          else begin
-          if (rfCASEINSENSITIVE in Flags) and (Source[SourcePosition] in ['a'..'z','A'..'Z']) then begin
+          if (rfIGNORECASE in Flags) and (Source[SourcePosition] in ['a'..'z','A'..'Z']) then begin
            UnicodeChar:=byte(ansichar(Source[SourcePosition]));
            LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
            UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
@@ -8168,7 +8169,7 @@ var SourcePosition,SourceLength:longint;
         UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
         LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
         UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-        if (rfCASEINSENSITIVE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
+        if (rfIGNORECASE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
          result:=NewAlt(NewUnicodeChar(LowerCaseUnicodeChar),NewUnicodeChar(UpperCaseUnicodeChar));
         end else begin
          result:=NewUnicodeChar(UnicodeChar);
@@ -8180,7 +8181,7 @@ var SourcePosition,SourceLength:longint;
        end;
       end;
       else begin
-       if (rfCASEINSENSITIVE in Flags) and (Source[SourcePosition] in ['a'..'z','A'..'Z']) then begin
+       if (rfIGNORECASE in Flags) and (Source[SourcePosition] in ['a'..'z','A'..'Z']) then begin
         UnicodeChar:=byte(ansichar(Source[SourcePosition]));
         inc(SourcePosition);
         LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
@@ -10288,7 +10289,7 @@ begin
  if (CurrentPosition>=0) and (CurrentPosition<InputLength) then begin
   repeat
    if FixedStringIsWholeRegExp or not BeginningAnchor then begin
-    if (CountPrefixCharClasses<=FixedStringLength) and not (rfCASEINSENSITIVE in Flags) then begin
+    if (CountPrefixCharClasses<=FixedStringLength) and not (rfIGNORECASE in Flags) then begin
      case FixedStringLength of
       1:begin
        CurrentPosition:=PtrPosChar(FixedString[1],Input,InputLength,CurrentPosition);
@@ -10925,7 +10926,7 @@ begin
  end;
 end;
 
-const FLREGetVersionStringData:ansistring=FLREVersionString;
+const FLREGetVersionStringData:ansistring=FLREVersionString+#0;
 
 function FLREGetVersion:longword; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 begin
@@ -10937,7 +10938,7 @@ begin
  result:=pansichar(@FLREGetVersionStringData[1]);
 end;
 
-function FLRECreate(const RegularExpression:PAnsiChar;const Flags:longword;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLRECreate(const RegularExpression:PAnsiChar;const RegularExpressionLength:longint;const Flags:longword;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 var RealFlags:TFLREFlags;
     s:ansistring;
     Len:longint;
@@ -10949,8 +10950,8 @@ begin
  end;
  try
   RealFlags:=[];
-  if (Flags and carfCASEINSENSITIVE)<>0 then begin
-   Include(RealFlags,rfCASEINSENSITIVE);
+  if (Flags and carfIGNORECASE)<>0 then begin
+   Include(RealFlags,rfIGNORECASE);
   end;
   if (Flags and carfSINGLELINE)<>0 then begin
    Include(RealFlags,rfSINGLELINE);
@@ -10983,7 +10984,7 @@ begin
    Include(RealFlags,rfFAST);
   end;
   try
-   TFLRE(result):=TFLRE.Create(AnsiString(RegularExpression),RealFlags);
+   TFLRE(result):=TFLRE.Create(AnsiString(PtrCopy(RegularExpression,0,RegularExpressionLength)),RealFlags);
   except
    FreeAndNil(TFLRE(result));
    raise;
@@ -11014,6 +11015,15 @@ end;
 procedure FLREFree(const Data:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 begin
  FreeMem(Data);
+end;
+
+function FLREGetCountCaptures(const Instance:pointer):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+begin
+ if assigned(Instance) then begin
+  result:=TFLRE(Instance).CountCaptures;
+ end else begin
+  result:=0;
+ end;
 end;
 
 function FLREGetNamedGroupIndex(const Instance:pointer;const GroupName:pansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
