@@ -11342,13 +11342,29 @@ begin
     LocalCaptures:=nil;
     try
      if TFLRE(Instance).PtrMatch(Input,InputLength,LocalCaptures,StartPosition) then begin
-      GetMem(Captures^,length(LocalCaptures)*(sizeof(longint)*2));
-      for Index:=0 to length(LocalCaptures)-1 do begin
-       PLongints(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
-       PLongints(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+      if MaxCaptures<0 then begin
+       GetMem(Captures^,length(LocalCaptures)*(sizeof(longint)*2));
+       for Index:=0 to length(LocalCaptures)-1 do begin
+        PLongints(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+        PLongints(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+       end;
+      end else begin
+       for Index:=0 to length(LocalCaptures)-1 do begin
+        if Index>=MaxCaptures then begin
+         break;
+        end;
+        PLongints(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+        PLongints(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+       end;
       end;
       if assigned(CountCaptures) then begin
-       CountCaptures^:=length(LocalCaptures);
+       if MaxCaptures<0 then begin
+        CountCaptures^:=length(LocalCaptures);
+       end else if length(LocalCaptures)>MaxCaptures then begin
+        CountCaptures^:=MaxCaptures;
+       end else begin
+        CountCaptures^:=length(LocalCaptures);
+       end;
       end;
       result:=1;
      end;
@@ -11388,7 +11404,7 @@ begin
   FreeMem(Error^);
   Error^:=nil;
  end;
- if assigned(Captures) and assigned(Captures^) then begin
+ if (MaxCaptures<0) and assigned(Captures) and assigned(Captures^) then begin
   FreeMem(Captures^);
   Captures^:=nil;
  end;
@@ -11398,13 +11414,29 @@ begin
     LocalCaptures:=nil;
     try
      if TFLRE(Instance).PtrMatchNext(Input,InputLength,LocalCaptures,StartPosition) then begin
-      GetMem(Captures^,length(LocalCaptures)*(sizeof(longint)*2));
-      for Index:=0 to length(LocalCaptures)-1 do begin
-       PLongints(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
-       PLongints(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+      if MaxCaptures<0 then begin
+       GetMem(Captures^,length(LocalCaptures)*(sizeof(longint)*2));
+       for Index:=0 to length(LocalCaptures)-1 do begin
+        PLongints(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+        PLongints(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+       end;
+      end else begin
+       for Index:=0 to length(LocalCaptures)-1 do begin
+        if Index>=MaxCaptures then begin
+         break;
+        end;
+        PLongints(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+        PLongints(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+       end;
       end;
       if assigned(CountCaptures) then begin
-       CountCaptures^:=length(LocalCaptures);
+       if MaxCaptures<0 then begin
+        CountCaptures^:=length(LocalCaptures);
+       end else if length(LocalCaptures)>MaxCaptures then begin
+        CountCaptures^:=MaxCaptures;
+       end else begin
+        CountCaptures^:=length(LocalCaptures);
+       end;
       end;
       result:=1;
      end;
@@ -11443,7 +11475,7 @@ begin
   FreeMem(Error^);
   Error^:=nil;
  end;
- if assigned(MultiCaptures) and assigned(MultiCaptures^) then begin
+ if (MaxMultiCaptures<0) and assigned(MultiCaptures) and assigned(MultiCaptures^) then begin
   FreeMem(MultiCaptures^);
   MultiCaptures^:=nil;
  end;
@@ -11453,18 +11485,39 @@ begin
     LocalMultiCaptures:=nil;
     try
      if TFLRE(Instance).PtrMatchAll(Input,InputLength,LocalMultiCaptures,StartPosition,Limit) then begin
-      GetMem(MultiCaptures^,length(LocalMultiCaptures)*TFLRE(Instance).CountCaptures*(sizeof(longint)*2));
-      p:=MultiCaptures^;
-      for Index:=0 to length(LocalMultiCaptures)-1 do begin
-       for SubIndex:=0 to length(LocalMultiCaptures[Index])-1 do begin
-        p^:=LocalMultiCaptures[Index,SubIndex].Start;
-        inc(p);
-        p^:=LocalMultiCaptures[Index,SubIndex].Length;
-        inc(p);
+      if MaxMultiCaptures<0 then begin
+       GetMem(MultiCaptures^,length(LocalMultiCaptures)*TFLRE(Instance).CountCaptures*(sizeof(longint)*2));
+       p:=MultiCaptures^;
+       for Index:=0 to length(LocalMultiCaptures)-1 do begin
+        for SubIndex:=0 to length(LocalMultiCaptures[Index])-1 do begin
+         p^:=LocalMultiCaptures[Index,SubIndex].Start;
+         inc(p);
+         p^:=LocalMultiCaptures[Index,SubIndex].Length;
+         inc(p);
+        end;
+       end;
+      end else begin
+       p:=MultiCaptures^;
+       for Index:=0 to length(LocalMultiCaptures)-1 do begin
+        if Index>=MaxMultiCaptures then begin
+         break;
+        end;
+        for SubIndex:=0 to length(LocalMultiCaptures[Index])-1 do begin
+         p^:=LocalMultiCaptures[Index,SubIndex].Start;
+         inc(p);
+         p^:=LocalMultiCaptures[Index,SubIndex].Length;
+         inc(p);
+        end;
        end;
       end;
       if assigned(CountMultiCaptures) then begin
-       CountMultiCaptures^:=length(LocalMultiCaptures);
+       if MaxMultiCaptures<0 then begin
+        CountMultiCaptures^:=length(LocalMultiCaptures);
+       end else if length(LocalMultiCaptures)>MaxMultiCaptures then begin
+        CountMultiCaptures^:=MaxMultiCaptures;
+       end else begin
+        CountMultiCaptures^:=length(LocalMultiCaptures);
+       end;
       end;
       if assigned(CountCaptures) then begin
        CountCaptures^:=TFLRE(Instance).CountCaptures;
