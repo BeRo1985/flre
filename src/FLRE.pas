@@ -501,6 +501,8 @@ type EFLRE=class(Exception);
        NamedGroupStringList:TStringList;
        NamedGroupStringIntegerPairHashMap:TFLREStringIntegerPairHashMap;
 
+       CriticalSection:TCriticalSection;
+
        ThreadLocalStorageInstanceManagerCriticalSection:TCriticalSection;
 
        ThreadLocalStorageInstances:TFLREThreadLocalStorageInstance;
@@ -5559,6 +5561,8 @@ begin
  NamedGroupStringList:=TStringList.Create;
  NamedGroupStringIntegerPairHashMap:=TFLREStringIntegerPairHashMap.Create;
 
+ CriticalSection:=TCriticalSection.Create;
+
  ThreadLocalStorageInstanceManagerCriticalSection:=TCriticalSection.Create;
 
  ThreadLocalStorageInstances:=nil;
@@ -5662,6 +5666,8 @@ begin
 
  ThreadLocalStorageInstanceManagerCriticalSection.Free;
 
+ CriticalSection.Free;
+ 
  RangeLow:='';
  RangeHigh:='';
 
