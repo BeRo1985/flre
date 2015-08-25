@@ -1,6 +1,6 @@
 #### FLRE - Fast Light Regular Expressions - A fast light regular expression library
 
-FLRE ( **F** ast **L** ight **R** egular **E** xpressions) is a fast, safe and efficient regular expression library, which is implemented in Object Pascal (Delphi and Free Pascal). 
+FLRE ( **F** ast **L** ight **R** egular **E** xpressions) is a fast, safe and efficient regular expression library, which is implemented in Object Pascal (Delphi and Free Pascal) but which is even usable from other languages like C/C++ and so on. 
 
 It implements the many of the most common Perl and POSIX features, except **irregular** expression features like backreferences and so on, which aren't supported at FLRE, hence also the word "Light" at the FLRE name. It also finds the leftmost-first match, the same match that Perl and PCRE would, and can return submatch information. But it also features a flag for a yet experimental POSIX-style leftmost-longest match behaviour mode. 
 
@@ -19,7 +19,7 @@ All these subengines are also UTF8 capable, where FLRE has Unicode 6.1.0 support
 
 And as an addon, FLRE features prefix presearching. So for example the prefix for the example regex `Hel(?:lo|loop) [A-Za-z]+` is `Hello`.
 
-And FLRE can process 0-based null terminated C/C++ and 1-based (Object-)Pascal strings.
+And FLRE can process 0-based null terminated C/C++ and 1-based (Object-)Pascal strings, so it has also a foreign API for usage with C/C++ (see FLRELib.dpr).
 
 FLRE features a prefilter boolean expression string generation feature in two variants, once as simple variant and once as SQL variant. For example, FLRE converts `{{{/(hello|hi) world[a-z]+and you/PO}}}` into the prefilter boolean expression string `{{{("hello world" OR "hi world") AND "and you"}}}` and into the prefilter boolean short expression string `{{{("hello world"|"hi world")and you}}}` and into the prefilter SQL boolean full text search expression string `{{{+("hello world" "hi world") +("and you")}}}` and into the prefilter boolean SQL expression string `{{{(((field LIKE "%hello world%") OR (field like "%hi world%")) AND (field like "%and you%"))}}}` where the field name is freely choosable, and FLRE converts `{{{/(hello|hi) world[a-z]+and you/P}}}` without O modifier flag into the prefilter boolean expression string `{{{("hello world" OR "hi world") AND * AND "and you"}}}` and into the prefilter boolean short expression string `{{{(hello world|hi world)*and you}}}`, so with wildcards then now. This feature can reduce the number of actual regular expression searches significantly, if you combine it with the data storage on the upper level (for example with with a text trigram index). 
 
