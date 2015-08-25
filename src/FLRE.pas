@@ -794,7 +794,7 @@ var UTF8DFACharClasses:TUTF8Chars;
     UnicodeClassHashMap:TFLREStringIntegerPairHashMap;
     UnicodeScriptHashMap:TFLREStringIntegerPairHashMap;
     UnicodeBlockHashMap:TFLREStringIntegerPairHashMap;
-                           
+
 function RoundUpToPowerOfTwo(x:ptruint):ptruint; {$ifdef caninline}inline;{$endif}
 begin
  dec(x);
@@ -3310,13 +3310,11 @@ type TFLREUnicodeCharClass=class;
 
      TFLREUnicodeCharClass=class
       public
-       RegExp:TFLRE;
-       Previous,Next:TFLREUnicodeCharClass;
        First,Last,Root:TFLREUnicodeCharClassRange;
        CharSet:TFLREUnicodeCharClassCharSet;
        Inverted:longbool;
        Canonicalized:longbool;
-       constructor Create(ARegExp:TFLRE);
+       constructor Create;
        destructor Destroy; override;
        procedure Clear;
        procedure Dump;
@@ -3346,6 +3344,8 @@ type TFLREUnicodeCharClass=class;
        function HashCode:longword;
        function EqualsTo(OtherObject:TFLREUnicodeCharClass):boolean;
      end;
+
+var LowerUpperCaseUnicodeCharClass:TFLREUnicodeCharClass;
 
 constructor TFLREUnicodeCharClassRange.Create(ACharClass:TFLREUnicodeCharClass;ALo,AHi:longword);
 begin
@@ -3417,10 +3417,9 @@ begin
  inherited Destroy;
 end;
 
-constructor TFLREUnicodeCharClass.Create(ARegExp:TFLRE);
+constructor TFLREUnicodeCharClass.Create;
 begin
  inherited Create;
- RegExp:=ARegExp;
  First:=nil;
  Last:=nil;
  Root:=nil;
@@ -3434,8 +3433,6 @@ begin
  while assigned(First) do begin
   First.Free;
  end;
- Previous:=nil;
- Next:=nil;
  inherited Destroy;
 end;
 
@@ -3502,36 +3499,38 @@ begin
 end;
 
 procedure TFLREUnicodeCharClass.AddRange(Lo,Hi:longword;IgnoreCase:boolean=false);
-var Range:TFLREUnicodeCharClassRange;
-    c,cl,cu:longword;
-    NeedToCanonicalize:boolean;
+var Range,TempRange:TFLREUnicodeCharClassRange;
+    c,cl,cu,rl,ru:longword;
+    Temp,OtherTemp:TFLREUnicodeCharClass;
+    i:longint;
 begin
  if IgnoreCase then begin
-  NeedToCanonicalize:=false;
-  for c:=Lo to Hi do begin
-   cl:=UnicodeToLower(c);
-   cu:=UnicodeToUpper(c);
-   if (cl<>cu) or (cl<>c) or (cu<>c) then begin
-    NeedToCanonicalize:=true;
-    break;
+  AddRange(Lo,Hi,false);
+  Temp:=TFLREUnicodeCharClass.Create;
+  try
+   OtherTemp:=TFLREUnicodeCharClass.Create;
+   try
+    OtherTemp.AddRange(Lo,Hi,false);
+    Temp.Intersection(OtherTemp,LowerUpperCaseUnicodeCharClass);
+   finally
+    OtherTemp.Free;
    end;
-  end;
-  if NeedToCanonicalize then begin
-   for c:=Lo to Hi do begin
-    cl:=UnicodeToLower(c);
-    cu:=UnicodeToUpper(c);
-    if (cl=cu) and (cl=c) then begin
-     AddRange(c,c,false);
-    end else begin
-     AddRange(cl,cl,false);
-     AddRange(cu,cu,false);
-     if (cl<>c) and (cu<>c) then begin
-      AddRange(c,c,false);
+   TempRange:=Temp.First;
+   while assigned(TempRange) do begin
+    for c:=TempRange.Lo to TempRange.Hi do begin
+     cl:=UnicodeToLower(c);
+     cu:=UnicodeToUpper(c);
+     if cl<>c then begin
+      AddRange(cl,cl,false);
+     end;
+     if cu<>c then begin
+      AddRange(cu,cu,false);
      end;
     end;
+    TempRange:=TempRange.Next;
    end;
-  end else begin
-   AddRange(Lo,Hi,false);
+  finally
+   Temp.Free;
   end;
  end else begin
   Range:=First;
@@ -3840,7 +3839,7 @@ begin
  end else if not assigned(First) then begin
   TFLREUnicodeCharClassRange.Create(self,0,$ffffffff);
  end else begin
-  NewList:=TFLREUnicodeCharClass.Create(RegExp);
+  NewList:=TFLREUnicodeCharClass.Create;
   try
    Range:=First;
    if Range.Lo>0 then begin
@@ -3888,7 +3887,7 @@ var NewList:TFLREUnicodeCharClass;
     OldInverted:boolean;
 begin
  if not Canonicalized then begin
-  NewList:=TFLREUnicodeCharClass.Create(RegExp);
+  NewList:=TFLREUnicodeCharClass.Create;
   try
    OldInverted:=Inverted;
    if Inverted then begin
@@ -7266,7 +7265,7 @@ var SourcePosition,SourceLength:longint;
   result:=nil;
   try
    IgnoreCase:=CanBeAlreadyCanonicalized and (rfCASEINSENSITIVE in Flags);
-   result:=TFLREUnicodeCharClass.Create(self);
+   result:=TFLREUnicodeCharClass.Create;
    if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9']) then begin
     i:=0;
     while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9']) do begin
@@ -7508,12 +7507,12 @@ var SourcePosition,SourceLength:longint;
      inc(SourcePosition);
      result:=ParseClassEscape(false);
     end else if TestClassPOSIXCharacterClass then begin
-     result:=TFLREUnicodeCharClass.Create(self);
+     result:=TFLREUnicodeCharClass.Create;
      if not ParseClassPOSIXCharacterClass(result,false) then begin
       raise EFLRE.Create('Syntax error');
      end;
     end else begin
-     result:=TFLREUnicodeCharClass.Create(self);
+     result:=TFLREUnicodeCharClass.Create;
      if (rfUTF8 in Flags) and (byte(ansichar(Source[SourcePosition]))>=$80) then begin
       result.AddChar(UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition));
      end else begin
@@ -7538,7 +7537,7 @@ var SourcePosition,SourceLength:longint;
    a:=nil;
    b:=nil;
    try
-    result:=TFLREUnicodeCharClass.Create(self);
+    result:=TFLREUnicodeCharClass.Create;
     if (SourcePosition<=SourceLength) and (Source[SourcePosition]='[') then begin
      inc(SourcePosition);
     end else begin
@@ -7554,11 +7553,11 @@ var SourcePosition,SourceLength:longint;
      if ((SourcePosition+1)<=SourceLength) and ((Source[SourcePosition]='-') and (Source[SourcePosition+1] in ['[',']'])) then begin
       inc(SourcePosition);
       if Source[SourcePosition]=']' then begin
-       a:=TFLREUnicodeCharClass.Create(self);
+       a:=TFLREUnicodeCharClass.Create;
        a.AddChar(ord('-'));
       end else begin
        a:=ParseCharacterClass;
-       b:=TFLREUnicodeCharClass.Create(self);
+       b:=TFLREUnicodeCharClass.Create;
        if b.Subtraction(result,a) then begin
         FreeAndNil(result);
         result:=b;
@@ -7584,7 +7583,7 @@ var SourcePosition,SourceLength:longint;
          FreeAndNil(a);
         end;
         a:=ParseCharacterClass;
-        b:=TFLREUnicodeCharClass.Create(self);
+        b:=TFLREUnicodeCharClass.Create;
         if b.Intersection(result,a) then begin
          FreeAndNil(result);
          result:=b;
@@ -7612,7 +7611,7 @@ var SourcePosition,SourceLength:longint;
          FreeAndNil(a);
         end;
         a:=ParseCharacterClass;
-        b:=TFLREUnicodeCharClass.Create(self);
+        b:=TFLREUnicodeCharClass.Create;
         if b.Subtraction(result,a) then begin
          FreeAndNil(result);
          result:=b;
@@ -7631,7 +7630,7 @@ var SourcePosition,SourceLength:longint;
       end else if assigned(a) then begin
        if not a.IsSingle then begin
         if assigned(a.Last) and (a.Last.Lo<=a.Last.Hi) then begin
-         c:=TFLREUnicodeCharClass.Create(self);
+         c:=TFLREUnicodeCharClass.Create;
          c.AddChar(a.Last.Hi);
          c.Canonicalized:=a.Canonicalized;
          c.Inverted:=a.Inverted;
@@ -7645,7 +7644,7 @@ var SourcePosition,SourceLength:longint;
        end;
        b:=ParseClassAtom;
        if (not b.IsSingle) and (assigned(b.First) and (a.First.Lo<=a.First.Hi)) then begin
-        c:=TFLREUnicodeCharClass.Create(self);
+        c:=TFLREUnicodeCharClass.Create;
         c.AddChar(b.First.Lo);
         c.Canonicalized:=b.Canonicalized;
         c.Inverted:=b.Inverted;
@@ -7956,7 +7955,7 @@ var SourcePosition,SourceLength:longint;
           inc(SourcePosition);
           UnicodeCharClass:=nil;
           try
-           UnicodeCharClass:=TFLREUnicodeCharClass.Create(self);
+           UnicodeCharClass:=TFLREUnicodeCharClass.Create;
            if not ParseClassEscapeUnicodeProperty(UnicodeCharClass,true) then begin
             raise EFLRE.Create('Syntax error');
            end;
@@ -7974,7 +7973,7 @@ var SourcePosition,SourceLength:longint;
           inc(SourcePosition);
           UnicodeCharClass:=nil;
           try
-           UnicodeCharClass:=TFLREUnicodeCharClass.Create(self);
+           UnicodeCharClass:=TFLREUnicodeCharClass.Create;
            if not ParseClassEscapeUnicodeProperty(UnicodeCharClass,true) then begin
             raise EFLRE.Create('Syntax error');
            end;
@@ -8073,7 +8072,7 @@ var SourcePosition,SourceLength:longint;
        UnicodeCharClass:=nil;
        try
         if TestClassPOSIXCharacterClass then begin
-         UnicodeCharClass:=TFLREUnicodeCharClass.Create(self);
+         UnicodeCharClass:=TFLREUnicodeCharClass.Create;
          if not ParseClassPOSIXCharacterClass(UnicodeCharClass,true) then begin
           raise EFLRE.Create('Syntax error');
          end;
@@ -8094,7 +8093,7 @@ var SourcePosition,SourceLength:longint;
        if rfUTF8 in Flags then begin
         UnicodeCharClass:=nil;
         try
-         UnicodeCharClass:=TFLREUnicodeCharClass.Create(self);
+         UnicodeCharClass:=TFLREUnicodeCharClass.Create;
          if rfSINGLELINE in Flags then begin
           UnicodeCharClass.AddRange($00000000,$ffffffff);
          end else begin
@@ -11210,7 +11209,7 @@ const FLRESignature:ansistring=' FLRE - yet another efficient, principled regula
 {$endif}
  end;
  procedure InitializeUnicode;
- var i,l,h:longword;
+ var i,l,h,cl,cu:longword;
      Count:longint;
      s:ansistring;
   procedure AddRange(Table,FirstChar,LastChar:longword);
@@ -11252,6 +11251,33 @@ const FLRESignature:ansistring=' FLRE - yet another efficient, principled regula
     AddRange(ucrWORDS,l,h);
    end;
    SetLength(UnicodeCharRangeClasses[ucrWORDS],Count);
+  end;
+  begin
+   LowerUpperCaseUnicodeCharClass:=TFLREUnicodeCharClass.Create;
+   Count:=0;
+   l:=$ffffffff;
+   h:=0;
+   for i:=0 to $10ffff do begin
+    cl:=UnicodeToLower(i);
+    cu:=UnicodeToUpper(i);
+    if (cl<>cu) or (cl<>i) or (cu<>i) then begin
+     if l<=h then begin
+      if (h+1)=i then begin
+       h:=i;
+      end else begin
+       LowerUpperCaseUnicodeCharClass.AddRange(l,h);
+       l:=i;
+       h:=i;
+      end;
+     end else begin
+      l:=i;
+      h:=i;
+     end;
+    end;
+   end;
+   if l<=h then begin
+    LowerUpperCaseUnicodeCharClass.AddRange(l,h);
+   end;
   end;
   begin
    Count:=0;
@@ -11672,6 +11698,7 @@ begin
   FreeAndNil(UnicodeClassHashMap);
   FreeAndNil(UnicodeScriptHashMap);
   FreeAndNil(UnicodeBlockHashMap);
+  FreeAndNil(LowerUpperCaseUnicodeCharClass);
   FLREInitialized:=false;
  end;
 end;
