@@ -595,6 +595,8 @@ type EFLRE=class(Exception);
        function GetRangeLow:ansistring;
        function GetRangeHigh:ansistring;
 
+       function DumpRegularExpression:ansistring;
+
        function GetPrefilterExpression:ansistring;
        function GetPrefilterShortExpression:ansistring;
        function GetPrefilterSQLBooleanFullTextExpression:ansistring;
@@ -10614,6 +10616,154 @@ begin
  finally
   CriticalSection.Leave;
  end;
+end;
+
+function TFLRE.DumpRegularExpression:ansistring;
+ function ProcessNode(Node:PFLRENode):ansistring;
+ const HexChars:array[$0..$f] of ansichar='0123456789abcdef';
+ var Count:longint;
+     SingleChar,CurrentChar:ansichar;
+ begin
+  result:='';
+  if assigned(Node) then begin
+   case Node^.NodeType of
+    ntALT:begin
+     if assigned(Node^.Left) then begin
+      if Node^.Left^.NodeType in [ntALT,ntCAT] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      end else begin
+       result:=result+ProcessNode(Node^.Left);
+      end;
+     end;
+     result:=result+'|';
+     if assigned(Node^.Right) then begin
+      if Node^.Right^.NodeType in [ntALT,ntCAT] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Right)+')';
+      end else begin
+       result:=result+ProcessNode(Node^.Right);
+      end;
+     end;
+    end;
+    ntCAT:begin
+     if assigned(Node^.Left) then begin
+      if Node^.Left^.NodeType in [ntALT,ntCAT] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      end else begin
+       result:=result+ProcessNode(Node^.Left);
+      end;
+     end;
+     if assigned(Node^.Right) then begin
+      if Node^.Right^.NodeType in [ntALT,ntCAT] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Right)+')';
+      end else begin
+       result:=result+ProcessNode(Node^.Right);
+      end;
+     end;
+    end;
+    ntCHAR:begin
+     SingleChar:=#0;
+     Count:=0;
+     for CurrentChar:=#0 to #255 do begin
+      if CurrentChar in Node^.CharClass then begin
+       if Count=0 then begin
+        SingleChar:=CurrentChar;
+        inc(Count);
+       end else begin
+        inc(Count);
+        break;
+       end;
+      end;
+     end;
+     if Count=1 then begin
+      if SingleChar in ['a'..'z','A'..'Z','0'..'9','_','@'] then begin
+       result:=result+SingleChar;
+      end else begin
+       result:=result+'\x'+HexChars[byte(ansichar(SingleChar)) shr 4]+HexChars[byte(ansichar(SingleChar)) and $f];
+      end;
+     end else begin
+     end;
+    end;
+    ntANY:begin
+     result:=result+'.';
+    end;
+    ntPAREN:begin
+     result:='('+ProcessNode(Node^.Left)+')';
+    end;
+    ntQUEST:begin
+     if assigned(Node^.Left) then begin
+      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS,ntEXACT] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      end else begin
+       result:=result+ProcessNode(Node^.Left);
+      end;
+     end;
+     result:=result+'?';
+     if Node^.Value=qkLAZY then begin
+      result:=result+'?';
+     end;
+    end;
+    ntSTAR:begin
+     if assigned(Node^.Left) then begin
+      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS,ntEXACT] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      end else begin
+       result:=result+ProcessNode(Node^.Left);
+      end;
+     end;
+     result:=result+'*';
+     if Node^.Value=qkLAZY then begin
+      result:=result+'?';
+     end;
+    end;
+    ntPLUS:begin
+     if assigned(Node^.Left) then begin
+      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS,ntEXACT] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      end else begin
+       result:=result+ProcessNode(Node^.Left);
+      end;
+     end;
+     result:=result+'+';
+     if Node^.Value=qkLAZY then begin
+      result:=result+'?';
+     end;
+    end;
+    ntEXACT:begin
+     if assigned(Node^.Left) then begin
+      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS,ntEXACT] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      end else begin
+       result:=result+ProcessNode(Node^.Left);
+      end;
+     end;
+     result:=result+'{'+IntToStr(Node^.MinCount)+','+IntToStr(Node^.MaxCount)+'}';
+     if Node^.Value=qkLAZY then begin
+      result:=result+'?';
+     end;
+    end;
+    ntBOL:begin
+     result:=result+'(?m:^)';
+    end;
+    ntEOL:begin
+     result:=result+'(?m:$)';
+    end;
+    ntBOT:begin
+     result:=result+'(?-m:^)';
+    end;
+    ntEOT:begin
+     result:=result+'(?-m:$)';
+    end;
+    ntBRK:begin
+     result:=result+'\b';
+    end;
+    ntNBRK:begin
+     result:=result+'\B';
+    end;
+   end;
+  end;
+ end;
+begin
+ result:=ProcessNode(AnchoredRootNode);
 end;
 
 function TFLRE.GetPrefilterExpression:ansistring;
