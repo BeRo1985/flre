@@ -457,7 +457,7 @@ type EFLRE=class(Exception);
        function DFACacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
        procedure DFAAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
        function DFAProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
-       procedure DFADestroyStatePool(StatePool:PFLREDFAStatePool);
+       procedure DFADestroyStatePool(var StatePool:PFLREDFAStatePool);
        procedure DFAFreeUsedStatePool;
        function DFAAllocateNewStatePool:PFLREDFAStatePool;
        function DFAGetState:PFLREDFAState;
@@ -5109,11 +5109,12 @@ begin
  State.NextStates[Instance.ByteMap[byte(ansichar(CurrentChar))]]:=result;
 end;
 
-procedure TFLREThreadLocalStorageInstance.DFADestroyStatePool(StatePool:PFLREDFAStatePool);
+procedure TFLREThreadLocalStorageInstance.DFADestroyStatePool(var StatePool:PFLREDFAStatePool);
 var Pool,NextPool:PFLREDFAStatePool;
     State:PFLREDFAState;
 begin
  Pool:=StatePool;
+ StatePool:=nil;
  while assigned(Pool) do begin
   NextPool:=Pool^.Next;
   State:=Pool^.States;
