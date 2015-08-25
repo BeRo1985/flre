@@ -599,12 +599,12 @@ type EFLRE=class(Exception);
        function PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchAll(const Input:pointer;const InputLength:longint;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
-       function PtrReplaceAll(const Input:pointer;const InputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
+       function PtrReplaceAll(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
 
        function Match(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchNext(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchAll(const Input:ansistring;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
-       function ReplaceAll(const AInput,AReplacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
+       function ReplaceAll(const Input,Replacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
 
        function GetRange(var LowRange,HighRange:ansistring):boolean;
 
@@ -637,10 +637,7 @@ function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar
 function FLREMatch(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
 function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
 function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const MultiCaptures:PPointer;const CountMultiCaptures,CountCaptures:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
-{
-function PtrMatchAll(const Input:pointer;const InputLength:longint;var Captures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
-function PtrReplaceAll(const Input:pointer;const InputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
- {}
+function FLREReplaceAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const ResultString:PPointer;const ResultStringLength:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
 
 implementation
 
@@ -10370,7 +10367,7 @@ begin
  end;
 end;
 
-function TFLRE.PtrReplaceAll(const Input:pointer;const InputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
+function TFLRE.PtrReplaceAll(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
 var CurrentPosition,Next,LastPosition,i,j,e:longint;
     Captures:TFLRECaptures;
     SimpleReplacement:boolean;
@@ -10379,7 +10376,7 @@ begin
  result:='';
  Captures:=nil;
  try                       
-  SimpleReplacement:=(PtrPosChar('$',AReplacement,AReplacementLength)<0) and (PtrPosChar('\',AReplacement,AReplacementLength)<0);
+  SimpleReplacement:=(PtrPosChar('$',Replacement,ReplacementLength)<0) and (PtrPosChar('\',Replacement,ReplacementLength)<0);
   CurrentPosition:=StartPosition;
   LastPosition:=CurrentPosition;
   if CurrentPosition>=0 then begin
@@ -10400,17 +10397,17 @@ begin
      end;
      LastPosition:=CurrentPosition;
      if SimpleReplacement then begin
-      result:=result+PtrCopy(PAnsiChar(AReplacement),0,AReplacementLength);
+      result:=result+PtrCopy(PAnsiChar(Replacement),0,ReplacementLength);
      end else begin
       i:=0;
-      while i<AReplacementLength do begin
-       c:=PAnsiChar(AReplacement)[i];
+      while i<ReplacementLength do begin
+       c:=PAnsiChar(Replacement)[i];
        case c of
         '$','\':begin
          cc:=c;
          inc(i);
-         if i<AReplacementLength then begin
-          c:=PAnsiChar(AReplacement)[i];
+         if i<ReplacementLength then begin
+          c:=PAnsiChar(Replacement)[i];
           case c of
            '$':begin
             if cc='$' then begin
@@ -10464,15 +10461,15 @@ begin
              e:=-1;
              inc(i);
              j:=i;
-             while i<AReplacementLength do begin
-              if PAnsiChar(AReplacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
+             while i<ReplacementLength do begin
+              if PAnsiChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
                inc(i);
               end else begin
                break;
               end;
              end;
              if j<i then begin
-              e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(AReplacement),j,i-j));
+              e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(Replacement),j,i-j));
              end;
              if e<0 then begin
               result:=result+cc+'g';
@@ -10491,12 +10488,12 @@ begin
             e:=-1;
             inc(i);
             j:=i;
-            if i<AReplacementLength then begin
-             case PAnsiChar(AReplacement)[i] of
+            if i<ReplacementLength then begin
+             case PAnsiChar(Replacement)[i] of
               '0'..'9':begin
                e:=0;
-               while i<AReplacementLength do begin
-                c:=PAnsiChar(AReplacement)[i];
+               while i<ReplacementLength do begin
+                c:=PAnsiChar(Replacement)[i];
                 case c of
                  '0'..'9':begin
                   e:=(e*10)+(ord(c)-ord('0'));
@@ -10507,22 +10504,22 @@ begin
                  end;
                 end;
                end;
-               if (i<AReplacementLength) and (PAnsiChar(AReplacement)[i]='}') then begin
+               if (i<ReplacementLength) and (PAnsiChar(Replacement)[i]='}') then begin
                 inc(i);
                end else begin
                 e:=-1;
                end;
               end;
               else begin
-               while i<AReplacementLength do begin
-                if PAnsiChar(AReplacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
+               while i<ReplacementLength do begin
+                if PAnsiChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
                  inc(i);
                 end else begin
                  break;
                 end;
                end;
-               if (j<i) and (PAnsiChar(AReplacement)[i]='}') then begin
-                e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(AReplacement),j,i-j));
+               if (j<i) and (PAnsiChar(Replacement)[i]='}') then begin
+                e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(Replacement),j,i-j));
                 inc(i);
                end else begin
                 e:=-1;
@@ -10545,8 +10542,8 @@ begin
              inc(i);
             end else begin
              e:=0;
-             while i<AReplacementLength do begin
-              c:=PAnsiChar(AReplacement)[i];
+             while i<ReplacementLength do begin
+              c:=PAnsiChar(Replacement)[i];
               case c of
                '0'..'9':begin
                 e:=(e*10)+(ord(c)-ord('0'));
@@ -10625,9 +10622,9 @@ begin
  end;
 end;
 
-function TFLRE.ReplaceAll(const AInput,AReplacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
+function TFLRE.ReplaceAll(const Input,Replacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
 begin
- result:=PtrReplaceAll(pansichar(@AInput[1]),length(AInput),pansichar(@AReplacement[1]),length(AReplacement),StartPosition-1,Limit);
+ result:=PtrReplaceAll(pansichar(@Input[1]),length(Input),pansichar(@Replacement[1]),length(Replacement),StartPosition-1,Limit);
 end;
 
 function TFLRE.GetRange(var LowRange,HighRange:ansistring):boolean;
@@ -11042,16 +11039,20 @@ begin
  if assigned(Instance) then begin
   try
    if assigned(RegularExpression) then begin
-    s:=TFLRE(Instance).DumpRegularExpression;
-    Len:=length(s);
-    if Len>0 then begin
-     GetMem(RegularExpression^,(Len+1)*SizeOf(AnsiChar));
-     Move(s[1],RegularExpression^[0],Len);
-     RegularExpression^[Len]:=#0;
-    end else begin
-     RegularExpression^:=nil;
-    end;
     s:='';
+    try
+     s:=TFLRE(Instance).DumpRegularExpression;
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(RegularExpression^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],RegularExpression^[0],Len);
+      RegularExpression^[Len]:=#0;
+     end else begin
+      RegularExpression^:=nil;
+     end;
+    finally
+     s:='';
+    end;
    end;
    result:=1;
   except
@@ -11090,16 +11091,20 @@ begin
  if assigned(Instance) then begin
   try
    if assigned(Expression) then begin
-    s:=TFLRE(Instance).GetPrefilterExpression;
-    Len:=length(s);
-    if Len>0 then begin
-     GetMem(Expression^,(Len+1)*SizeOf(AnsiChar));
-     Move(s[1],Expression^[0],Len);
-     Expression^[Len]:=#0;
-    end else begin
-     Expression^:=nil;
-    end;
     s:='';
+    try
+     s:=TFLRE(Instance).GetPrefilterExpression;
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Expression^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Expression^[0],Len);
+      Expression^[Len]:=#0;
+     end else begin
+      Expression^:=nil;
+     end;
+    finally
+     s:='';
+    end;
    end;
    result:=1;
   except
@@ -11138,16 +11143,20 @@ begin
  if assigned(Instance) then begin
   try
    if assigned(ShortExpression) then begin
-    s:=TFLRE(Instance).GetPrefilterShortExpression;
-    Len:=length(s);
-    if Len>0 then begin
-     GetMem(ShortExpression^,(Len+1)*SizeOf(AnsiChar));
-     Move(s[1],ShortExpression^[0],Len);
-     ShortExpression^[Len]:=#0;
-    end else begin
-     ShortExpression^:=nil;
-    end;
     s:='';
+    try
+     s:=TFLRE(Instance).GetPrefilterShortExpression;
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(ShortExpression^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],ShortExpression^[0],Len);
+      ShortExpression^[Len]:=#0;
+     end else begin
+      ShortExpression^:=nil;
+     end;
+    finally
+     s:='';
+    end;
    end;
    result:=1;
   except
@@ -11182,16 +11191,20 @@ begin
  if assigned(Instance) then begin
   try
    if assigned(SQLBooleanFullTextExpression) then begin
-    s:=TFLRE(Instance).GetPrefilterSQLBooleanFullTextExpression;
-    Len:=length(s);
-    if Len>0 then begin
-     GetMem(SQLBooleanFullTextExpression^,(Len+1)*SizeOf(AnsiChar));
-     Move(s[1],SQLBooleanFullTextExpression^[0],Len);
-     SQLBooleanFullTextExpression^[Len]:=#0;
-    end else begin
-     SQLBooleanFullTextExpression^:=nil;
-    end;
     s:='';
+    try
+     s:=TFLRE(Instance).GetPrefilterSQLBooleanFullTextExpression;
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(SQLBooleanFullTextExpression^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],SQLBooleanFullTextExpression^[0],Len);
+      SQLBooleanFullTextExpression^[Len]:=#0;
+     end else begin
+      SQLBooleanFullTextExpression^:=nil;
+     end;
+    finally
+     s:='';
+    end;
    end;
    result:=1;
   except
@@ -11230,16 +11243,20 @@ begin
  if assigned(Instance) then begin
   try
    if assigned(SQLExpression) then begin
-    s:=TFLRE(Instance).GetPrefilterSQLExpression(Field);
-    Len:=length(s);
-    if Len>0 then begin
-     GetMem(SQLExpression^,(Len+1)*SizeOf(AnsiChar));
-     Move(s[1],SQLExpression^[0],Len);
-     SQLExpression^[Len]:=#0;
-    end else begin
-     SQLExpression^:=nil;
-    end;
     s:='';
+    try
+     s:=TFLRE(Instance).GetPrefilterSQLExpression(Field);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(SQLExpression^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],SQLExpression^[0],Len);
+      SQLExpression^[Len]:=#0;
+     end else begin
+      SQLExpression^:=nil;
+     end;
+    finally
+     s:='';
+    end;
    end;
    result:=1;
   except
@@ -11444,6 +11461,62 @@ begin
      end;
     finally
      SetLength(LocalMultiCaptures,0);
+    end;
+   end;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=AnsiString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLREReplaceAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const ResultString:PPointer;const ResultStringLength:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
+var s:ansistring;
+    Len,Index,SubIndex:longint;
+    p:plongint;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(ResultString) and assigned(ResultString^) then begin
+  FreeMem(ResultString^);
+  ResultString^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(ResultString) then begin
+    s:='';
+    try
+     s:=TFLRE(Instance).PtrReplaceAll(Input,InputLength,Replacement,ReplacementLength,StartPosition,Limit);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(ResultString^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],PAnsiChar(ResultString^)[0],Len);
+      PAnsiChar(ResultString^)[Len]:=#0;
+     end else begin
+      ResultString^:=nil;
+     end;
+     if assigned(ResultStringLength) then begin
+      ResultStringLength^:=Len;
+     end;
+     result:=1;
+    finally
+     s:='';
     end;
    end;
   except
