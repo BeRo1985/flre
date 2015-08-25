@@ -5433,7 +5433,7 @@ begin
    end;
    if (MatchCondition and sfCapMask)<>0 then begin
     for Counter:=0 to TwoCountOfCaptures-1 do begin
-     if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
+     if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin
       OnePassNFAMatchCaptures[Counter]:=CurrentPosition;
      end;
     end;
