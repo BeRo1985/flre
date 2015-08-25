@@ -8148,6 +8148,7 @@ var SourcePosition,SourceLength:longint;
       else begin
        if (rfCASEINSENSITIVE in Flags) and (Source[SourcePosition] in ['a'..'z','A'..'Z']) then begin
         UnicodeChar:=byte(ansichar(Source[SourcePosition]));
+        inc(SourcePosition);
         LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
         UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
         result:=NewNode(ntCHAR,nil,nil,nil,0);
