@@ -506,6 +506,10 @@ type EFLRE=class(Exception);
        ThreadLocalStorageInstances:TFLREThreadLocalStorageInstance;
        FreeThreadLocalStorageInstances:TFLREThreadLocalStorageInstance;
 
+       RangeLow:ansistring;
+       RangeHigh:ansistring;
+       HasRange:boolean;
+
        function NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
        procedure FreeNode(var Node:PFLRENode);
 
@@ -527,6 +531,7 @@ type EFLRE=class(Exception);
        procedure Parse;
 
        procedure Compile;
+       procedure CompileRange;
        procedure CompilePrefix;
        procedure CompileFixedStringSearch;
        procedure CompilePrefixCharClasses;
@@ -618,6 +623,12 @@ const MaxDFAStates=16384;
       opEOT=11;
       opBRK=12;
       opNBRK=13;
+
+      // Split kind
+      skALT=0;
+      skPLUS=1;
+      skQUEST=2;
+      skSTAR=3;
 
       // Qualifier kind
       qkGREEDY=0;
@@ -5553,6 +5564,10 @@ begin
  ThreadLocalStorageInstances:=nil;
  FreeThreadLocalStorageInstances:=nil;
 
+ RangeLow:='';
+ RangeHigh:='';
+ HasRange:=false;
+
  try
 
   try
@@ -5566,6 +5581,8 @@ begin
   end;
 
   CountSubMatches:=(CountParens+1)*2;
+
+  CompileRange;
 
   CompilePrefix;
 
@@ -5644,6 +5661,9 @@ begin
  NamedGroupStringIntegerPairHashMap.Free;
 
  ThreadLocalStorageInstanceManagerCriticalSection.Free;
+
+ RangeLow:='';
+ RangeHigh:='';
 
  inherited Destroy;
 end;
@@ -7992,6 +8012,7 @@ procedure TFLRE.Compile;
     case Node^.NodeType of
      ntALT:begin
       i0:=NewInstruction(opSPLIT);
+      Instructions[i0].Value:=skALT;
       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
       Emit(Node^.Left);
       i1:=NewInstruction(opJMP);
@@ -8063,6 +8084,7 @@ procedure TFLRE.Compile;
      end;
      ntQUEST:begin
       i0:=NewInstruction(opSPLIT);
+      Instructions[i0].Value:=skQUEST;
       if Node^.Value<>0 then begin
        // Non-greedy
        Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
@@ -8077,6 +8099,7 @@ procedure TFLRE.Compile;
      end;
      ntSTAR:begin
       i0:=NewInstruction(opSPLIT);
+      Instructions[i0].Value:=skSTAR;
       if Node^.Value<>0 then begin
        // Non-greedy
        Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
@@ -8097,6 +8120,7 @@ procedure TFLRE.Compile;
       i0:=CountInstructions;
       Emit(Node^.Left);
       i1:=NewInstruction(opSPLIT);
+      Instructions[i1].Value:=skPLUS;
       if Node^.Value<>0 then begin
        // Non-greedy
        Instructions[i1].OtherNext:=pointer(ptrint(i0));
@@ -8112,6 +8136,7 @@ procedure TFLRE.Compile;
        // nothing
       end else if (Node^.MinCount=0) and (Node^.MaxCount=1) then begin
        i0:=NewInstruction(opSPLIT);
+       Instructions[i0].Value:=skQUEST;
        if Node^.Value<>0 then begin
         // Non-greedy
         Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
@@ -8132,6 +8157,7 @@ procedure TFLRE.Compile;
         i0:=CountInstructions;
         Emit(Node^.Left);
         i1:=NewInstruction(opSPLIT);
+        Instructions[i1].Value:=skPLUS;
         if Node^.Value<>0 then begin
          // Non-greedy
          Instructions[i1].OtherNext:=pointer(ptrint(i0));
@@ -8144,6 +8170,7 @@ procedure TFLRE.Compile;
        end else begin
         // Infinity without minimum connt
         i0:=NewInstruction(opSPLIT);
+        Instructions[i0].Value:=skSTAR;
         if Node^.Value<>0 then begin
          // Non-greedy
          Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
@@ -8170,6 +8197,7 @@ procedure TFLRE.Compile;
          try
           for Counter:=Node^.MinCount to Node^.MaxCount-1 do begin
            i0:=NewInstruction(opSPLIT);
+           Instructions[i0].Value:=skQUEST;
            Last[Counter-Node^.MinCount]:=i0;
            if Node^.Value<>0 then begin
             // Non-greedy
@@ -8196,6 +8224,7 @@ procedure TFLRE.Compile;
         end else begin
          for Counter:=Node^.MinCount to Node^.MaxCount-1 do begin
           i0:=NewInstruction(opSPLIT);
+          Instructions[i0].Value:=skQUEST;
           if Node^.Value<>0 then begin
            // Non-greedy
            Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
@@ -8309,6 +8338,159 @@ procedure TFLRE.Compile;
 begin
  GenerateInstructions(ForwardInstructions,CountForwardInstructions,false);
  GenerateInstructions(BackwardInstructions,CountBackwardInstructions,true);
+end;
+
+procedure TFLRE.CompileRange;
+var LowRangeString,HighRangeString:ansistring;
+    LastIndex,LastMatchIndex,RangeStringLength:longint;
+ function AddChars(Index:longint;const Str:ansistring):longint;
+ var Len,Counter,NewLen:longint;
+ begin
+  Len:=length(Str);
+  result:=Index+Len;
+  if RangeStringLength<result then begin
+   Counter:=RangeStringLength+1;
+   RangeStringLength:=result;
+   NewLen:=RoundUpToPowerOfTwo(result);
+   if NewLen<16 then begin
+    NewLen:=16;
+   end;
+   if length(LowRangeString)<NewLen then begin
+    SetLength(LowRangeString,NewLen);
+   end;
+   if length(HighRangeString)<NewLen then begin
+    SetLength(HighRangeString,NewLen);
+   end;
+   while Counter<=result do begin
+    LowRangeString[Counter]:=Str[Counter-Index];
+    HighRangeString[Counter]:=Str[Counter-Index];
+    inc(Counter);
+   end;
+  end;
+  for Counter:=1 to Len do begin
+   if LowRangeString[Counter+Index]>Str[Counter] then begin
+    LowRangeString[Counter+Index]:=Str[Counter];
+   end;
+   if HighRangeString[Counter+Index]<Str[Counter] then begin
+    HighRangeString[Counter+Index]:=Str[Counter];
+   end;
+  end;
+ end;
+ procedure ThreadPass(Instruction:PFLREInstruction;Index:longint);
+ var CharClass:TFLRECharClass;
+     CurrentChar:ansichar;
+ begin
+  while assigned(Instruction) do begin
+   case Instruction^.IndexAndOpcode and $ff of
+    opSPLIT:begin
+     if Instruction^.Value in [skALT,skQUEST] then begin
+      ThreadPass(Instruction^.OtherNext,Index);
+      Instruction:=Instruction^.Next;
+     end else begin
+      if (LastIndex<0) or (Index<LastIndex) then begin
+       LastIndex:=Index;
+      end;
+      break;
+     end;
+    end;
+    opSINGLECHAR:begin
+     Index:=AddChars(Index,ansichar(byte(Instruction^.Value)));
+     Instruction:=Instruction^.Next;
+    end;
+    opCHAR:begin
+     for CurrentChar:=#0 to #255 do begin
+      if CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^ then begin
+       Index:=AddChars(Index,ansichar(byte(CurrentChar)));
+       break;
+      end;
+     end;
+     for CurrentChar:=#255 downto #0 do begin
+      if CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^ then begin
+       Index:=AddChars(Index,ansichar(byte(CurrentChar)));
+       break;
+      end;
+     end;
+     Instruction:=Instruction^.Next;
+    end;
+    opANY:begin
+     Index:=AddChars(Index,#0);
+     Index:=AddChars(Index,#255);
+     Instruction:=Instruction^.Next;
+    end;
+    opJMP,opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK:begin
+     Instruction:=Instruction^.Next;
+    end;
+    opMATCH:begin
+     if (LastMatchIndex<0) or (Index<LastMatchIndex) then begin
+      LastMatchIndex:=Index;
+     end;
+     break;
+    end;
+    else begin
+     if (LastIndex<0) or (Index<LastIndex) then begin
+      LastIndex:=Index;
+     end;
+     break;
+    end;
+   end;
+  end;
+ end;
+begin
+ LowRangeString:='';
+ HighRangeString:='';
+ if not HasRange then begin
+  RangeLow:=#$00;
+  RangeHigh:=#$ff;
+  RangeStringLength:=0;
+  try
+   LastIndex:=-1;
+   LastMatchIndex:=-1;
+   if assigned(AnchoredStartInstruction) then begin
+    ThreadPass(AnchoredStartInstruction,0);
+   end;
+   if LastMatchIndex>=0 then begin
+    if LastMatchIndex<RangeStringLength then begin
+     RangeStringLength:=LastMatchIndex;
+//   LastIndex:=LastMatchIndex;
+    end;
+    if LastMatchIndex<LastIndex then begin
+     LastIndex:=LastMatchIndex;
+    end;
+   end;
+   if LastIndex<0 then begin
+    while (RangeStringLength>1) and ((LowRangeString[RangeStringLength]=#0) and (HighRangeString[RangeStringLength]=#255)) do begin
+     dec(RangeStringLength);
+     LastIndex:=RangeStringLength;
+    end;
+   end;
+   if LastIndex=0 then begin
+    LowRangeString:=#$00;
+    HighRangeString:=#$ff;
+    RangeStringLength:=1;
+   end else if LastIndex>0 then begin
+    while LastIndex>0 do begin
+     while (LastIndex>1) and ((LowRangeString[LastIndex]=#0) and (HighRangeString[LastIndex]=#255)) do begin
+      dec(LastIndex);
+     end;
+     if HighRangeString[LastIndex]<#$ff then begin
+      inc(HighRangeString[LastIndex]);
+     end;
+     if (LastIndex<2) or ((LowRangeString[LastIndex]<>#0) or (HighRangeString[LastIndex]<>#255)) then begin
+      break;
+     end;
+    end;
+    RangeStringLength:=LastIndex;
+   end;
+   SetLength(LowRangeString,RangeStringLength);
+   SetLength(HighRangeString,RangeStringLength);
+   RangeLow:=LowRangeString;
+   RangeHigh:=HighRangeString;
+   HasRange:=true;
+  finally
+   LowRangeString:='';
+   HighRangeString:='';
+  end;
+ end;
 end;
 
 procedure TFLRE.CompilePrefix;
