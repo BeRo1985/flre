@@ -6911,7 +6911,7 @@ var SourcePosition,SourceLength:longint;
   begin
    if assigned(NewNode) then begin
     if assigned(NodeChain) then begin
-     NodeChain:=Concat(OutputNode,NewNode);
+     NodeChain:=Concat(NodeChain,NewNode);
     end else begin
      NodeChain:=NewNode;
     end;
