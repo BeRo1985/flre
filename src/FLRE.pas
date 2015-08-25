@@ -8394,27 +8394,30 @@ var LowRangeString,HighRangeString:ansistring;
      end;
     end;
     opSINGLECHAR:begin
-     Index:=AddChars(Index,ansichar(byte(Instruction^.Value)));
+     AddChars(Index,ansichar(byte(Instruction^.Value)));
+     inc(Index);
      Instruction:=Instruction^.Next;
     end;
     opCHAR:begin
      for CurrentChar:=#0 to #255 do begin
       if CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^ then begin
-       Index:=AddChars(Index,ansichar(byte(CurrentChar)));
+       AddChars(Index,ansichar(byte(CurrentChar)));
        break;
       end;
      end;
      for CurrentChar:=#255 downto #0 do begin
       if CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^ then begin
-       Index:=AddChars(Index,ansichar(byte(CurrentChar)));
+       AddChars(Index,ansichar(byte(CurrentChar)));
        break;
       end;
      end;
+     inc(Index);
      Instruction:=Instruction^.Next;
     end;
     opANY:begin
-     Index:=AddChars(Index,#0);
-     Index:=AddChars(Index,#255);
+     AddChars(Index,#0);
+     AddChars(Index,#255);
+     inc(Index);
      Instruction:=Instruction^.Next;
     end;
     opJMP,opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK:begin
