@@ -3419,17 +3419,6 @@ constructor TFLREUnicodeCharClass.Create(ARegExp:TFLRE);
 begin
  inherited Create;
  RegExp:=ARegExp;
-{if assigned(RegExp.LastCharClass) then begin
-  Previous:=RegExp.LastCharClass;
-  RegExp.LastCharClass:=self;
-  Previous.Next:=self;
-  Next:=nil;
- end else begin
-  RegExp.FirstCharClass:=self;
-  RegExp.LastCharClass:=self;
-  Previous:=nil;
-  Next:=nil;
- end;{}
  First:=nil;
  Last:=nil;
  Root:=nil;
@@ -3441,18 +3430,8 @@ end;
 destructor TFLREUnicodeCharClass.Destroy;
 begin
  while assigned(First) do begin
-  First.Destroy;
+  First.Free;
  end;
-{if assigned(Previous) then begin
-  Previous.Next:=Next;
- end else if RegExp.FirstCharClass=self then begin
-  RegExp.FirstCharClass:=Next;
- end;
- if assigned(Next) then begin
-  Next.Previous:=Previous;
- end else if RegExp.LastCharClass=self then begin
-  RegExp.LastCharClass:=Previous;
- end;{}
  Previous:=nil;
  Next:=nil;
  inherited Destroy;
@@ -3461,7 +3440,7 @@ end;
 procedure TFLREUnicodeCharClass.Clear;
 begin
  while assigned(First) do begin
-  First.Destroy;
+  First.Free;
  end;
  Inverted:=false;
  Canonicalized:=false;
@@ -3499,7 +3478,7 @@ begin
    if Range.Hi<Range.Previous.Hi then begin
     Range.Hi:=Range.Previous.Hi;
    end;
-   Range.Previous.Destroy;
+   Range.Previous.Free;
    if assigned(Range.Previous) then begin
     Range:=Range.Previous;
    end;
@@ -3510,7 +3489,7 @@ begin
    if Range.Hi<Range.Next.Hi then begin
     Range.Hi:=Range.Next.Hi;
    end;
-   Range.Next.Destroy;
+   Range.Next.Free;
    if assigned(Range.Previous) then begin
     Range:=Range.Previous;
    end;
@@ -3819,7 +3798,7 @@ var Range:TFLREUnicodeCharClassRange;
 begin
  if assigned(From) then begin
   while assigned(First) do begin
-   First.Destroy;
+   First.Free;
   end;
   Inverted:=From.Inverted;
   Canonicalized:=From.Canonicalized;
@@ -3855,7 +3834,7 @@ begin
  Optimize;
  Inverted:=not Inverted;
  if assigned(First) and (First=Last) and (First.Lo=0) and (First.Hi=$ffffffff) then begin
-  First.Destroy;
+  First.Free;
  end else if not assigned(First) then begin
   TFLREUnicodeCharClassRange.Create(self,0,$ffffffff);
  end else begin
@@ -3879,7 +3858,7 @@ begin
     TFLREUnicodeCharClassRange.Create(NewList,Lo+1,$ffffffff);
    end;
    while assigned(First) do begin
-    First.Destroy;
+    First.Free;
    end;
    Range:=NewList.First;
    while assigned(Range) do begin
@@ -3896,7 +3875,7 @@ begin
     Range:=Range.Next;
    end;
   finally
-   NewList.Destroy;
+   NewList.Free;
   end;
  end;
 end;
@@ -3919,7 +3898,7 @@ begin
     Range:=Range.Next;
    end;
    while assigned(First) do begin
-    First.Destroy;
+    First.Free;
    end;
    First:=NewList.First;
    Last:=NewList.Last;
@@ -3935,7 +3914,7 @@ begin
    end;
    Inverted:=OldInverted;
   finally
-   NewList.Destroy;
+   NewList.Free;
   end;
   Canonicalized:=true;
  end;
@@ -9753,7 +9732,7 @@ begin
       result.Subs.Delete(Counter);
       OK:=true;
      end else if Temp.Operation=FLREpfnoANY then begin
-      Temp.Destroy;
+      Temp.Free;
       result.Subs.Delete(Counter);
       result.Exact:=false;
       OK:=true;
@@ -9763,14 +9742,13 @@ begin
     end;
     case result.Subs.Count of
      0:begin
-      result.Destroy;
-      result:=nil;
+      FreeAndNil(result);
      end;
      1:begin
       Temp:=result.Subs[0];
       Temp.Exact:=Temp.Exact and result.Exact;
       result.Subs.Clear;
-      result.Destroy;
+      result.Free;
       result:=Temp;
      end;
      else begin
@@ -9967,14 +9945,13 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
 
       case result.Subs.Count of
        0:begin
-        result.Destroy;
-        result:=nil;
+        FreeAndNil(result);
        end;
        1:begin
         Left:=result.Subs[0];
         Left.Exact:=Left.Exact and result.Exact;
         result.Subs.Clear;
-        result.Destroy;
+        result.Free;
         result:=Left;
        end;
        else begin
@@ -10085,7 +10062,7 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
        end;
       end;
       if not OK then begin
-       result.Destroy;
+       result.Free;
        result:=TFLREPrefilterNode.Create;
        result.Operation:=FLREpfnoANY;
        result.Exact:=false;
@@ -10109,14 +10086,13 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
 
       case result.Subs.Count of
        0:begin
-        result.Destroy;
-        result:=nil;
+        FreeAndNil(result);
        end;
        1:begin
         Left:=result.Subs[0];
         Left.Exact:=Left.Exact and result.Exact;
         result.Subs.Clear;
-        result.Destroy;
+        result.Free;
         result:=Left;
        end;
       end;
