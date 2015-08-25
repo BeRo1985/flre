@@ -101,9 +101,23 @@ interface
 
 uses SysUtils,Classes,Math,SyncObjs,FLREUnicode;
 
-const FLREVersionStr='1.00.2015.08.24.1633';
+const FLREVersion=$00000001;
+
+      FLREVersionString='1.00.2015.08.24.1633';
 
       MaxPrefixCharClasses=32;
+
+      carfCASEINSENSITIVE=1 shl 0;
+      carfSINGLELINE=1 shl 1;
+      carfMULTILINE=1 shl 2;
+      carfFREESPACING=1 shl 3;
+      carfNAMED=1 shl 4;
+      carfUNGREEDY=1 shl 5;
+      carfLONGEST=1 shl 6;
+      carfUTF8=1 shl 7;
+      carfDELIMITERS=1 shl 8;
+      carfSAFE=1 shl 9;
+      carfFAST=1 shl 10;
 
 type EFLRE=class(Exception);
 
@@ -143,12 +157,12 @@ type EFLRE=class(Exception);
                 rfMULTILINE,
                 rfFREESPACING,
                 rfNAMED,
-                rfLONGEST,
                 rfUNGREEDY,
-                rfLAZY,
-                rfGREEDY,
+                rfLONGEST,
                 rfUTF8,
-                rfDELIMITERS);
+                rfDELIMITERS,
+                rfSAFE,
+                rfFAST);
 
      TFLREFlags=set of TFLREFlag;
 
@@ -592,8 +606,7 @@ type EFLRE=class(Exception);
        function MatchAll(const Input:ansistring;var Captures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function ReplaceAll(const AInput,AReplacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
 
-       function GetRangeLow:ansistring;
-       function GetRangeHigh:ansistring;
+       function GetRange(var LowRange,HighRange:ansistring):boolean;
 
        function DumpRegularExpression:ansistring;
 
@@ -608,6 +621,13 @@ type EFLRE=class(Exception);
        property NamedGroupIndices:TFLREStringIntegerPairHashMap read NamedGroupStringIntegerPairHashMap;
 
      end;
+
+function FLREGetVersion:longword; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetVersionString:pansichar; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLRECreate(const RegularExpression:PAnsiChar;const Flags:longword;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+procedure FLREDestroy(const Instance:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+procedure FLREFree(const Data:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar;const LowRangeLength,HighRangeLength:PLongint):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 
 implementation
 
@@ -5998,9 +6018,9 @@ begin
   BitStateNFAReady:=(CountForwardInstructions>0) and (CountForwardInstructions<512);
 
   BeginningWildcardLoop:=BeginningJump and BeginningSplit and BeginningWildcard;
-  if rfLAZY in Flags then begin
+  if rfSAFE in Flags then begin
    DoUnanchoredStart:=false;
-  end else if rfGREEDY in Flags then begin
+  end else if rfFAST in Flags then begin
    DoUnanchoredStart:=not BeginningAnchor;
   end else begin
    DoUnanchoredStart:=(FixedStringLength=0) and (CountObviousPrefixCharClasses<CountPrefixCharClasses) and not BeginningAnchor;
@@ -10595,27 +10615,19 @@ begin
  result:=PtrReplaceAll(pansichar(@AInput[1]),length(AInput),pansichar(@AReplacement[1]),length(AReplacement),StartPosition-1,Limit);
 end;
 
-function TFLRE.GetRangeLow:ansistring;
+function TFLRE.GetRange(var LowRange,HighRange:ansistring):boolean;
 begin
+ result:=false;
  CriticalSection.Enter;
  try
   if not HasRange then begin
    CompileRange;
   end;
-  result:=RangeLow;
- finally
-  CriticalSection.Leave;
- end;
-end;
-
-function TFLRE.GetRangeHigh:ansistring;
-begin
- CriticalSection.Enter;
- try
-  if not HasRange then begin
-   CompileRange;
+  if HasRange then begin
+   LowRange:=RangeLow;
+   HighRange:=RangeHigh;
+   result:=true;
   end;
-  result:=RangeHigh;
  finally
   CriticalSection.Leave;
  end;
@@ -10899,8 +10911,128 @@ begin
  end;
 end;
 
+const FLREGetVersionStringData:ansistring=FLREVersionString;
+
+function FLREGetVersion:longword; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+begin
+ result:=FLREVersion;
+end;
+
+function FLREGetVersionString:pansichar; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+begin
+ result:=pansichar(@FLREGetVersionStringData[1]);
+end;
+
+function FLRECreate(const RegularExpression:PAnsiChar;const Flags:longword;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+var RealFlags:TFLREFlags;
+    s:ansistring;
+    Len:longint;
+begin
+ result:=nil;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ try
+  RealFlags:=[];
+  if (Flags and carfCASEINSENSITIVE)<>0 then begin
+   Include(RealFlags,rfCASEINSENSITIVE);
+  end;
+  if (Flags and carfSINGLELINE)<>0 then begin
+   Include(RealFlags,rfSINGLELINE);
+  end;
+  if (Flags and carfMULTILINE)<>0 then begin
+   Include(RealFlags,rfMULTILINE);
+  end;
+  if (Flags and carfFREESPACING)<>0 then begin
+   Include(RealFlags,rfFREESPACING);
+  end;
+  if (Flags and carfNAMED)<>0 then begin
+   Include(RealFlags,rfNAMED);
+  end;
+  if (Flags and carfUNGREEDY)<>0 then begin
+   Include(RealFlags,rfUNGREEDY);
+  end;
+  if (Flags and carfLONGEST)<>0 then begin
+   Include(RealFlags,rfLONGEST);
+  end;
+  if (Flags and carfUTF8)<>0 then begin
+   Include(RealFlags,rfUTF8);
+  end;
+  if (Flags and carfDELIMITERS)<>0 then begin
+   Include(RealFlags,rfDELIMITERS);
+  end;
+  if (Flags and carfSAFE)<>0 then begin
+   Include(RealFlags,rfSAFE);
+  end;
+  if (Flags and carfFAST)<>0 then begin
+   Include(RealFlags,rfFAST);
+  end;
+  try
+   TFLRE(result):=TFLRE.Create(AnsiString(RegularExpression),RealFlags);
+  except
+   FreeAndNil(TFLRE(result));
+   raise;
+  end;
+ except
+  on e:Exception do begin
+   if assigned(Error) then begin
+    s:=AnsiString(e.Message);
+    Len:=length(s);
+    if Len>0 then begin
+     GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+     Move(s[1],Error^[0],Len);
+     Error^[Len]:=#0;
+    end else begin
+     Error^:=nil;
+    end;
+   end;
+   result:=nil;
+  end;
+ end;
+end;
+
+procedure FLREDestroy(const Instance:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+begin
+ TFLRE(Instance).Free;
+end;
+
+procedure FLREFree(const Data:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+begin
+ FreeMem(Data);
+end;
+
+function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar;const LowRangeLength,HighRangeLength:PLongint):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+var LocalLowRange,LocalHighRange:ansistring;
+begin
+ LocalLowRange:='';
+ LocalHighRange:='';
+ try
+  if TFLRE(Instance).GetRange(LocalLowRange,LocalHighRange) then begin
+   GetMem(LowRange^,(length(LocalLowRange)+1)*SizeOf(AnsiChar));
+   GetMem(HighRange^,(length(LocalHighRange)+1)*SizeOf(AnsiChar));
+   if length(LocalLowRange)>0 then begin
+    Move(LocalLowRange[1],LowRange^[0],length(LocalLowRange));
+   end;
+   if length(LocalHighRange)>0 then begin
+    Move(LocalHighRange[1],HighRange^[0],length(LocalHighRange));
+   end;
+   LowRange^[length(LocalLowRange)]:=#0;
+   HighRange^[length(LocalHighRange)]:=#0;
+   LowRangeLength^:=length(LocalLowRange);
+   HighRangeLength^:=length(LocalHighRange);
+   result:=1;
+  end else begin
+   result:=0;
+  end;
+ finally
+  LocalLowRange:='';
+  LocalHighRange:='';
+ end;
+end;
+
 procedure InitializeFLRE;
-const FLRESignature:ansistring=' FLRE - yet another efficient, principled regular expression library - Version '+FLREVersionStr+' - Copyright (C) 2015, Benjamin ''BeRo'' Rosseaux - benjamin@rosseaux.com - http://www.rosseaux.com ';
+const FLRESignature:ansistring=' FLRE - yet another efficient, principled regular expression library - Version '+FLREVersionString+' - Copyright (C) 2015, Benjamin ''BeRo'' Rosseaux - benjamin@rosseaux.com - http://www.rosseaux.com ';
  procedure InitializeUTF8DFA;
  type TAnsiCharSet=set of ansichar;
 {$ifdef FLREStrictUTF8}
