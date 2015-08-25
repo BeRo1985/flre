@@ -6,7 +6,7 @@ It implements the many of the most common Perl and POSIX features, except **irre
 
 FLRE is licensed under the LGPL v2.1 with static-linking-exception.
 
-The sercet of FLRE speed is that FLRE uses multiple subengines with automatic selection:
+The secret of FLRE speed is that FLRE uses multiple subengines with automatic selection:
 
 * **Fixed string search** for pure static literal string regexs, SBNDMQ2 (a shift-and/shift-or variant with boyer-moore-style skipping) for short strings shorter than 32 chars, and boyer-moore for strings longer than or equal 32 chars.
 * **Approximate heuristic regular expression prefix matching** based on SBNDMQ2 for to find _possible_ match begin boundaries very fast. 
