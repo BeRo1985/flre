@@ -7,7 +7,7 @@ Copyright (C) 2015, Benjamin 'BeRo' Rosseaux
 
 The source code of the FLRE engine library and helper tools are
 distributed under the Library GNU Lesser General Public License Version 2.1 
-(see the file copying.txt) with the following modification:
+(see the files COPYING and COPYING.FLRE) with the following modification:
 
 As a special exception, the copyright holders of this library give you
 permission to link this library with independent modules to produce an
