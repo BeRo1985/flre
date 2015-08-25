@@ -486,7 +486,7 @@ type EFLRE=class(Exception);
 
        Nodes:TList;
 
-       CountParens:longint;
+       CountCaptures:longint;
 
        CountSubMatches:longint;
 
@@ -598,12 +598,12 @@ type EFLRE=class(Exception);
 
        function PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
-       function PtrMatchAll(const Input:pointer;const InputLength:longint;var Captures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
+       function PtrMatchAll(const Input:pointer;const InputLength:longint;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
        function PtrReplaceAll(const Input:pointer;const InputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
 
        function Match(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchNext(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
-       function MatchAll(const Input:ansistring;var Captures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function MatchAll(const Input:ansistring;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function ReplaceAll(const AInput,AReplacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
 
        function GetRange(var LowRange,HighRange:ansistring):boolean;
@@ -634,6 +634,13 @@ function FLREGetPrefilterShortExpression(const Instance:pointer;const ShortExpre
 function FLREGetPrefilterSQLBooleanFullTextExpression(const Instance:pointer;const SQLBooleanFullTextExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetPrefilterSQLExpression(const Instance:pointer;const Field:pansichar;SQLExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar;const LowRangeLength,HighRangeLength:PLongint;const Error:PPAnsiChar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREMatch(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
+function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
+function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const MultiCaptures:PPointer;const CountMultiCaptures,CountCaptures:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
+{
+function PtrMatchAll(const Input:pointer;const InputLength:longint;var Captures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
+function PtrReplaceAll(const Input:pointer;const InputLength:longint;const AReplacement:pointer;const AReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
+ {}
 
 implementation
 
@@ -4576,8 +4583,8 @@ begin
  OnePassNFAMatchCaptures:=nil;
 
  if Instance.OnePassNFAReady then begin
-  SetLength(OnePassNFAWorkCaptures,Instance.CountParens*2);
-  SetLength(OnePassNFAMatchCaptures,Instance.CountParens*2);
+  SetLength(OnePassNFAWorkCaptures,Instance.CountCaptures*2);
+  SetLength(OnePassNFAMatchCaptures,Instance.CountCaptures*2);
  end;
 
  BitStateNFACountVisited:=0;
@@ -4588,8 +4595,8 @@ begin
  BitStateNFAMatchCaptures:=nil;
 
  if Instance.BitStateNFAReady then begin
-  SetLength(BitStateNFAWorkCaptures,Instance.CountParens*2);
-  SetLength(BitStateNFAMatchCaptures,Instance.CountParens*2);
+  SetLength(BitStateNFAWorkCaptures,Instance.CountCaptures*2);
+  SetLength(BitStateNFAMatchCaptures,Instance.CountCaptures*2);
  end;
 
  DFAStackInstructions:=nil;
@@ -5376,9 +5383,9 @@ begin
  end;
 
  if assigned(Matched) then begin
-  SetLength(Captures,Instance.CountParens);
+  SetLength(Captures,Instance.CountCaptures);
   BitState:=Matched^.BitState;
-  for Counter:=0 to Instance.CountParens-1 do begin
+  for Counter:=0 to Instance.CountCaptures-1 do begin
    Capture:=@Captures[Counter];
    if (BitState and longword($80000000))<>0 then begin
     CurrentPosition:=Matched^.SubMatches[Counter shl 1];
@@ -5422,7 +5429,7 @@ var State,Nodes:PFLREOnePassNFAState;
  end;
 begin
 
- TwoCountOfCaptures:=Instance.CountParens*2;
+ TwoCountOfCaptures:=Instance.CountSubMatches;
 
  LocalInput:=Input;
  LocalInputLength:=InputLength;
@@ -5507,8 +5514,8 @@ begin
  end;
 
  if result then begin
-  SetLength(Captures,Instance.CountParens);
-  for Counter:=0 to Instance.CountParens-1 do begin
+  SetLength(Captures,Instance.CountCaptures);
+  for Counter:=0 to Instance.CountCaptures-1 do begin
    Captures[Counter].Start:=OnePassNFAMatchCaptures[Counter*2];
    Captures[Counter].Length:=OnePassNFAMatchCaptures[(Counter*2)+1]-OnePassNFAMatchCaptures[Counter*2];
   end;
@@ -5621,12 +5628,12 @@ var LocalInputLength,BasePosition,Len:longint;
       if rfLONGEST in Instance.Flags then begin
        if LastPosition<Position then begin
         LastPosition:=Position;
-        for i:=0 to (Instance.CountParens*2)-1 do begin
+        for i:=0 to (Instance.CountCaptures*2)-1 do begin
          BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
         end;
        end;
       end else begin
-       for i:=0 to (Instance.CountParens*2)-1 do begin
+       for i:=0 to (Instance.CountCaptures*2)-1 do begin
         BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
        end;
        exit;
@@ -5740,8 +5747,8 @@ begin
  end;
 
  if TrySearch(StartInstruction,Position) then begin
-  SetLength(Captures,Instance.CountParens);
-  for Counter:=0 to Instance.CountParens-1 do begin
+  SetLength(Captures,Instance.CountCaptures);
+  for Counter:=0 to Instance.CountCaptures-1 do begin
    Captures[Counter].Start:=BitStateNFAMatchCaptures[Counter*2];
    Captures[Counter].Length:=BitStateNFAMatchCaptures[(Counter*2)+1]-BitStateNFAMatchCaptures[Counter*2];
   end;
@@ -5833,7 +5840,7 @@ var StartDelimiter,EndDelimiter:ansichar;
 begin
  inherited Create;
 
- CountParens:=0;
+ CountCaptures:=0;
 
  AnchoredRootNode:=nil;
 
@@ -6009,7 +6016,7 @@ begin
    SetLength(CharClasses,CountCharClasses);
   end;
 
-  CountSubMatches:=(CountParens+1)*2;
+  CountSubMatches:=CountCaptures*2;
 
   CompilePrefix;
 
@@ -7852,8 +7859,8 @@ var SourcePosition,SourceLength:longint;
            end else begin
             raise EFLRE.Create('Syntax error');
            end;
-           Value:=CountParens;
-           inc(CountParens);
+           Value:=CountCaptures;
+           inc(CountCaptures);
            NamedGroupStringIntegerPairHashMap.Add(Name,Value);
            if NamedGroupStringList.IndexOf(Name)<0 then begin
             NamedGroupStringList.Add(Name);
@@ -7878,8 +7885,8 @@ var SourcePosition,SourceLength:longint;
             end else begin
              raise EFLRE.Create('Syntax error');
             end;
-            Value:=CountParens;
-            inc(CountParens);
+            Value:=CountCaptures;
+            inc(CountCaptures);
             NamedGroupStringIntegerPairHashMap.Add(Name,Value);
             if NamedGroupStringList.IndexOf(Name)<0 then begin
              NamedGroupStringList.Add(Name);
@@ -7904,8 +7911,8 @@ var SourcePosition,SourceLength:longint;
             end else begin
              raise EFLRE.Create('Syntax error');
             end;
-            Value:=CountParens;
-            inc(CountParens);
+            Value:=CountCaptures;
+            inc(CountCaptures);
             NamedGroupStringIntegerPairHashMap.Add(Name,Value);
             if NamedGroupStringList.IndexOf(Name)<0 then begin
              NamedGroupStringList.Add(Name);
@@ -7929,8 +7936,8 @@ var SourcePosition,SourceLength:longint;
         if rfNAMED in Flags then begin
          result:=ParseDisjunction;
         end else begin
-         Value:=CountParens;
-         inc(CountParens);
+         Value:=CountCaptures;
+         inc(CountCaptures);
          result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
          result^.Value:=Value;
         end;
@@ -8395,7 +8402,9 @@ begin
  SourcePosition:=1;
  SourceLength:=length(Source);
  if SourcePosition<=SourceLength then begin
-  CountParens:=1;
+  NamedGroupStringIntegerPairHashMap.Add('wholematch',0);
+  NamedGroupStringList.Add('wholematch');
+  CountCaptures:=1;
   AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
   while assigned(AnchoredRootNode) and OptimizeNode(@AnchoredRootNode) do begin
   end;
@@ -10194,7 +10203,7 @@ begin
         if MatchBegin<StartPosition then begin
          MatchBegin:=StartPosition;
         end;
-        if (CountParens=1) and not DFANeedVerification then begin
+        if (CountCaptures=1) and not DFANeedVerification then begin
          // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
          SetLength(Captures,1);
          Captures[0].Start:=MatchBegin;
@@ -10209,7 +10218,7 @@ begin
        end;
       end;
      end;
-     if (CountParens=1) and not (DFANeedVerification or UnanchoredStart) then begin
+     if (CountCaptures=1) and not (DFANeedVerification or UnanchoredStart) then begin
       // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
       SetLength(Captures,1);
       Captures[0].Start:=StartPosition;
@@ -10295,7 +10304,7 @@ begin
      if (CurrentPosition<0) or (CurrentPosition>=InputLength) or (BeginningAnchor and (CurrentPosition<>0)) then begin
       exit;
      end;
-     if FixedStringIsWholeRegExp and (CountParens=1) and not DFANeedVerification then begin
+     if FixedStringIsWholeRegExp and (CountCaptures=1) and not DFANeedVerification then begin
       SetLength(Captures,1);
       Captures[0].Start:=CurrentPosition;
       Captures[0].Length:=FixedStringLength;
@@ -10327,7 +10336,7 @@ begin
  end;
 end;
 
-function TFLRE.PtrMatchAll(const Input:pointer;const InputLength:longint;var Captures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
+function TFLRE.PtrMatchAll(const Input:pointer;const InputLength:longint;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
 var CurrentPosition,CountMultiCaptures,Next:longint;
     MatchResult:TFLRECaptures;
 begin
@@ -10335,7 +10344,7 @@ begin
  MatchResult:=nil;
  CountMultiCaptures:=0;
  try
-  SetLength(Captures,0);
+  SetLength(MultiCaptures,0);
   CurrentPosition:=StartPosition;
   if CurrentPosition>=0 then begin
    while (CurrentPosition<InputLength) and (Limit<>0) and PtrMatchNext(Input,InputLength,MatchResult,CurrentPosition) do begin
@@ -10344,10 +10353,10 @@ begin
     if CurrentPosition<Next then begin
      CurrentPosition:=Next;
     end;
-    if CountMultiCaptures>=length(Captures) then begin
-     SetLength(Captures,(CountMultiCaptures+1)*2);
+    if CountMultiCaptures>=length(MultiCaptures) then begin
+     SetLength(MultiCaptures,(CountMultiCaptures+1)*2);
     end;
-    Captures[CountMultiCaptures]:=copy(MatchResult);
+    MultiCaptures[CountMultiCaptures]:=copy(MatchResult);
     inc(CountMultiCaptures);
     if Limit>0 then begin
      dec(Limit);
@@ -10357,7 +10366,7 @@ begin
   end;
  finally
   SetLength(MatchResult,0);
-  SetLength(Captures,CountMultiCaptures);
+  SetLength(MultiCaptures,CountMultiCaptures);
  end;
 end;
 
@@ -10603,14 +10612,14 @@ begin
  end;
 end;
 
-function TFLRE.MatchAll(const Input:ansistring;var Captures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+function TFLRE.MatchAll(const Input:ansistring;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
 var Counter,SubCounter:longint;
 begin
- result:=PtrMatchAll(pansichar(@Input[1]),length(Input),Captures,StartPosition-1,Limit);
- for Counter:=0 to length(Captures)-1 do begin
-  for SubCounter:=0 to length(Captures[Counter])-1 do begin
-   if Captures[Counter,SubCounter].Length>0 then begin
-    inc(Captures[Counter,SubCounter].Start);
+ result:=PtrMatchAll(pansichar(@Input[1]),length(Input),MultiCaptures,StartPosition-1,Limit);
+ for Counter:=0 to length(MultiCaptures)-1 do begin
+  for SubCounter:=0 to length(MultiCaptures[Counter])-1 do begin
+   if MultiCaptures[Counter,SubCounter].Length>0 then begin
+    inc(MultiCaptures[Counter,SubCounter].Start);
    end;
   end;
  end;
@@ -11279,6 +11288,181 @@ begin
  finally
   LocalLowRange:='';
   LocalHighRange:='';
+ end;
+end;
+
+function FLREMatch(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
+type PLongints=^TLongints;
+     TLongints=array[0..65535] of longint;
+var s:ansistring;
+    Len,Index:longint;
+    LocalCaptures:TFLRECaptures;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(Captures) and assigned(Captures^) then begin
+  FreeMem(Captures^);
+  Captures^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(Captures) then begin
+    LocalCaptures:=nil;
+    try
+     if TFLRE(Instance).PtrMatch(Input,InputLength,LocalCaptures,StartPosition) then begin
+      GetMem(Captures^,length(LocalCaptures)*(sizeof(longint)*2));
+      for Index:=0 to length(LocalCaptures)-1 do begin
+       PLongints(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+       PLongints(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+      end;
+      if assigned(CountCaptures) then begin
+       CountCaptures^:=length(LocalCaptures);
+      end;
+      result:=1;
+     end;
+    finally
+     SetLength(LocalCaptures,0);
+    end;
+   end;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=AnsiString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
+type PLongints=^TLongints;
+     TLongints=array[0..65535] of longint;
+var s:ansistring;
+    Len,Index:longint;
+    LocalCaptures:TFLRECaptures;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(Captures) and assigned(Captures^) then begin
+  FreeMem(Captures^);
+  Captures^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(Captures) then begin
+    LocalCaptures:=nil;
+    try
+     if TFLRE(Instance).PtrMatchNext(Input,InputLength,LocalCaptures,StartPosition) then begin
+      GetMem(Captures^,length(LocalCaptures)*(sizeof(longint)*2));
+      for Index:=0 to length(LocalCaptures)-1 do begin
+       PLongints(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+       PLongints(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+      end;
+      if assigned(CountCaptures) then begin
+       CountCaptures^:=length(LocalCaptures);
+      end;
+      result:=1;
+     end;
+    finally
+     SetLength(LocalCaptures,0);
+    end;
+   end;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=AnsiString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const MultiCaptures:PPointer;const CountMultiCaptures,CountCaptures:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
+var s:ansistring;
+    Len,Index,SubIndex:longint;
+    LocalMultiCaptures:TFLREMultiCaptures;
+    p:plongint;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(MultiCaptures) and assigned(MultiCaptures^) then begin
+  FreeMem(MultiCaptures^);
+  MultiCaptures^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(MultiCaptures) then begin
+    LocalMultiCaptures:=nil;
+    try
+     if TFLRE(Instance).PtrMatchAll(Input,InputLength,LocalMultiCaptures,StartPosition,Limit) then begin
+      GetMem(MultiCaptures^,length(LocalMultiCaptures)*TFLRE(Instance).CountCaptures*(sizeof(longint)*2));
+      p:=MultiCaptures^;
+      for Index:=0 to length(LocalMultiCaptures)-1 do begin
+       for SubIndex:=0 to length(LocalMultiCaptures[Index])-1 do begin
+        p^:=LocalMultiCaptures[Index,SubIndex].Start;
+        inc(p);
+        p^:=LocalMultiCaptures[Index,SubIndex].Length;
+        inc(p);
+       end;
+      end;
+      if assigned(CountMultiCaptures) then begin
+       CountMultiCaptures^:=length(LocalMultiCaptures);
+      end;
+      if assigned(CountCaptures) then begin
+       CountCaptures^:=TFLRE(Instance).CountCaptures;
+      end;
+      result:=1;
+     end;
+    finally
+     SetLength(LocalMultiCaptures,0);
+    end;
+   end;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=AnsiString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
  end;
 end;
 
