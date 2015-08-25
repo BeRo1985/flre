@@ -9725,7 +9725,7 @@ var OK:boolean;
 begin
  result:=Node;
  while assigned(result) do begin
-  for Counter:=0 to result.Subs.Count do begin
+  for Counter:=0 to result.Subs.Count-1 do begin
    result.Subs[Counter]:=PrefilterOptimize(result.Subs[Counter]);
   end;
   case result.Operation of
