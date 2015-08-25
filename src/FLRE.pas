@@ -635,9 +635,9 @@ function FLREGetPrefilterShortExpression(const Instance:pointer;const ShortExpre
 function FLREGetPrefilterSQLBooleanFullTextExpression(const Instance:pointer;const SQLBooleanFullTextExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetPrefilterSQLExpression(const Instance:pointer;const Field:pansichar;SQLExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar;const LowRangeLength,HighRangeLength:PLongint;const Error:PPAnsiChar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
-function FLREMatch(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
-function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
-function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const MultiCaptures:PPointer;const CountMultiCaptures,CountCaptures:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
+function FLREMatch(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const MaxCaptures:longint;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
+function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const MaxCaptures:longint;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
+function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const MultiCaptures:PPointer;const MaxMultiCaptures:longint;const CountMultiCaptures,CountCaptures:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
 function FLREReplaceAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const ResultString:PPointer;const ResultStringLength:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
 
 procedure InitializeFLRE;
@@ -11320,7 +11320,7 @@ begin
  end;
 end;
 
-function FLREMatch(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
+function FLREMatch(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const MaxCaptures:longint;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
 type PLongints=^TLongints;
      TLongints=array[0..65535] of longint;
 var s:ansistring;
@@ -11376,7 +11376,7 @@ begin
  end;
 end;
 
-function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
+function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const MaxCaptures:longint;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
 type PLongints=^TLongints;
      TLongints=array[0..65535] of longint;
 var s:ansistring;
@@ -11432,7 +11432,7 @@ begin
  end;
 end;
 
-function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const MultiCaptures:PPointer;const CountMultiCaptures,CountCaptures:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
+function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const MultiCaptures:PPointer;const MaxMultiCaptures:longint;const CountMultiCaptures,CountCaptures:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
 var s:ansistring;
     Len,Index,SubIndex:longint;
     LocalMultiCaptures:TFLREMultiCaptures;
