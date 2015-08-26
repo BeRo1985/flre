@@ -5617,7 +5617,7 @@ end;
 
 function TFLREThreadLocalStorageInstance.SearchMatchOnePassNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
 var State,Nodes:PFLREOnePassNFAState;
-    LocalInputLength,CurrentPosition,StateSize,TwoCountOfCaptures,Counter:longint;
+    LocalInputLength,CurrentPosition,StateSize,CountSubMatches,Counter:longint;
     LocalByteMap:PFLREByteMap;
     Done:boolean;
     NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
@@ -5628,7 +5628,7 @@ var State,Nodes:PFLREOnePassNFAState;
  end;
 begin
 
- TwoCountOfCaptures:=Instance.CountSubMatches;
+ CountSubMatches:=Instance.CountSubMatches;
 
  LocalInput:=Input;
  LocalInputLength:=InputLength;
@@ -5662,11 +5662,11 @@ begin
   if (MatchCondition<>sfImpossible) and
      (((Condition and sfMatchWins)<>0) or ((NextMatchCondition and sfEmptyAllFlags)<>0)) and
      (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
-   for Counter:=0 to TwoCountOfCaptures-1 do begin
+   for Counter:=0 to CountSubMatches-1 do begin
     OnePassNFAMatchSubMatches[Counter]:=OnePassNFAWorkSubMatches[Counter];
    end;
    if (MatchCondition and sfCapMask)<>0 then begin
-    for Counter:=0 to TwoCountOfCaptures-1 do begin
+    for Counter:=0 to CountSubMatches-1 do begin
      if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin
       OnePassNFAMatchSubMatches[Counter]:=CurrentPosition;
      end;
@@ -5685,7 +5685,7 @@ begin
   end;
 
   if (Condition and sfCapMask)<>0 then begin
-   for Counter:=0 to TwoCountOfCaptures-1 do begin
+   for Counter:=0 to CountSubMatches-1 do begin
     if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
      OnePassNFAWorkSubMatches[Counter]:=CurrentPosition;
     end;
@@ -5698,14 +5698,14 @@ begin
  if assigned(State) and not Done then begin
   MatchCondition:=State^.MatchCondition;
   if (MatchCondition<>sfImpossible) and (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
-   if ((MatchCondition and sfCapMask)<>0) and (TwoCountOfCaptures>0) then begin
-    for Counter:=0 to TwoCountOfCaptures-1 do begin
+   if ((MatchCondition and sfCapMask)<>0) and (CountSubMatches>0) then begin
+    for Counter:=0 to CountSubMatches-1 do begin
      if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin   
       OnePassNFAWorkSubMatches[Counter]:=CurrentPosition;
      end;
     end;
    end;
-   for Counter:=0 to TwoCountOfCaptures-1 do begin
+   for Counter:=0 to CountSubMatches-1 do begin
     OnePassNFAMatchSubMatches[Counter]:=OnePassNFAWorkSubMatches[Counter];
    end;
    result:=true;
