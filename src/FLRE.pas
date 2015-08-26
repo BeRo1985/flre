@@ -9435,86 +9435,137 @@ procedure TFLRE.Compile;
       CurrentChar,SingleChar:ansichar;
       DoIgnoreCase:boolean;
   begin
-   while assigned(Node) do begin
-    if NodeStack.IndexOf(Node)<0 then begin
-     case Node^.NodeType of
-      ntALT:begin
-       i0:=NewInstruction(opSPLIT);
-       Instructions[i0].Value:=skALT;
+   while assigned(Node) and (NodeStack.IndexOf(Node)<0) do begin
+    case Node^.NodeType of
+     ntALT:begin
+      i0:=NewInstruction(opSPLIT);
+      Instructions[i0].Value:=skALT;
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Emit(Node^.Left);
+      i1:=NewInstruction(opJMP);
+      Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+      Emit(Node^.Right);
+      Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntCAT:begin
+      if Reversed then begin
+       Emit(Node^.Right);
+       Node:=Node^.Left;
+      end else begin
+       Emit(Node^.Left);
+       Node:=Node^.Right;
+      end;
+      continue;
+     end;
+     ntCHAR:begin
+      SingleChar:=#0;
+      Count:=0;
+      for CurrentChar:=#0 to #255 do begin
+       if CurrentChar in Node^.CharClass then begin
+        if Count=0 then begin
+         SingleChar:=CurrentChar;
+         inc(Count);
+        end else begin
+         inc(Count);
+         break;
+        end;
+       end;
+      end;
+      if Count=1 then begin
+       i0:=NewInstruction(opSINGLECHAR);
+       Instructions[i0].Value:=byte(ansichar(SingleChar));
+      end else begin
+       i0:=NewInstruction(opCHAR);
+       Index:=-1;
+       for Counter:=0 to CountCharClasses-1 do begin
+        if CharClasses[Counter]^=Node^.CharClass then begin
+         Index:=Counter;
+         break;
+        end;
+       end;
+       if Index<0 then begin
+        Index:=CountCharClasses;
+        inc(CountCharClasses);
+        if CountCharClasses>length(CharClasses) then begin
+         SetLength(CharClasses,CountCharClasses*2);
+        end;
+        GetMem(CharClasses[Index],SizeOf(TFLRECharClass));
+        CharClasses[Index]^:=Node^.CharClass;
+       end;
+       Instructions[i0].Value:=ptruint(pointer(CharClasses[Index]));
+      end;
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntANY:begin
+      i0:=NewInstruction(opANY);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntPAREN:begin
+      if assigned(BackreferenceParentNode) then begin
+       Emit(Node^.Left);
+      end else begin
+       i0:=NewInstruction(opSAVE);
+       Instructions[i0].Value:=Node^.Value shl 1;
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+       Emit(Node^.Left);
+       i0:=NewInstruction(opSAVE);
+       Instructions[i0].Value:=(Node^.Value shl 1) or 1;
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      end;
+     end;
+     ntQUEST:begin
+      i0:=NewInstruction(opSPLIT);
+      Instructions[i0].Value:=skQUEST;
+      if Node^.Value<>0 then begin
+       // Non-greedy
+       Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+       Emit(Node^.Left);
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      end else begin
+       // Greedy
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+       Emit(Node^.Left);
+       Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+      end;
+     end;
+     ntSTAR:begin
+      i0:=NewInstruction(opSPLIT);
+      Instructions[i0].Value:=skSTAR;
+      if Node^.Value<>0 then begin
+       // Non-greedy
+       Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+       Emit(Node^.Left);
+       i1:=NewInstruction(opJMP);
+       Instructions[i1].Next:=pointer(ptrint(i0));
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      end else begin
+       // Greedy
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
        Emit(Node^.Left);
        i1:=NewInstruction(opJMP);
+       Instructions[i1].Next:=pointer(ptrint(i0));
        Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-       Emit(Node^.Right);
+      end;
+     end;
+     ntPLUS:begin
+      i0:=CountInstructions;
+      Emit(Node^.Left);
+      i1:=NewInstruction(opSPLIT);
+      Instructions[i1].Value:=skPLUS;
+      if Node^.Value<>0 then begin
+       // Non-greedy
+       Instructions[i1].OtherNext:=pointer(ptrint(i0));
        Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+      end else begin
+       // Greedy
+       Instructions[i1].Next:=pointer(ptrint(i0));
+       Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
       end;
-      ntCAT:begin
-       if Reversed then begin
-        Emit(Node^.Right);
-        Node:=Node^.Left;
-       end else begin
-        Emit(Node^.Left);
-        Node:=Node^.Right;
-       end;
-       continue;
-      end;
-      ntCHAR:begin
-       SingleChar:=#0;
-       Count:=0;
-       for CurrentChar:=#0 to #255 do begin
-        if CurrentChar in Node^.CharClass then begin
-         if Count=0 then begin
-          SingleChar:=CurrentChar;
-          inc(Count);
-         end else begin
-          inc(Count);
-          break;
-         end;
-        end;
-       end;
-       if Count=1 then begin
-        i0:=NewInstruction(opSINGLECHAR);
-        Instructions[i0].Value:=byte(ansichar(SingleChar));
-       end else begin
-        i0:=NewInstruction(opCHAR);
-        Index:=-1;
-        for Counter:=0 to CountCharClasses-1 do begin
-         if CharClasses[Counter]^=Node^.CharClass then begin
-          Index:=Counter;
-          break;
-         end;
-        end;
-        if Index<0 then begin
-         Index:=CountCharClasses;
-         inc(CountCharClasses);
-         if CountCharClasses>length(CharClasses) then begin
-          SetLength(CharClasses,CountCharClasses*2);
-         end;
-         GetMem(CharClasses[Index],SizeOf(TFLRECharClass));
-         CharClasses[Index]^:=Node^.CharClass;
-        end;
-        Instructions[i0].Value:=ptruint(pointer(CharClasses[Index]));
-       end;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end;
-      ntANY:begin
-       i0:=NewInstruction(opANY);
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end;
-      ntPAREN:begin
-       if assigned(BackreferenceParentNode) then begin
-        Emit(Node^.Left);
-       end else begin
-        i0:=NewInstruction(opSAVE);
-        Instructions[i0].Value:=Node^.Value shl 1;
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-        Emit(Node^.Left);
-        i0:=NewInstruction(opSAVE);
-        Instructions[i0].Value:=(Node^.Value shl 1) or 1;
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-       end;
-      end;
-      ntQUEST:begin
+     end;
+     ntEXACT:begin
+      if (Node^.MinCount=0) and (Node^.MaxCount=0) then begin
+       // nothing
+      end else if (Node^.MinCount=0) and (Node^.MaxCount=1) then begin
        i0:=NewInstruction(opSPLIT);
        Instructions[i0].Value:=skQUEST;
        if Node^.Value<>0 then begin
@@ -9528,272 +9579,217 @@ procedure TFLRE.Compile;
         Emit(Node^.Left);
         Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
        end;
-      end;
-      ntSTAR:begin
-       i0:=NewInstruction(opSPLIT);
-       Instructions[i0].Value:=skSTAR;
-       if Node^.Value<>0 then begin
-        // Non-greedy
-        Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+      end else if Node^.MaxCount<0 then begin
+       if Node^.MinCount>0 then begin
+        // Infinity with minimum connt
+        for Counter:=1 to Node^.MinCount-1 do begin
+         Emit(Node^.Left);
+        end;
+        i0:=CountInstructions;
         Emit(Node^.Left);
-        i1:=NewInstruction(opJMP);
-        Instructions[i1].Next:=pointer(ptrint(i0));
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        i1:=NewInstruction(opSPLIT);
+        Instructions[i1].Value:=skPLUS;
+        if Node^.Value<>0 then begin
+         // Non-greedy
+         Instructions[i1].OtherNext:=pointer(ptrint(i0));
+         Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+        end else begin
+         // Greedy
+         Instructions[i1].Next:=pointer(ptrint(i0));
+         Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
+        end;
        end else begin
-        // Greedy
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-        Emit(Node^.Left);
-        i1:=NewInstruction(opJMP);
-        Instructions[i1].Next:=pointer(ptrint(i0));
-        Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-       end;
-      end;
-      ntPLUS:begin
-       i0:=CountInstructions;
-       Emit(Node^.Left);
-       i1:=NewInstruction(opSPLIT);
-       Instructions[i1].Value:=skPLUS;
-       if Node^.Value<>0 then begin
-        // Non-greedy
-        Instructions[i1].OtherNext:=pointer(ptrint(i0));
-        Instructions[i1].Next:=pointer(ptrint(CountInstructions));
-       end else begin
-        // Greedy
-        Instructions[i1].Next:=pointer(ptrint(i0));
-        Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
-       end;
-      end;
-      ntEXACT:begin
-       if (Node^.MinCount=0) and (Node^.MaxCount=0) then begin
-        // nothing
-       end else if (Node^.MinCount=0) and (Node^.MaxCount=1) then begin
+        // Infinity without minimum connt
         i0:=NewInstruction(opSPLIT);
-        Instructions[i0].Value:=skQUEST;
+        Instructions[i0].Value:=skSTAR;
         if Node^.Value<>0 then begin
          // Non-greedy
          Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
          Emit(Node^.Left);
+         i1:=NewInstruction(opJMP);
+         Instructions[i1].Next:=pointer(ptrint(i0));
          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
         end else begin
          // Greedy
          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
          Emit(Node^.Left);
+         i1:=NewInstruction(opJMP);
+         Instructions[i1].Next:=pointer(ptrint(i0));
          Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
         end;
-       end else if Node^.MaxCount<0 then begin
-        if Node^.MinCount>0 then begin
-         // Infinity with minimum connt
-         for Counter:=1 to Node^.MinCount-1 do begin
-          Emit(Node^.Left);
-         end;
-         i0:=CountInstructions;
-         Emit(Node^.Left);
-         i1:=NewInstruction(opSPLIT);
-         Instructions[i1].Value:=skPLUS;
-         if Node^.Value<>0 then begin
-          // Non-greedy
-          Instructions[i1].OtherNext:=pointer(ptrint(i0));
-          Instructions[i1].Next:=pointer(ptrint(CountInstructions));
-         end else begin
-          // Greedy
-          Instructions[i1].Next:=pointer(ptrint(i0));
-          Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
-         end;
-        end else begin
-         // Infinity without minimum connt
-         i0:=NewInstruction(opSPLIT);
-         Instructions[i0].Value:=skSTAR;
-         if Node^.Value<>0 then begin
-          // Non-greedy
-          Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-          Emit(Node^.Left);
-          i1:=NewInstruction(opJMP);
-          Instructions[i1].Next:=pointer(ptrint(i0));
-          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-         end else begin
-          // Greedy
-          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-          Emit(Node^.Left);
-          i1:=NewInstruction(opJMP);
-          Instructions[i1].Next:=pointer(ptrint(i0));
-          Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-         end;
-        end;
-       end else begin
-        for Counter:=1 to Node^.MinCount do begin
-         Emit(Node^.Left);
-        end;
-        if Node^.MinCount<Node^.MaxCount then begin
-         if (Node^.MaxCount-Node^.MinCount)<1024 then begin
-          SetLength(Last,Node^.MaxCount-Node^.MinCount);
-          try
-           for Counter:=Node^.MinCount to Node^.MaxCount-1 do begin
-            i0:=NewInstruction(opSPLIT);
-            Instructions[i0].Value:=skQUEST;
-            Last[Counter-Node^.MinCount]:=i0;
-            if Node^.Value<>0 then begin
-             // Non-greedy
-             Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-            end else begin
-             // Greedy
-             Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-            end;
-            Emit(Node^.Left);
-           end;
-           for Counter:=Node^.MaxCount-1 downto Node^.MinCount do begin
-            i0:=Last[Counter-Node^.MinCount];
-            if Node^.Value<>0 then begin
-             // Non-greedy
-             Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-            end else begin
-             // Greedy
-             Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-            end;
-           end;
-          finally
-           SetLength(Last,0);
-          end;
-         end else begin
+       end;
+      end else begin
+       for Counter:=1 to Node^.MinCount do begin
+        Emit(Node^.Left);
+       end;
+       if Node^.MinCount<Node^.MaxCount then begin
+        if (Node^.MaxCount-Node^.MinCount)<1024 then begin
+         SetLength(Last,Node^.MaxCount-Node^.MinCount);
+         try
           for Counter:=Node^.MinCount to Node^.MaxCount-1 do begin
            i0:=NewInstruction(opSPLIT);
            Instructions[i0].Value:=skQUEST;
+           Last[Counter-Node^.MinCount]:=i0;
            if Node^.Value<>0 then begin
             // Non-greedy
             Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-            Emit(Node^.Left);
-            Instructions[i0].Next:=pointer(ptrint(CountInstructions));
            end else begin
             // Greedy
             Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-            Emit(Node^.Left);
+           end;
+           Emit(Node^.Left);
+          end;
+          for Counter:=Node^.MaxCount-1 downto Node^.MinCount do begin
+           i0:=Last[Counter-Node^.MinCount];
+           if Node^.Value<>0 then begin
+            // Non-greedy
+            Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+           end else begin
+            // Greedy
             Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
            end;
+          end;
+         finally
+          SetLength(Last,0);
+         end;
+        end else begin
+         for Counter:=Node^.MinCount to Node^.MaxCount-1 do begin
+          i0:=NewInstruction(opSPLIT);
+          Instructions[i0].Value:=skQUEST;
+          if Node^.Value<>0 then begin
+           // Non-greedy
+           Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+           Emit(Node^.Left);
+           Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+          end else begin
+           // Greedy
+           Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+           Emit(Node^.Left);
+           Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
           end;
          end;
         end;
        end;
       end;
-      ntBOL:begin
-       if Reversed then begin
-        i0:=NewInstruction(opEOL);
-       end else begin
-        i0:=NewInstruction(opBOL);
-       end;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntBOL:begin
+      if Reversed then begin
+       i0:=NewInstruction(opEOL);
+      end else begin
+       i0:=NewInstruction(opBOL);
       end;
-      ntEOL:begin
-       if Reversed then begin
-        i0:=NewInstruction(opBOL);
-       end else begin
-        i0:=NewInstruction(opEOL);
-       end;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntEOL:begin
+      if Reversed then begin
+       i0:=NewInstruction(opBOL);
+      end else begin
+       i0:=NewInstruction(opEOL);
       end;
-      ntBOT:begin
-       if Reversed then begin
-        i0:=NewInstruction(opEOT);
-       end else begin
-        i0:=NewInstruction(opBOT);
-       end;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntBOT:begin
+      if Reversed then begin
+       i0:=NewInstruction(opEOT);
+      end else begin
+       i0:=NewInstruction(opBOT);
       end;
-      ntEOT:begin
-       if Reversed then begin
-        i0:=NewInstruction(opBOT);
-       end else begin
-        i0:=NewInstruction(opEOT);
-       end;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntEOT:begin
+      if Reversed then begin
+       i0:=NewInstruction(opBOT);
+      end else begin
+       i0:=NewInstruction(opEOT);
       end;
-      ntBRK:begin
-       i0:=NewInstruction(opBRK);
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end;
-      ntNBRK:begin
-       i0:=NewInstruction(opNBRK);
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end;
-      ntLOOKBEHINDNEGATIVE:begin
-       i0:=NewInstruction(opLOOKBEHINDNEGATIVE);
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-       Instructions[i0].Value:=Node^.Value;
-      end;
-      ntLOOKBEHINDPOSITIVE:begin
-       i0:=NewInstruction(opLOOKBEHINDPOSITIVE);
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-       Instructions[i0].Value:=Node^.Value;
-      end;
-      ntLOOKAHEADNEGATIVE:begin
-       i0:=NewInstruction(opLOOKAHEADNEGATIVE);
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-       Instructions[i0].Value:=Node^.Value;
-      end;
-      ntLOOKAHEADPOSITIVE:begin
-       i0:=NewInstruction(opLOOKAHEADPOSITIVE);
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-       Instructions[i0].Value:=Node^.Value;
-      end;
-      ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntBRK:begin
+      i0:=NewInstruction(opBRK);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntNBRK:begin
+      i0:=NewInstruction(opNBRK);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+     end;
+     ntLOOKBEHINDNEGATIVE:begin
+      i0:=NewInstruction(opLOOKBEHINDNEGATIVE);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Value:=Node^.Value;
+     end;
+     ntLOOKBEHINDPOSITIVE:begin
+      i0:=NewInstruction(opLOOKBEHINDPOSITIVE);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Value:=Node^.Value;
+     end;
+     ntLOOKAHEADNEGATIVE:begin
+      i0:=NewInstruction(opLOOKAHEADNEGATIVE);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Value:=Node^.Value;
+     end;
+     ntLOOKAHEADPOSITIVE:begin
+      i0:=NewInstruction(opLOOKAHEADPOSITIVE);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Value:=Node^.Value;
+     end;
+     ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
 
-       DoIgnoreCase:=Node^.NodeType=ntBACKREFERENCEIGNORECASE;
+      DoIgnoreCase:=Node^.NodeType=ntBACKREFERENCEIGNORECASE;
       
-       if not Reversed then begin
+      if not Reversed then begin
 
-        // Mark back reference content begin
-        i0:=NewInstruction(opSAVE);
-        Instructions[i0].Value:=Node^.Value shl 1;
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-        Index:=i0;
+       // Mark back reference content begin
+       i0:=NewInstruction(opSAVE);
+       Instructions[i0].Value:=Node^.Value shl 1;
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
 
-       end else begin
-      
-        Index:=0;
+      end else begin
 
-       end;
+       i0:=0;
 
-       // Alternation
-{      i1:=NewInstruction(opSPLIT);
-       Instructions[i1].Value:=skALT;
-       Instructions[i1].Next:=pointer(ptrint(CountInstructions));{}
-       begin
-        NodeStack.Add(Node);
-        if assigned(Node^.Left) then begin
-         if assigned(BackreferenceParentNode) then begin
-          Emit(Node^.Left,BackreferenceParentNode);
-         end else begin
-          Emit(Node^.Left,Node);
-         end;
-        end;
-        NodeStack.Delete(NodeStack.Count-1);
-       end;
-{      i2:=NewInstruction(opJMP);
-       Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
-       // Nothing
-       Instructions[i2].Next:=pointer(ptrint(CountInstructions));{}
+      end;
 
-       if not Reversed then begin
-
-        // Mark back reference content end
-        i0:=NewInstruction(opSAVE);
-        Instructions[i0].Value:=(Node^.Value shl 1) or 1;
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-
-        // Check back reference
-        if DoIgnoreCase then begin
-         i0:=NewInstruction(opBACKREFERENCEIGNORECASE);
+      // Alternation
+{     i1:=NewInstruction(opSPLIT);
+      Instructions[i1].Value:=skALT;
+      Instructions[i1].Next:=pointer(ptrint(CountInstructions));{}
+      begin
+       NodeStack.Add(Node);
+       if assigned(Node^.Left) then begin
+        if assigned(BackreferenceParentNode) then begin
+         Emit(Node^.Left,BackreferenceParentNode);
         end else begin
-         i0:=NewInstruction(opBACKREFERENCE);
+         Emit(Node^.Left,Node);
         end;
-        Instructions[i0].Value:=CapturesToSubMatchesMap[Node^.Group] shl 1;
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-        Instructions[i0].OtherNext:=pointer(ptrint(Index));
-
        end;
+       NodeStack.Delete(NodeStack.Count-1);
+      end;
+{     i2:=NewInstruction(opJMP);
+      Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
+      Instructions[i2].Next:=pointer(ptrint(CountInstructions));{}
+
+      if not Reversed then begin
+
+       // Mark back reference content end
+       i1:=NewInstruction(opSAVE);
+       Instructions[i1].Value:=(Node^.Value shl 1) or 1;
+       Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+
+       // Check back reference
+       if DoIgnoreCase then begin
+        i1:=NewInstruction(opBACKREFERENCEIGNORECASE);
+       end else begin
+        i1:=NewInstruction(opBACKREFERENCE);
+       end;
+       Instructions[i1].Value:=CapturesToSubMatchesMap[Node^.Group] shl 1;
+       Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+       Instructions[i1].OtherNext:=pointer(ptrint(i0));
 
       end;
-      else begin
-       raise EFLRE.Create('Internal error');
-      end;
+
+     end;
+     else begin
+      raise EFLRE.Create('Internal error');
      end;
     end;
     break;
