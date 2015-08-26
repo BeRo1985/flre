@@ -8979,8 +8979,13 @@ var SourcePosition,SourceLength:longint;
        if SourcePosition<=SourceLength then begin
         case Source[SourcePosition] of
          '0'..'9':begin
-          result:=NewBackReferencePerIndex(byte(ansichar(Source[SourcePosition]))-byte(ansichar('0')));
+          Value:=byte(ansichar(Source[SourcePosition]))-byte(ansichar('0'));
           inc(SourcePosition);
+          while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9']) do begin
+           Value:=(Value*10)+(byte(ansichar(Source[SourcePosition]))-byte(ansichar('0')));
+           inc(SourcePosition);
+          end;
+          result:=NewBackReferencePerIndex(Value);
          end;
          'b','y':begin
           result:=NewNode(ntBRK,nil,nil,nil,0);
