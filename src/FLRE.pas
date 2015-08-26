@@ -498,6 +498,8 @@ type EFLRE=class(Exception);
 
        function LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
 
+       function BackReferenceAssertion(const CaptureStart,CaptureEnd,BackReferenceStart,BackReferenceEnd:longint;const IgnoreCase:boolean):boolean;
+
        function ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitmap,UsedCheckBitmapSize:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        function ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        procedure ParallelNFAStateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
@@ -5489,6 +5491,55 @@ begin
  result:=result xor Negative;
 end;
 
+function TFLREThreadLocalStorageInstance.BackReferenceAssertion(const CaptureStart,CaptureEnd,BackReferenceStart,BackReferenceEnd:longint;const IgnoreCase:boolean):boolean;
+var CapturePosition,BackReferencePosition:longint;
+begin
+ result:=false;
+ if (CaptureStart>=0) and (CaptureEnd>0) and (BackReferenceStart>=0) and (BackReferenceEnd>0) then begin
+  if IgnoreCase then begin
+   if rfUTF8 in Instance.Flags then begin
+    result:=true;
+    CapturePosition:=CaptureStart;
+    BackReferencePosition:=BackReferenceStart;
+    while (CapturePosition<CaptureEnd) and (BackReferencePosition<BackReferenceEnd) do begin
+     if UnicodeToLower(UTF8PtrCodeUnitGetCharAndIncFallback(Input,InputLength,CapturePosition))<>UnicodeToLower(UTF8PtrCodeUnitGetCharAndIncFallback(Input,InputLength,BackReferencePosition)) then begin
+      result:=false;
+      exit;
+     end;
+    end;
+   end else begin
+    if (CaptureEnd-CaptureStart)=(BackReferenceEnd-BackReferenceStart) then begin
+     result:=true;
+     CapturePosition:=CaptureStart;
+     BackReferencePosition:=BackReferenceStart;
+     while (CapturePosition<CaptureEnd) and (BackReferencePosition<BackReferenceEnd) do begin
+      if UnicodeToLower(byte(ansichar(Input[CapturePosition])))<>UnicodeToLower(byte(ansichar(Input[BackReferencePosition]))) then begin
+       result:=false;
+       exit;
+      end;
+      inc(CapturePosition);
+      inc(BackReferencePosition);
+     end;
+    end;
+   end;
+  end else begin
+   if (CaptureEnd-CaptureStart)=(BackReferenceEnd-BackReferenceStart) then begin
+    result:=true;
+    CapturePosition:=CaptureStart;
+    BackReferencePosition:=BackReferenceStart;
+    while (CapturePosition<CaptureEnd) and (BackReferencePosition<BackReferenceEnd) do begin
+     if Input[CapturePosition]<>Input[BackReferencePosition] then begin
+      result:=false;
+      exit;
+     end;
+     inc(CapturePosition);
+     inc(BackReferencePosition);
+    end;
+   end;
+  end;
+ end;
+end;
+
 function TFLREThreadLocalStorageInstance.ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitmap,UsedCheckBitmapSize:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 begin
  if assigned(FreeParallelNFAStates) then begin
@@ -5623,50 +5674,7 @@ begin
     exit;
    end;
   end;
-  if (CaptureEnd=0) or (BackReferenceEnd=0) then begin
-   exit;
-  end;
-  if IgnoreCase then begin
-   if rfUTF8 in Instance.Flags then begin
-    result:=true;
-    CapturePosition:=CaptureStart;
-    BackReferencePosition:=BackReferenceStart;
-    while (CapturePosition<CaptureEnd) and (BackReferencePosition<BackReferenceEnd) do begin
-     if UnicodeToLower(UTF8PtrCodeUnitGetCharAndIncFallback(Input,InputLength,CapturePosition))<>UnicodeToLower(UTF8PtrCodeUnitGetCharAndIncFallback(Input,InputLength,BackReferencePosition)) then begin
-      result:=false;
-      exit;
-     end;
-    end;
-   end else begin
-    if (CaptureEnd-CaptureStart)=(BackReferenceEnd-BackReferenceStart) then begin
-     result:=true;
-     CapturePosition:=CaptureStart;
-     BackReferencePosition:=BackReferenceStart;
-     while (CapturePosition<CaptureEnd) and (BackReferencePosition<BackReferenceEnd) do begin
-      if UnicodeToLower(byte(ansichar(Input[CapturePosition])))<>UnicodeToLower(byte(ansichar(Input[BackReferencePosition]))) then begin
-       result:=false;
-       exit;
-      end;
-      inc(CapturePosition);
-      inc(BackReferencePosition);
-     end;
-    end;
-   end;
-  end else begin
-   if (CaptureEnd-CaptureStart)=(BackReferenceEnd-BackReferenceStart) then begin
-    result:=true;
-    CapturePosition:=CaptureStart;
-    BackReferencePosition:=BackReferenceStart;
-    while (CapturePosition<CaptureEnd) and (BackReferencePosition<BackReferenceEnd) do begin
-     if Input[CapturePosition]<>Input[BackReferencePosition] then begin
-      result:=false;
-      exit;
-     end;
-     inc(CapturePosition);
-     inc(BackReferencePosition);
-    end;
-   end;
-  end;
+  result:=BackReferenceAssertion(CaptureStart,CaptureEnd,BackReferenceStart,BackReferenceEnd,IgnoreCase);
  end;
 end;
 
@@ -5765,7 +5773,10 @@ begin
      end;
     end;
     opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
-     if assigned(Instruction^.OtherNext) and ParallelNFABackReferenceAssertion(State,Instruction^.Value,Instruction^.OtherNext^.Value,(Instruction^.IndexAndOpcode and $ff) in [opBACKREFERENCEIGNORECASE]) then begin
+     if assigned(Instruction^.OtherNext) and ParallelNFABackReferenceAssertion(State,
+                                                                               Instruction^.Value,
+                                                                               Instruction^.OtherNext^.Value,
+                                                                               (Instruction^.IndexAndOpcode and $ff)=opBACKREFERENCEIGNORECASE) then begin
       Instruction:=Instruction^.Next;
       continue;
      end else begin
@@ -6532,9 +6543,15 @@ var LocalInputLength,BasePosition,Len:longint;
       end;
      end;
      opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
-      Instruction:=Instruction^.Next;
-      if ShouldVisit(Instruction,Position) then begin
-       continue;
+      if assigned(Instruction^.OtherNext) and BackReferenceAssertion(BitStateNFAWorkSubMatches[Instruction^.Value],
+                                                                     BitStateNFAWorkSubMatches[Instruction^.Value or 1],
+                                                                     BitStateNFAWorkSubMatches[Instruction^.OtherNext^.Value],
+                                                                     BitStateNFAWorkSubMatches[Instruction^.OtherNext^.Value or 1],
+                                                                     (Instruction^.IndexAndOpcode and $ff)=opBACKREFERENCEIGNORECASE) then begin
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
       end;
      end;
     end;
@@ -9733,26 +9750,14 @@ procedure TFLRE.Compile;
       Instructions[i0].Value:=Node^.Value;
      end;
      ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
-
       DoIgnoreCase:=Node^.NodeType=ntBACKREFERENCEIGNORECASE;
-      
       if not Reversed then begin
-
-       // Mark back reference content begin
        i0:=NewInstruction(opSAVE);
        Instructions[i0].Value:=Node^.Value shl 1;
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-
       end else begin
-
        i0:=0;
-
       end;
-
-      // Alternation
-{     i1:=NewInstruction(opSPLIT);
-      Instructions[i1].Value:=skALT;
-      Instructions[i1].Next:=pointer(ptrint(CountInstructions));{}
       begin
        NodeStack.Add(Node);
        if assigned(Node^.Left) then begin
@@ -9764,18 +9769,10 @@ procedure TFLRE.Compile;
        end;
        NodeStack.Delete(NodeStack.Count-1);
       end;
-{     i2:=NewInstruction(opJMP);
-      Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
-      Instructions[i2].Next:=pointer(ptrint(CountInstructions));{}
-
       if not Reversed then begin
-
-       // Mark back reference content end
        i1:=NewInstruction(opSAVE);
        Instructions[i1].Value:=(Node^.Value shl 1) or 1;
        Instructions[i1].Next:=pointer(ptrint(CountInstructions));
-
-       // Check back reference
        if DoIgnoreCase then begin
         i1:=NewInstruction(opBACKREFERENCEIGNORECASE);
        end else begin
@@ -9784,9 +9781,7 @@ procedure TFLRE.Compile;
        Instructions[i1].Value:=CapturesToSubMatchesMap[Node^.Group] shl 1;
        Instructions[i1].Next:=pointer(ptrint(CountInstructions));
        Instructions[i1].OtherNext:=pointer(ptrint(i0));
-
       end;
-
      end;
      else begin
       raise EFLRE.Create('Internal error');
@@ -11333,7 +11328,7 @@ begin
  if OnePassNFAReady and not UnanchoredStart then begin
   result:=ThreadLocalStorageInstance.SearchMatchOnePassNFA(Captures,StartPosition,UntilExcludingPosition);
  end else begin
-  if false and BitStateNFAReady then begin
+  if BitStateNFAReady then begin
    case ThreadLocalStorageInstance.SearchMatchBitStateNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
     BitStateNFAFail:begin
      result:=false;
