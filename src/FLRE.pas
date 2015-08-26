@@ -8640,25 +8640,36 @@ var SourcePosition,SourceLength:longint;
  function NewBackReferencePerIndex(const Group:longint):PFLRENode;
  var Value:longint;
  begin
+  result:=nil;
   if (Group>=CountCaptures) or (GroupIndexIntegerStack.IndexOf(Group)>=0) then begin
    raise EFLRE.Create('Syntax error');
-  end;
-  Value:=CountInternalCaptures;
-  inc(CountInternalCaptures);
-  if rfIGNORECASE in Flags then begin
-   result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,nil,Value);
   end else begin
-   result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
+   Value:=CountInternalCaptures;
+   inc(CountInternalCaptures);
+   if rfIGNORECASE in Flags then begin
+    result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,nil,Value);
+   end else begin
+    result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
+   end;
+   result^.Group:=Group;
   end;
-  result^.Group:=Group;
  end;
  function NewBackReferencePerName(const Name:ansistring):PFLRENode;
- var Index,Value:longint;
+ var Start,Index,Value:longint;
+     Minus:boolean;
  begin
+  result:=nil;
+  if (length(Name)>0) and (Name[1]='-') then begin
+   Minus:=true;
+   Start:=2;
+  end else begin
+   Minus:=false;
+   Start:=1;
+  end;
   Value:=-1;
-  for Index:=1 to length(Name) do begin
+  for Index:=Start to length(Name) do begin
    if Name[Index] in ['0'..'9'] then begin
-    if Index>1 then begin
+    if Index>Start then begin
      Value:=Value*10;
     end else begin
      Value:=0;
@@ -8670,20 +8681,30 @@ var SourcePosition,SourceLength:longint;
    end;
   end;
   if Value>=0 then begin
-   result:=NewBackReferencePerIndex(Value);
+   if Minus then begin
+    Value:=CountCaptures-Value;
+    if (Value>=0) and (Value<CountCaptures) then begin
+     result:=NewBackReferencePerIndex(CountCaptures-Value);
+    end else begin
+     raise EFLRE.Create('Syntax error');
+    end;
+   end else begin
+    result:=NewBackReferencePerIndex(Value);
+   end;
   end else begin
    if (NamedGroupStringList.IndexOf(Name)<0) or (GroupNameStringStack.IndexOf(Name)>=0) then begin
     raise EFLRE.Create('Syntax error');
-   end;
-   Value:=CountInternalCaptures;
-   inc(CountInternalCaptures);
-   if rfIGNORECASE in Flags then begin
-    result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,nil,Value);
    end else begin
-    result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
+    Value:=CountInternalCaptures;
+    inc(CountInternalCaptures);
+    if rfIGNORECASE in Flags then begin
+     result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,nil,Value);
+    end else begin
+     result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
+    end;
+    result^.Group:=-1;
+    result^.Name:=Name;
    end;
-   result^.Group:=-1;
-   result^.Name:=Name;
   end;
  end;
  function ParseAtom:PFLRENode;
@@ -8905,7 +8926,7 @@ var SourcePosition,SourceLength:longint;
              '=':begin
               inc(SourcePosition);
               Name:='';
-              while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_']) do begin
+              while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_','-']) do begin
                Name:=Name+Source[SourcePosition];
                inc(SourcePosition);
               end;
@@ -9015,7 +9036,65 @@ var SourcePosition,SourceLength:longint;
            FreeAndNil(UnicodeCharClass);
           end;
          end;
-         'g','k':begin
+         'g':begin
+          inc(SourcePosition);
+          if SourcePosition<=SourceLength then begin
+           case Source[SourcePosition] of
+            '-':begin
+             inc(SourcePosition);
+             Name:='-';
+             if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9']) then begin
+              repeat
+               Name:=Name+Source[SourcePosition];
+               inc(SourcePosition);
+              until (SourcePosition>SourceLength) or not (Source[SourcePosition] in ['0'..'9']);
+              result:=NewBackReferencePerName(Name);
+             end else begin
+              raise EFLRE.Create('Syntax error');
+             end;   
+            end;
+            '0'..'9':begin
+             Name:='';
+             while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9']) do begin
+              Name:=Name+Source[SourcePosition];
+              inc(SourcePosition);
+             end;
+             result:=NewBackReferencePerName(Name);
+            end;
+            '{','''','<':begin
+             case Source[SourcePosition] of
+              '{':begin
+               TerminateChar:='}';
+              end;
+              '<':begin
+               TerminateChar:='>';
+              end;
+              else begin
+               TerminateChar:='''';
+              end;
+             end;
+             inc(SourcePosition);
+             Name:='';
+             while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_','-']) do begin
+              Name:=Name+Source[SourcePosition];
+              inc(SourcePosition);
+             end;
+             if (SourcePosition<=SourceLength) and (Source[SourcePosition]=TerminateChar) then begin
+              inc(SourcePosition);
+              result:=NewBackReferencePerName(Name);
+             end else begin
+              raise EFLRE.Create('Syntax error');
+             end;
+            end;
+            else begin
+             raise EFLRE.Create('Syntax error');
+            end;
+           end;
+          end else begin
+           raise EFLRE.Create('Syntax error');
+          end;
+         end;
+         'k':begin
           inc(SourcePosition);
           if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['{','''','<']) then begin
            case Source[SourcePosition] of
@@ -9031,7 +9110,7 @@ var SourcePosition,SourceLength:longint;
            end;
            inc(SourcePosition);
            Name:='';
-           while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_']) do begin
+           while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_','-']) do begin
             Name:=Name+Source[SourcePosition];
             inc(SourcePosition);
            end;
