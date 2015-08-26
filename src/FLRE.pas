@@ -6223,6 +6223,7 @@ begin
 
   finally
    SetLength(CharClasses,CountCharClasses);
+   SetLength(LookAssertionStrings,CountLookAssertionStrings);
   end;
 
   CountSubMatches:=CountCaptures*2;
