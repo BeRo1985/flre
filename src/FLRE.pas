@@ -339,7 +339,41 @@ type EFLRE=class(Exception);
      TFLREMultiCaptures=array of TFLRECaptures;
 
      TFLREPrefixCharClasses=array[0..MaxPrefixCharClasses-1] of TFLRECharClass;
-    
+
+     PFLREIntegerArray=^TFLREIntegerArray;
+     TFLREIntegerArray=array[0..(2147483647 div sizeof(longint))-1] of longint;
+
+     TFLREIntegerList=class
+      private
+       List:PFLREIntegerArray;
+       CountItems:longint;
+       Allocated:longint;
+       IsSorted:boolean;
+       function GetItem(Index:longint):longint;
+       procedure SetItem(Index:longint;Value:longint);
+       function GetItemPointer(Index:longint):pointer;
+      public
+       constructor Create;
+       destructor Destroy; override;
+       procedure Clear;
+       function Add(Item:longint):longint;
+       function AddSorted(Item:longint):longint;
+       procedure Insert(Index:longint;Item:longint);
+       procedure Delete(Index:longint);
+       function Remove(Item:longint):longint;
+       function Find(Item:longint):longint;
+       function IndexOf(Item:longint):longint;
+       procedure Exchange(Index1,Index2:longint);
+       procedure SetCapacity(NewCapacity:longint);
+       procedure SetCount(NewCount:longint);
+       procedure Sort;
+       property Count:longint read CountItems;
+       property Capacity:longint read Allocated write SetCapacity;
+       property Item[Index:longint]:longint read GetItem write SetItem; default;
+       property Items[Index:longint]:longint read GetItem write SetItem;
+       property PItems[Index:longint]:pointer read GetItemPointer;
+     end;
+
      TFLREStringIntegerPairHashMapData=int64;
 
      PFLREStringIntegerPairHashMapEntity=^TFLREStringIntegerPairHashMapEntity;
@@ -3122,7 +3156,7 @@ begin
 end;
 
 function CompareDFAState(const a,b:PFLREDFAState):boolean;
-var i:integer;
+var i:longint;
 begin
  result:=a=b;
  if not result then begin
@@ -3285,6 +3319,439 @@ begin
   CellToEntityIndex[Cell]:=ENT_DELETED;
   dec(RealSize);
   result:=true;
+ end;
+end;
+
+constructor TFLREIntegerList.Create;
+begin
+ inherited Create;
+ CountItems:=0;
+ Allocated:=0;
+ List:=nil;
+ Clear;
+end;
+
+destructor TFLREIntegerList.Destroy;
+begin
+ Clear;
+ inherited Destroy;
+end;
+
+procedure TFLREIntegerList.Clear;
+begin
+ CountItems:=0;
+ Allocated:=0;
+ IsSorted:=false;
+ ReallocMem(List,0);
+end;
+
+procedure TFLREIntegerList.SetCapacity(NewCapacity:longint);
+begin
+ if (NewCapacity>=0) and (NewCapacity<MaxListSize) then begin
+  ReallocMem(List,NewCapacity*sizeof(longint));
+  Allocated:=NewCapacity;
+ end;
+end;
+
+procedure TFLREIntegerList.SetCount(NewCount:longint);
+begin
+ if (NewCount>=0) and (NewCount<MaxListSize) then begin
+  if NewCount<CountItems then begin
+   CountItems:=NewCount;
+  end else if NewCount>CountItems then begin
+   if NewCount>Allocated then begin
+    SetCapacity((CountItems+4096) and not 4095);
+   end;
+   if CountItems<NewCount then begin
+    FillChar(List^[CountItems],(NewCount-CountItems)*sizeof(longint),#0);
+   end;
+   CountItems:=NewCount;
+  end;
+ end;
+end;
+
+function TFLREIntegerList.Add(Item:longint):longint;
+begin
+ if CountItems>=Allocated then begin
+  Allocated:=(CountItems+4096) and not 4095;
+  ReallocMem(List,Allocated*sizeof(longint));
+ end;
+ List^[CountItems]:=Item;
+ result:=CountItems;
+ inc(CountItems);
+ IsSorted:=false;
+end;
+
+function TFLREIntegerList.AddSorted(Item:longint):longint;
+var i:longint;
+begin
+ if IsSorted then begin
+  if CountItems=0 then begin
+   Add(Item);
+  end else begin
+   i:=0;
+   while (i<CountItems) and (Item>=List^[i]) do begin
+    inc(i);
+   end;
+   Insert(i,Item);
+  end;
+  IsSorted:=true;
+ end else begin
+  Add(Item);
+  Sort;
+ end;
+end;
+
+procedure TFLREIntegerList.Insert(Index:longint;Item:longint);
+var i:longint;
+begin
+ if (Index>=0) and (Index<CountItems) then begin
+  SetCount(CountItems+1);
+  for i:=CountItems-1 downto Index do begin
+   List^[i+1]:=List^[i];
+  end;
+  List^[Index]:=Item;
+ end else if Index=CountItems then begin
+  Add(Item);
+ end else if Index>CountItems then begin
+  SetCount(Index);
+  Add(Item);
+ end;
+ IsSorted:=false;
+end;
+
+procedure TFLREIntegerList.Delete(Index:longint);
+var i,j,k:longint;
+begin
+ if (Index>=0) and (Index<CountItems) then begin
+  k:=CountItems-1;
+  j:=Index;
+  for i:=j to k-1 do begin
+   List^[i]:=List^[i+1];
+  end;
+  SetCount(k);
+ end;
+end;
+
+function TFLREIntegerList.Remove(Item:longint):longint;
+var i,j,k:longint;
+begin
+ result:=-1;
+ k:=CountItems;
+ j:=-1;
+ for i:=0 to k-1 do begin
+  if List^[i]=Item then begin
+   j:=i;
+   break;
+  end;
+ end;
+ if j>=0 then begin
+  dec(k);
+  for i:=j to k-1 do begin
+   List^[i]:=List^[i+1];
+  end;
+  SetCount(k);
+  result:=j;
+ end;
+end;
+
+function TFLREIntegerList.Find(Item:longint):longint;
+var i,l,r:longint;
+begin
+ result:=-1;
+ if IsSorted then begin
+  l:=0;
+  r:=CountItems-1;
+  while l<=r do begin
+   i:=(l+r) shr 1;
+   if List^[i]=Item then begin
+    result:=i;
+    break;
+   end else begin
+    if List^[i]<Item then begin
+     l:=i+1;
+    end else begin
+     r:=i-1;
+    end;
+   end;
+  end;
+ end else begin
+  for i:=0 to CountItems-1 do begin
+   if List^[i]=Item then begin
+    result:=i;
+    break;
+   end;
+  end;
+ end;
+end;
+
+function TFLREIntegerList.IndexOf(Item:longint):longint;
+begin
+ result:=Find(Item);
+end;
+
+procedure TFLREIntegerList.Exchange(Index1,Index2:longint);
+var TempInteger:longint;
+begin
+ if (Index1>=0) and (Index1<CountItems) and (Index2>=0) and (Index2<CountItems) then begin
+  TempInteger:=List^[Index1];
+  List^[Index1]:=List^[Index2];
+  List^[Index2]:=TempInteger;
+  IsSorted:=false;
+ end;
+end;
+
+function TFLREIntegerList.GetItem(Index:longint):longint;
+begin
+ if (Index>=0) and (Index<CountItems) then begin
+  result:=List^[Index];
+ end else begin
+  result:=0;
+ end;
+end;
+
+procedure TFLREIntegerList.SetItem(Index:longint;Value:longint);
+begin
+ if (Index>=0) and (Index<CountItems) then begin
+  List^[Index]:=Value;
+  IsSorted:=false;
+ end;
+end;
+
+function TFLREIntegerList.GetItemPointer(Index:longint):pointer;
+begin
+ if (Index>=0) and (Index<CountItems) then begin
+  result:=@List^[Index];
+ end else begin
+  result:=nil;
+ end;
+end;
+
+procedure TFLREIntegerList.Sort;
+ function IntLog2(x:longword):longword; {$ifdef cpu386}assembler; register;
+ asm
+  test eax,eax
+  jz @Done
+  bsr eax,eax
+  @Done:
+ end;
+{$else}
+ begin
+  x:=x or (x shr 1);
+  x:=x or (x shr 2);
+  x:=x or (x shr 4);
+  x:=x or (x shr 8);
+  x:=x or (x shr 16);
+  x:=x shr 1;
+  x:=x-((x shr 1) and $55555555);
+  x:=((x shr 2) and $33333333)+(x and $33333333);
+  x:=((x shr 4)+x) and $0f0f0f0f;
+  x:=x+(x shr 8);
+  x:=x+(x shr 16);
+  result:=x and $3f;
+ end;
+{$endif}
+ procedure IntroSort(Left,Right,Depth:longint);
+  procedure SiftDown(Current,MaxIndex:longint);
+  var SiftLeft,SiftRight,Largest:longint;
+      v:longint;
+  begin
+   SiftLeft:=Left+(2*(Current-Left))+1;
+   SiftRight:=Left+(2*(Current-Left))+2;
+   Largest:=Current;
+   if (SiftLeft<=MaxIndex) and (List^[SiftLeft]>List^[Largest]) then begin
+    Largest:=SiftLeft;
+   end;
+   if (SiftRight<=MaxIndex) and (List^[SiftRight]>List^[Largest]) then begin
+    Largest:=SiftRight;
+   end;
+   if Largest<>Current then begin
+    v:=List^[Current];
+    List^[Current]:=List^[Largest];
+    List^[Largest]:=v;
+    SiftDown(Largest,MaxIndex);
+   end;
+  end;
+  procedure InsertionSort;
+  var i,j:longint;
+      t:longint;
+  begin
+   i:=Left+1;
+   while i<=Right do begin
+    t:=List^[i];
+    j:=i-1;
+    while (j>=Left) and (t<List^[j]) do begin
+     List^[j+1]:=List^[j];
+     dec(j);
+    end;
+    List^[j+1]:=t;
+    inc(i);
+   end;
+  end;
+  procedure HeapSort;
+  var i:longint;
+      v:longint;
+  begin
+   i:=((Left+Right+1) div 2)-1;
+   while i>=Left do begin
+    SiftDown(i,Right);
+    dec(i);
+   end;
+   i:=Right;
+   while i>=Left+1 do begin
+    v:=List^[i];
+    List^[i]:=List^[Left];
+    List^[Left]:=v;
+    SiftDown(Left,i-1);
+    dec(i);
+   end;
+  end;
+  procedure QuickSortWidthMedianOfThreeOptimization;
+  var Middle,i,j:longint;
+      Pivot,v:longint;
+  begin
+   Middle:=(Left+Right) div 2;
+   if (Right-Left)>3 then begin
+    if List^[Left]>List^[Middle] then begin
+     v:=List^[Left];
+     List^[Left]:=List^[Middle];
+     List^[Middle]:=v;
+    end;
+    if List^[Left]>List^[Right] then begin
+     v:=List^[Left];
+     List^[Left]:=List^[Right];
+     List^[Right]:=v;
+    end;
+    if List^[Middle]>List^[Right] then begin
+     v:=List^[Middle];
+     List^[Middle]:=List^[Right];
+     List^[Right]:=v;
+    end;
+   end;
+   Pivot:=List^[Middle];
+   i:=Left;
+   j:=Right;
+   while true do begin
+    while (i<j) and (List^[i]<Pivot) do begin
+     inc(i);
+    end;
+    while (j>i) and (List^[j]>Pivot) do begin
+     dec(j);
+    end;
+    if i>j then begin
+     break;
+    end;
+    v:=List^[i];
+    List^[i]:=List^[j];
+    List^[j]:=v;
+    inc(i);
+    dec(j);
+   end;
+   IntroSort(Left,j,Depth-1);
+   IntroSort(i,Right,Depth-1);
+  end;
+ begin
+  if Left<Right then begin
+   if (Right-Left)<16 then begin
+    InsertionSort;
+   end else if Depth=0 then begin
+    HeapSort;
+   end else begin
+    QuickSortWidthMedianOfThreeOptimization;
+   end;
+  end;
+ end;
+ procedure QuickSort(L,R:longint);
+ var Pivot,vL,vR:longint;
+     v:longint;
+ begin
+  if (R-L)<=1 then begin
+   if (L<R) and (List[R]<List[L]) then begin
+    v:=List^[L];
+    List^[L]:=List^[R];
+    List^[R]:=v;
+   end;
+  end else begin
+   vL:=L;
+   vR:=R;
+   Pivot:=L+Random(R-L);
+   while vL<vR do begin
+    while (vL<Pivot) and (List^[vL]<=List^[Pivot]) do begin
+     inc(vL);
+    end;
+    while (vR>Pivot) and (List^[vR]>List^[Pivot]) do begin
+     dec(vR);
+    end;
+    v:=List^[vL];
+    List^[vL]:=List^[vR];
+    List^[vR]:=v;
+    if Pivot=vL then begin
+     Pivot:=vR;
+    end else if Pivot=vR then begin
+     Pivot:=vL;
+    end;
+   end;
+   if (Pivot-1)>=L then begin
+    QuickSort(L,Pivot-1);
+   end;
+   if (Pivot+1)<=R then begin
+    QuickSort(Pivot+1,R);
+   end;
+  end;
+ end;
+ procedure QuickSortEx(Left,Right:longint);
+ var Pivot,i,j:longint;
+     v:longint;
+ begin
+  i:=Left;
+  j:=Right;
+  Pivot:=List^[(i+j) div 2];
+  while i<=j do begin
+   while List^[i]<Pivot do begin
+    inc(i);
+   end;
+   while List^[j]>Pivot do begin
+    dec(j);
+   end;
+   if i<=j then begin
+    v:=List^[i];
+    List^[i]:=List^[i];
+    List^[j]:=v;
+    inc(i);
+    dec(j);
+   end;
+  end;
+  if Left<j then begin
+   QuickSortEx(Left,j);
+  end;
+  if i<Right then begin
+   QuickSortEx(i,Right);
+  end;
+ end;
+ procedure BeRoSort;
+ var i:longint;
+     v:longint;
+ begin
+  i:=0;
+  while i<(CountItems-1) do begin
+   if List^[i]>List^[i+1] then begin
+    v:=List^[i];
+    List^[i]:=List^[i+1];
+    List^[i+1]:=v;
+    if i>0 then begin
+     dec(i);
+    end else begin
+     inc(i);
+    end;
+   end else begin
+    inc(i);
+   end;
+  end;
+ end;
+begin
+ if CountItems>0 then begin
+  IntroSort(0,CountItems-1,IntLog2(CountItems)*2);
+  IsSorted:=true;
  end;
 end;
 
@@ -6823,6 +7290,8 @@ procedure TFLRE.Parse;
 const AllCharClass:TFLRECharClass=[#0..#255];
 var SourcePosition,SourceLength:longint;
     Source:ansistring;
+    GroupIndexIntegerStack:TFLREIntegerList;
+    GroupNameStringStack:TStringList;
  function Hex2Value(const c:ansichar):longword;
  begin
   case c of
@@ -8676,7 +9145,14 @@ begin
   NamedGroupStringList.Add('wholematch');
   CountCaptures:=1;
   CountInternalCaptures:=0;
-  AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
+  GroupIndexIntegerStack:=TFLREIntegerList.Create;
+  GroupNameStringStack:=TStringList.Create;
+  try
+   AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
+  finally
+   GroupIndexIntegerStack.Free;
+   GroupNameStringStack.Free;
+  end;
   while assigned(AnchoredRootNode) and OptimizeNode(@AnchoredRootNode) do begin
   end;
   if rfLONGEST in Flags then begin
@@ -9433,7 +9909,7 @@ end;
 
 procedure TFLRE.CompileFixedStringSearch;
 var c:ansichar;
-    i,j,k:integer;
+    i,j,k:longint;
     HasMatch:boolean;
 begin
  FixedStringLength:=length(FixedString);
@@ -9651,7 +10127,7 @@ end;
 
 procedure TFLRE.CompileByteMapForOnePassNFAAndDFA;
 var Node:PFLRENode;
-    i,j,ByteCount:integer;
+    i,j,ByteCount:longint;
     CharSetMap:TFLRECharClass;
     CharClass:TFLRECharClass;
     c:ansichar;
