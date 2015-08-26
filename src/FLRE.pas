@@ -214,13 +214,17 @@ type EFLRE=class(Exception);
 
      TFLREParallelNFAStateItems=array of TFLREParallelNFAStateItem;
 
+     TFLREParallelNFAStateCheckBitmap=array of longword;
+
      PFLREParallelNFAState=^TFLREParallelNFAState;
      TFLREParallelNFAState=record
       Next:PFLREParallelNFAState;
       ReferenceCounter:longint;
+      UsedCheckBitmapSize:longword;
       Count:longint;
-      SubMatchesBitMask:longword;
+      SubMatchesBitmap:longword;
       SubMatches:TFLREParallelNFAStateItems;
+      CheckBitmap:TFLREParallelNFAStateCheckBitmap;
      end;
 
      PFLREThread=^TFLREThread;
@@ -492,7 +496,7 @@ type EFLRE=class(Exception);
 
        function LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
 
-       function ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitMask:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+       function ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitmap,UsedCheckBitmapSize:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        function ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        procedure ParallelNFAStateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
        function ParallelNFAStateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
@@ -5413,7 +5417,7 @@ begin
 end;
 
 function TFLREThreadLocalStorageInstance.LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
-var Index,LookAssertionStringLength:longint;
+var Index,LookAssertionStringLength,BasePosition:longint;
     LookAssertionString:ansistring;
 begin
  LookAssertionString:=Instance.LookAssertionStrings[WhichLookAssertionString];
@@ -5433,8 +5437,13 @@ begin
  end else begin
   if (Position+LookAssertionStringLength)<=InputLength then begin
    result:=true;
+   BasePosition:=Position;
+   if rfUTF8 in Instance.Flags then begin
+    UTF8PtrSafeInc(Input,InputLength,BasePosition);
+    dec(BasePosition);
+   end;
    for Index:=1 to LookAssertionStringLength do begin
-    if Input[Position+Index]<>LookAssertionString[Index] then begin
+    if Input[BasePosition+Index]<>LookAssertionString[Index] then begin
      result:=false;
      break;
     end;
@@ -5446,7 +5455,7 @@ begin
  result:=result xor Negative;
 end;
 
-function TFLREThreadLocalStorageInstance.ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitMask:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+function TFLREThreadLocalStorageInstance.ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitmap,UsedCheckBitmapSize:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 begin
  if assigned(FreeParallelNFAStates) then begin
   result:=FreeParallelNFAStates;
@@ -5455,11 +5464,13 @@ begin
   GetMem(result,SizeOf(TFLREParallelNFAState));
   FillChar(result^,SizeOf(TFLREParallelNFAState),#0);
   SetLength(result^.SubMatches,Instance.CountSubMatches);
+  SetLength(result^.CheckBitmap,0);
   AllParallelNFAStates.Add(result);
  end;
  result^.ReferenceCounter:=1;
  result^.Count:=Count;
- result^.SubMatchesBitMask:=SubMatchesBitMask;
+ result^.SubMatchesBitmap:=SubMatchesBitmap;
+ result^.UsedCheckBitmapSize:=UsedCheckBitmapSize;
 end;
 
 function TFLREThreadLocalStorageInstance.ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
@@ -5479,18 +5490,18 @@ end;
 
 function TFLREThreadLocalStorageInstance.ParallelNFAStateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 var Counter:longint;
-    SubMatchesBitMask:longword;
+    SubMatchesBitmap:longword;
 begin
  result:=State;
  if result^.ReferenceCounter>1 then begin
-  result:=ParallelNFAStateAllocate(State^.Count,State^.SubMatchesBitMask);
+  result:=ParallelNFAStateAllocate(State^.Count,State^.SubMatchesBitmap,State^.UsedCheckBitmapSize);
 {$ifdef cpu386}
   asm
    push ebx
    push esi
    push edi
     mov ebx,dword ptr result
-    mov ecx,dword ptr [ebx+TFLREParallelNFAState.SubMatchesBitMask]
+    mov ecx,dword ptr [ebx+TFLREParallelNFAState.SubMatchesBitmap]
     test ecx,ecx // or test ecx,$80000000; jnz @CopyAll 
     js @CopyAll
     jecxz @Done
@@ -5517,26 +5528,29 @@ begin
    pop ebx
   end;
 {$else}
-  if (result^.SubMatchesBitMask and longword($80000000))=0 then begin
-   SubMatchesBitMask:=result^.SubMatchesBitMask;
-   while SubMatchesBitMask<>0 do begin
-    Counter:=PopFirstOneBit(SubMatchesBitMask);
+  if (result^.SubMatchesBitmap and longword($80000000))=0 then begin
+   SubMatchesBitmap:=result^.SubMatchesBitmap;
+   while SubMatchesBitmap<>0 do begin
+    Counter:=PopFirstOneBit(SubMatchesBitmap);
     result^.SubMatches[Counter]:=State^.SubMatches[Counter];
    end;
   end else begin
    Move(State^.SubMatches[0],result^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
   end;
 {$endif}
+  for Counter:=0 to longint(longword(longword(result^.UsedCheckBitmapSize+31) shr 5))-1 do begin
+   result^.CheckBitmap[Counter]:=State^.CheckBitmap[Counter];
+  end;
   dec(State^.ReferenceCounter);
  end;
 {$ifdef cpu386}
- result^.SubMatchesBitMask:=result^.SubMatchesBitMask or ((longword(1) shl Index) or longword(-longword(longword(-(Index-30)) shr 31)));
+ result^.SubMatchesBitmap:=result^.SubMatchesBitmap or ((longword(1) shl Index) or longword(-longword(longword(-(Index-30)) shr 31)));
 {$else}
- if (result^.SubMatchesBitMask and longword($80000000))=0 then begin
+ if (result^.SubMatchesBitmap and longword($80000000))=0 then begin
   if Index>30 then begin
-   result^.SubMatchesBitMask:=$ffffffff;
+   result^.SubMatchesBitmap:=$ffffffff;
   end else begin
-   result^.SubMatchesBitMask:=result^.SubMatchesBitMask or (longword(1) shl Index);
+   result^.SubMatchesBitmap:=result^.SubMatchesBitmap or (longword(1) shl Index);
   end;
  end;
 {$endif}
@@ -5914,7 +5928,7 @@ var LocalInputLength,CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosit
     Instruction:PFLREInstruction;
     CurrentChar:ansichar;
     Capture:PFLRECapture;
-    SubMatchesBitMask:longword;
+    SubMatchesBitmap:longword;
     LocalInput:pansichar;
 begin
  result:=false;
@@ -5928,7 +5942,7 @@ begin
  CurrentThreadList^.Count:=0;
  NewThreadList^.Count:=0;
 
- State:=ParallelNFAStateAllocate(Instance.CountSubMatches,0);
+ State:=ParallelNFAStateAllocate(Instance.CountSubMatches,0,0);
 
  inc(Generation);
  if UnanchoredStart then begin
@@ -5978,13 +5992,16 @@ begin
     opMATCH:begin
      if rfLONGEST in Instance.Flags then begin
       if not assigned(BestState) then begin
-       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitMask);
+       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap,State^.UsedCheckBitmapSize);
       end;
-      if State^.SubMatchesBitMask<>0 then begin
+      if State^.SubMatchesBitmap<>0 then begin
        if LastPosition<CurrentPosition then begin
         LastPosition:=CurrentPosition;
-        BestState^.SubMatchesBitMask:=State^.SubMatchesBitMask;
+        BestState^.SubMatchesBitmap:=State^.SubMatchesBitmap;
         Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
+        for Counter:=0 to longint(longword(longword(State^.UsedCheckBitmapSize+31) shr 5))-1 do begin
+         BestState^.CheckBitmap[Counter]:=State^.CheckBitmap[Counter];
+        end;
        end;
       end;
      end else begin
@@ -6019,13 +6036,16 @@ begin
     opMATCH:begin
      if rfLONGEST in Instance.Flags then begin
       if not assigned(BestState) then begin
-       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitMask);
+       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap,State^.UsedCheckBitmapSize);
       end;
-      if State^.SubMatchesBitMask<>0 then begin
+      if State^.SubMatchesBitmap<>0 then begin
        if LastPosition<UntilExcludingPosition then begin
         LastPosition:=UntilExcludingPosition;
-        BestState^.SubMatchesBitMask:=State^.SubMatchesBitMask;
+        BestState^.SubMatchesBitmap:=State^.SubMatchesBitmap;
         Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
+        for Counter:=0 to longint(longword(longword(State^.UsedCheckBitmapSize+31) shr 5))-1 do begin
+         BestState^.CheckBitmap[Counter]:=State^.CheckBitmap[Counter];
+        end;
        end;
       end;
      end else begin
@@ -6052,20 +6072,20 @@ begin
 
  if assigned(Matched) then begin
   SetLength(Captures,Instance.CountCaptures);
-  SubMatchesBitMask:=Matched^.SubMatchesBitMask;
+  SubMatchesBitmap:=Matched^.SubMatchesBitmap;
   for Counter:=0 to Instance.CountCaptures-1 do begin
    Capture:=@Captures[Counter];
    Index:=Instance.CapturesToSubMatchesMap[Counter] shl 1;
-   if (SubMatchesBitMask and longword($80000000))<>0 then begin
+   if (SubMatchesBitmap and longword($80000000))<>0 then begin
     CurrentPosition:=Matched^.SubMatches[Index];
     CurrentLength:=Matched^.SubMatches[Index or 1]-CurrentPosition;
    end else begin
-    if (SubMatchesBitMask and (longword(1) shl Index))<>0 then begin
+    if (SubMatchesBitmap and (longword(1) shl Index))<>0 then begin
      CurrentPosition:=Matched^.SubMatches[Index];
     end else begin
      CurrentPosition:=0;
     end;
-    if (SubMatchesBitMask and (longword(1) shl (Index or 1)))<>0 then begin
+    if (SubMatchesBitmap and (longword(1) shl (Index or 1)))<>0 then begin
      CurrentLength:=Matched^.SubMatches[Index or 1]-CurrentPosition;
     end else begin
      CurrentLength:=0;
