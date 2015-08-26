@@ -99,7 +99,7 @@ unit FLRE;
 
 interface
 
-uses SysUtils,Classes,Math,SyncObjs,FLREUnicode;
+uses SysUtils,Classes,FLREUnicode;
 
 const FLREVersion=$00000001;
 
