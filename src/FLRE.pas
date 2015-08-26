@@ -357,7 +357,7 @@ type EFLRE=class(Exception);
        destructor Destroy; override;
        procedure Clear;
        function Add(Item:longint):longint;
-       function AddSorted(Item:longint):longint;
+       procedure AddSorted(Item:longint);
        procedure Insert(Index:longint;Item:longint);
        procedure Delete(Index:longint);
        function Remove(Item:longint):longint;
@@ -3382,7 +3382,7 @@ begin
  IsSorted:=false;
 end;
 
-function TFLREIntegerList.AddSorted(Item:longint):longint;
+procedure TFLREIntegerList.AddSorted(Item:longint);
 var i:longint;
 begin
  if IsSorted then begin
@@ -8552,7 +8552,14 @@ var SourcePosition,SourceLength:longint;
            end else begin
             raise EFLRE.Create('Duplicate named group');
            end;
-           result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+           GroupIndexIntegerStack.Add(Value);
+           GroupNameStringStack.Add(Name);
+           try
+            result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+           finally
+            GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
+            GroupNameStringStack.Delete(GroupNameStringStack.Count-1);
+           end;
           end;
           '!','=':begin
            Negate:=Source[SourcePosition]='!';
@@ -8632,8 +8639,14 @@ var SourcePosition,SourceLength:longint;
             end else begin
              raise EFLRE.Create('Duplicate named group');
             end;
-            result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
-            result^.Value:=Value;
+            GroupIndexIntegerStack.Add(Value);
+            GroupNameStringStack.Add(Name);
+            try
+             result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+            finally
+             GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
+             GroupNameStringStack.Delete(GroupNameStringStack.Count-1);
+            end;
            end;
           end;
           'P':begin
@@ -8658,8 +8671,14 @@ var SourcePosition,SourceLength:longint;
             end else begin
              raise EFLRE.Create('Duplicate named group');
             end;
-            result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
-            result^.Value:=Value;
+            GroupIndexIntegerStack.Add(Value);
+            GroupNameStringStack.Add(Name);
+            try
+             result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+            finally
+             GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
+             GroupNameStringStack.Delete(GroupNameStringStack.Count-1);
+            end;
            end else begin
             raise EFLRE.Create('Syntax error');
            end;
@@ -8677,8 +8696,12 @@ var SourcePosition,SourceLength:longint;
         end else begin
          Value:=CountCaptures;
          inc(CountCaptures);
-         result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
-         result^.Value:=Value;
+         GroupIndexIntegerStack.Add(Value);
+         try
+          result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+         finally
+          GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
+         end;
         end;
        end;
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]=')') then begin
