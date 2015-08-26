@@ -188,6 +188,10 @@ type EFLRE=class(Exception);
       Index:longint;
      end;
 
+     TFLRELookAssertionString=ansistring;
+
+     TFLRELookAssertionStrings=array of TFLRELookAssertionString;
+
      PFLREInstruction=^TFLREInstruction;
      TFLREInstruction=record
       IndexAndOpcode:TFLREPtrInt;
@@ -450,6 +454,8 @@ type EFLRE=class(Exception);
 
        function GetSatisfyFlags(const Position:longint):longword;
 
+       function LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
+
        function ParallelNFAStateAllocate(const Count:longint;const BitState:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        function ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        procedure ParallelNFAStateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
@@ -505,6 +511,9 @@ type EFLRE=class(Exception);
 
        CharClasses:TPFLRECharClasses;
        CountCharClasses:longint;
+
+       LookAssertionStrings:TFLRELookAssertionStrings;
+       CountLookAssertionStrings:longint;
 
        FixedString:ansistring;
        FixedStringIsWholeRegExp:longbool;
@@ -694,6 +703,10 @@ const MaxDFAStates=16384;
       ntEOT=12;
       ntBRK=13;
       ntNBRK=14;
+      ntLOOKBEHINDNEGATIVE=15;
+      ntLOOKBEHINDPOSITIVE=16;
+      ntLOOKAHEADNEGATIVE=17;
+      ntLOOKAHEADPOSITIVE=18;
 
       // Opcodes
       opSINGLECHAR=0;
@@ -709,6 +722,10 @@ const MaxDFAStates=16384;
       opEOT=11;
       opBRK=12;
       opNBRK=13;
+      opLOOKBEHINDNEGATIVE=14;
+      opLOOKBEHINDPOSITIVE=15;
+      opLOOKAHEADNEGATIVE=16;
+      opLOOKAHEADPOSITIVE=17;
 
       // Split kind
       skALT=0;
@@ -4922,6 +4939,40 @@ begin
  end;
 end;
 
+function TFLREThreadLocalStorageInstance.LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
+var Index,LookAssertionStringLength:longint;
+    LookAssertionString:ansistring;
+begin
+ LookAssertionString:=Instance.LookAssertionStrings[WhichLookAssertionString];
+ LookAssertionStringLength:=length(LookAssertionString);
+ if LookBehind then begin
+  if Position>=LookAssertionStringLength then begin
+   result:=true;
+   for Index:=0 to LookAssertionStringLength-1 do begin
+    if Input[Position-Index]<>LookAssertionString[LookAssertionStringLength-Index] then begin
+     result:=false;
+     break;
+    end;
+   end;
+  end else begin
+   result:=false;
+  end;
+ end else begin
+  if (Position+LookAssertionStringLength)<=InputLength then begin
+   result:=true;
+   for Index:=1 to LookAssertionStringLength do begin
+    if Input[Position+Index]<>LookAssertionString[Index] then begin
+     result:=false;
+     break;
+    end;
+   end;
+  end else begin
+   result:=false;
+  end;
+ end;
+ result:=result xor Negative;
+end;
+
 function TFLREThreadLocalStorageInstance.ParallelNFAStateAllocate(const Count:longint;const BitState:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 begin
  if assigned(FreeParallelNFAStates) then begin
@@ -5101,6 +5152,18 @@ begin
       break;
      end;
     end;
+    opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
+     if LookAssertion(Position,
+                      Instruction^.Value,
+                      (Instruction^.IndexAndOpcode and $ff) in [opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE],
+                      (Instruction^.IndexAndOpcode and $ff) in [opLOOKBEHINDNEGATIVE,opLOOKAHEADNEGATIVE]) then begin
+      Instruction:=Instruction^.Next;
+      continue;
+     end else begin
+      ParallelNFAStateRelease(State);
+      break;
+     end;
+    end;
     else begin
      Thread:=@ThreadList^.Threads[ThreadList^.Count];
      inc(ThreadList^.Count);
@@ -5166,7 +5229,8 @@ begin
      inc(StackPointer);
      Instruction:=Instruction^.Next;
     end;
-    opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK:begin
+    opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
+     // No-ops at DFA
      Instruction:=Instruction^.Next;
     end;
     else begin
@@ -5839,6 +5903,17 @@ var LocalInputLength,BasePosition,Len:longint;
        end;
       end;
      end;
+     opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
+      if LookAssertion(Position,
+                       Instruction^.Value,
+                       (Instruction^.IndexAndOpcode and $ff) in [opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE],
+                       (Instruction^.IndexAndOpcode and $ff) in [opLOOKBEHINDNEGATIVE,opLOOKAHEADNEGATIVE]) then begin
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end;
+     end;
     end;
 
     break;
@@ -5991,6 +6066,9 @@ begin
 
  CharClasses:=nil;
  CountCharClasses:=0;
+
+ LookAssertionStrings:=nil;
+ CountLookAssertionStrings:=0;
 
  RegularExpression:=ARegularExpression;
 
@@ -6204,6 +6282,8 @@ begin
  end;
  SetLength(CharClasses,0);
  CountCharClasses:=0;
+
+ SetLength(LookAssertionStrings,0);
 
  if assigned(OnePassNFANodes) then begin
   FreeMem(OnePassNFANodes);
@@ -6537,7 +6617,7 @@ begin
   Node:=NodeEx^;
   if assigned(Node) then begin
    case Node^.NodeType of
-    ntCHAR,ntANY,ntBOL,ntEOL,ntBOT,ntEOT,ntBRK,ntNBRK:begin
+    ntCHAR,ntANY,ntBOL,ntEOL,ntBOT,ntEOT,ntBRK,ntNBRK,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE:begin
     end;
     ntPAREN,ntEXACT:begin
      NodeEx:=@Node^.Left;
@@ -7856,7 +7936,7 @@ var SourcePosition,SourceLength:longint;
      StartChar,EndChar,UnicodeChar,LowerCaseUnicodeChar,UpperCaseUnicodeChar:longword;
      UnicodeCharClass:TFLREUnicodeCharClass;
      OldFlags:TFLREFlags;
-     Name:ansistring;
+     Name,TemporaryString:ansistring;
      TemporaryNode:PFLRENode;
  begin
   result:=nil;
@@ -7994,13 +8074,67 @@ var SourcePosition,SourceLength:longint;
            end else begin
             raise EFLRE.Create('Duplicate named group');
            end;
-           result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
-           result^.Value:=Value;
+           result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+          end;
+          '!','=':begin
+           Negate:=Source[SourcePosition]='!';
+           inc(SourcePosition);
+           TemporaryString:='';
+           while (SourcePosition<=SourceLength) and (Source[SourcePosition]<>')') do begin
+            TemporaryString:=TemporaryString+Source[SourcePosition];
+            inc(SourcePosition);
+           end;
+           Value:=-1;
+           for Index:=0 to CountLookAssertionStrings-1 do begin
+            if LookAssertionStrings[Index]=TemporaryString then begin
+             Value:=Index;
+             break;
+            end;
+           end;
+           if Value<0 then begin
+            Value:=CountLookAssertionStrings;
+            inc(CountLookAssertionStrings);
+            if CountLookAssertionStrings>length(LookAssertionStrings) then begin
+             SetLength(LookAssertionStrings,CountLookAssertionStrings*2);
+            end;
+            LookAssertionStrings[Value]:=TemporaryString;
+           end;
+           if Negate then begin
+            result:=NewNode(ntLOOKAHEADNEGATIVE,nil,nil,nil,Value);
+           end else begin
+            result:=NewNode(ntLOOKAHEADPOSITIVE,nil,nil,nil,Value);
+           end;
           end;
           '<':begin
            inc(SourcePosition);
            if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['!','=']) then begin
-            raise EFLRE.Create('Syntax error');
+            Negate:=Source[SourcePosition]='!';
+            inc(SourcePosition);
+            TemporaryString:='';
+            while (SourcePosition<=SourceLength) and (Source[SourcePosition]<>')') do begin
+             TemporaryString:=TemporaryString+Source[SourcePosition];
+             inc(SourcePosition);
+            end;
+            Value:=-1;
+            for Index:=0 to CountLookAssertionStrings-1 do begin
+             if LookAssertionStrings[Index]=TemporaryString then begin
+              Value:=Index;
+              break;
+             end;
+            end;
+            if Value<0 then begin
+             Value:=CountLookAssertionStrings;
+             inc(CountLookAssertionStrings);
+             if CountLookAssertionStrings>length(LookAssertionStrings) then begin
+              SetLength(LookAssertionStrings,CountLookAssertionStrings*2);
+             end;
+             LookAssertionStrings[Value]:=TemporaryString;
+            end;
+            if Negate then begin
+             result:=NewNode(ntLOOKBEHINDNEGATIVE,nil,nil,nil,Value);
+            end else begin
+             result:=NewNode(ntLOOKBEHINDPOSITIVE,nil,nil,nil,Value);
+            end;
            end else begin
             Name:='';
             while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_']) do begin
@@ -8544,7 +8678,7 @@ begin
   BeginningAnchor:=false;
   for Counter:=0 to Nodes.Count-1 do begin
    Node:=Nodes[Counter];
-   if Node^.NodeType in [ntBOL,ntEOL,ntBOT,ntEOT,ntBRK,ntNBRK] then begin
+   if Node^.NodeType in [ntBOL,ntEOL,ntBOT,ntEOT,ntBRK,ntNBRK,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE] then begin
     DFANeedVerification:=true;
     if Node^.NodeType=ntBOT then begin
      BeginningAnchor:=true;
@@ -8849,6 +8983,26 @@ procedure TFLRE.Compile;
       i0:=NewInstruction(opNBRK);
       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
      end;
+     ntLOOKBEHINDNEGATIVE:begin
+      i0:=NewInstruction(opLOOKBEHINDNEGATIVE);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Value:=Node^.Value;
+     end;
+     ntLOOKBEHINDPOSITIVE:begin
+      i0:=NewInstruction(opLOOKBEHINDPOSITIVE);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Value:=Node^.Value;
+     end;
+     ntLOOKAHEADNEGATIVE:begin
+      i0:=NewInstruction(opLOOKAHEADNEGATIVE);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Value:=Node^.Value;
+     end;
+     ntLOOKAHEADPOSITIVE:begin
+      i0:=NewInstruction(opLOOKAHEADPOSITIVE);
+      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      Instructions[i0].Value:=Node^.Value;
+     end;
      else begin
       raise EFLRE.Create('Internal error');
      end;
@@ -8988,7 +9142,7 @@ var LowRangeString,HighRangeString:ansistring;
      inc(Index);
      Instruction:=Instruction^.Next;
     end;
-    opJMP,opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK:begin
+    opJMP,opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
      Instruction:=Instruction^.Next;
     end;
     opMATCH:begin
@@ -9243,7 +9397,7 @@ begin
        Stop:=true;
       end;
      end;
-     ntBOL,ntEOL,ntBOT,ntEOT,ntBRK,ntNBRK:begin
+     ntBOL,ntEOL,ntBOT,ntEOT,ntBRK,ntNBRK,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE:begin
       // No-op instruction here, so don't stop but mark it as non-pure-string-literal regular expression
       FixedStringIsWholeRegExp:=false;
      end;
@@ -9340,7 +9494,7 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.OtherNext;
       continue;
      end;
-     opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK:begin
+     opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
       Instruction:=Instruction^.Next;
       continue;
      end;
@@ -9812,6 +9966,10 @@ begin
            Stack[StackPointer].Condition:=Condition;
            inc(StackPointer);
           end;
+          opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
+           OnePassNFAReady:=false;
+           break;
+          end;
           else begin
            OnePassNFAReady:=false;
            break;
@@ -10062,7 +10220,7 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
      result.Operation:=FLREpfnoANY;
      result.Exact:=false;
     end;
-    ntQUEST,ntSTAR,ntBOL,ntEOL,ntBOT,ntEOT,ntBRK,ntNBRK,ntEXACT:begin
+    ntQUEST,ntSTAR,ntEXACT,ntBOL,ntEOL,ntBOT,ntEOT,ntBRK,ntNBRK,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE:begin
      result:=TFLREPrefilterNode.Create;
      result.Operation:=FLREpfnoANY;
      result.Exact:=false;
@@ -10988,6 +11146,18 @@ function TFLRE.DumpRegularExpression:ansistring;
     end;
     ntNBRK:begin
      result:=result+'\B';
+    end;
+    ntLOOKBEHINDNEGATIVE:begin
+     result:=result+'(?<!'+LookAssertionStrings[Node^.Value]+')';
+    end;
+    ntLOOKBEHINDPOSITIVE:begin
+     result:=result+'(?<='+LookAssertionStrings[Node^.Value]+')';
+    end;
+    ntLOOKAHEADNEGATIVE:begin
+     result:=result+'(?!'+LookAssertionStrings[Node^.Value]+')';
+    end;
+    ntLOOKAHEADPOSITIVE:begin
+     result:=result+'(?='+LookAssertionStrings[Node^.Value]+')';
     end;
    end;
   end;
