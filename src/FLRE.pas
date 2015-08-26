@@ -207,6 +207,8 @@ type EFLRE=class(Exception);
      PPFLREInstructionsStatic=^TPFLREInstructionsStatic;
      TPFLREInstructionsStatic=array[0..65535] of PFLREInstruction;
 
+     TFLRECapturesToSubMatchesMap=array of longint;
+
      PFLREParallelNFAStateItem=^TFLREParallelNFAStateItem;
      TFLREParallelNFAStateItem=longint;
 
@@ -534,6 +536,8 @@ type EFLRE=class(Exception);
        CountInternalCaptures:longint;
 
        CountSubMatches:longint;
+
+       CapturesToSubMatchesMap:TFLRECapturesToSubMatchesMap;
 
        ForwardInstructions:TFLREInstructions;
        CountForwardInstructions:longint;
@@ -6670,6 +6674,8 @@ begin
  NamedGroupStringList:=TStringList.Create;
  NamedGroupStringIntegerPairHashMap:=TFLREStringIntegerPairHashMap.Create;
 
+ CapturesToSubMatchesMap:=nil;
+
  ParallelLock:=0;
 
  ThreadLocalStorageInstanceManagerParallelLock:=0;
@@ -6698,6 +6704,8 @@ begin
   end;
 
   CountSubMatches:=CountInternalCaptures*2;
+
+  SetLength(CapturesToSubMatchesMap,CountCaptures);
 
   CompilePrefix;
 
@@ -6744,6 +6752,8 @@ begin
   FreeMem(Nodes[Index]);
  end;
  FreeAndNil(Nodes);
+
+ SetLength(CapturesToSubMatchesMap,0);
 
  SetLength(ForwardInstructions,0);
 
@@ -8542,6 +8552,10 @@ var SourcePosition,SourceLength:longint;
            end;
            Value:=CountInternalCaptures;
            inc(CountInternalCaptures);
+           if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
+            SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
+           end;
+           CapturesToSubMatchesMap[CountCaptures]:=Value;
            inc(CountCaptures);
            NamedGroupStringIntegerPairHashMap.Add(Name,Value);
            if NamedGroupStringList.IndexOf(Name)<0 then begin
@@ -8630,6 +8644,10 @@ var SourcePosition,SourceLength:longint;
             end;
             Value:=CountInternalCaptures;
             inc(CountInternalCaptures);
+            if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
+             SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
+            end;
+            CapturesToSubMatchesMap[CountCaptures]:=Value;
             inc(CountCaptures);
             NamedGroupStringIntegerPairHashMap.Add(Name,Value);
             if NamedGroupStringList.IndexOf(Name)<0 then begin
@@ -8663,6 +8681,10 @@ var SourcePosition,SourceLength:longint;
             end;
             Value:=CountInternalCaptures;
             inc(CountInternalCaptures);
+            if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
+             SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
+            end;
+            CapturesToSubMatchesMap[CountCaptures]:=Value;
             inc(CountCaptures);
             NamedGroupStringIntegerPairHashMap.Add(Name,Value);
             if NamedGroupStringList.IndexOf(Name)<0 then begin
@@ -8695,6 +8717,10 @@ var SourcePosition,SourceLength:longint;
         end else begin
          Value:=CountInternalCaptures;
          inc(CountInternalCaptures);
+         if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
+          SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
+         end;
+         CapturesToSubMatchesMap[CountCaptures]:=Value;
          inc(CountCaptures);
          GroupIndexIntegerStack.Add(Value);
          try
@@ -9168,6 +9194,8 @@ begin
   NamedGroupStringList.Add('wholematch');
   CountCaptures:=1;
   CountInternalCaptures:=1;
+  SetLength(CapturesToSubMatchesMap,1);
+  CapturesToSubMatchesMap[0]:=0;
   GroupIndexIntegerStack:=TFLREIntegerList.Create;
   GroupNameStringStack:=TStringList.Create;
   try
