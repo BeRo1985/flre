@@ -8640,6 +8640,7 @@ var SourcePosition,SourceLength:longint;
      OldFlags:TFLREFlags;
      Name,TemporaryString:ansistring;
      TemporaryNode:PFLRENode;
+     TerminateChar:ansichar;
  begin
   result:=nil;
   try
@@ -9011,26 +9012,10 @@ var SourcePosition,SourceLength:longint;
           inc(SourcePosition);
          end;
          'A':begin
-          if rfMULTILINE in Flags then begin
-           result:=NewNode(ntBOL,nil,nil,nil,0);
-          end else begin
-           result:=NewNode(ntBOT,nil,nil,nil,0);
-          end;
-          inc(SourcePosition);
-         end;
-         'Z':begin
-          if rfMULTILINE in Flags then begin
-           result:=NewNode(ntEOL,nil,nil,nil,0);
-          end else begin
-           result:=NewNode(ntEOT,nil,nil,nil,0);
-          end;
-          inc(SourcePosition);
-         end;
-         'k':begin
           result:=NewNode(ntBOT,nil,nil,nil,0);
           inc(SourcePosition);
          end;
-         'z':begin
+         'Z':begin
           result:=NewNode(ntEOT,nil,nil,nil,0);
           inc(SourcePosition);
          end;
@@ -9072,16 +9057,27 @@ var SourcePosition,SourceLength:longint;
            FreeAndNil(UnicodeCharClass);
           end;
          end;
-         'g':begin
+         'g','k':begin
           inc(SourcePosition);
-          if (SourcePosition<=SourceLength) and (Source[SourcePosition]='{') then begin
+          if (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['{','''','<']) then begin
+           case Source[SourcePosition] of
+            '{':begin
+             TerminateChar:='}';
+            end;
+            '<':begin
+             TerminateChar:='>';
+            end;
+            else begin
+             TerminateChar:='''';
+            end;
+           end;
            inc(SourcePosition);
            Name:='';
            while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_']) do begin
             Name:=Name+Source[SourcePosition];
             inc(SourcePosition);
            end;
-           if (SourcePosition<=SourceLength) and (Source[SourcePosition]='}') then begin
+           if (SourcePosition<=SourceLength) and (Source[SourcePosition]=TerminateChar) then begin
             inc(SourcePosition);
             result:=NewBackReferencePerName(Name);
            end else begin
