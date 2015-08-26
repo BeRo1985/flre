@@ -754,8 +754,9 @@ const MaxDFAStates=16384;
       opJMP=4;
       opSPLIT=5;
       opSAVE=6;
-      opBOL=7;
-      opEOL=8;
+      opINTERNALSAVE=7;
+      opBOL=8;
+      opEOL=9;
       opBOT=10;
       opEOT=11;
       opBRK=12;
@@ -5569,6 +5570,10 @@ begin
      Instruction:=Instruction^.Next;
      continue;
     end;
+    opINTERNALSAVE:begin
+     Instruction:=Instruction^.Next;
+     continue;
+    end;
     opBOL:begin
      if Satisfy(sfEmptyBeginLine,Position) then begin
       Instruction:=Instruction^.Next;
@@ -5693,6 +5698,9 @@ begin
 {    if Instruction^.Value=0 then begin
       State.Flags:=State.Flags or sfDFAMatchBegins;
      end;{}
+     Instruction:=Instruction^.Next;
+    end;
+    opINTERNALSAVE:begin
      Instruction:=Instruction^.Next;
     end;
     opSPLIT:begin
@@ -6324,6 +6332,12 @@ var LocalInputLength,BasePosition,Len:longint;
        1:begin
         BitStateNFAWorkSubMatches[Instruction^.Value]:=Position;
        end;
+      end;
+     end;
+     opINTERNALSAVE:begin
+      Instruction:=Instruction^.Next;
+      if ShouldVisit(Instruction,Position) then begin
+       continue;
       end;
      end;
      opBOL:begin
@@ -9651,7 +9665,7 @@ var LowRangeString,HighRangeString:ansistring;
      inc(Index);
      Instruction:=Instruction^.Next;
     end;
-    opJMP,opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
+    opJMP,opSAVE,opINTERNALSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
      Instruction:=Instruction^.Next;
     end;
     opMATCH:begin
@@ -10003,7 +10017,7 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.OtherNext;
       continue;
      end;
-     opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
+     opSAVE,opINTERNALSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
       Instruction:=Instruction^.Next;
       continue;
      end;
@@ -10444,6 +10458,10 @@ begin
            Stack[StackPointer].Instruction:=Instruction^.Next;
            Stack[StackPointer].Condition:=Condition;
            inc(StackPointer);
+          end;
+          opINTERNALSAVE:begin
+           OnePassNFAReady:=false;
+           break;
           end;
           opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK:begin
            case Instruction^.IndexAndOpcode and $ff of
