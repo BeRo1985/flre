@@ -535,8 +535,6 @@ type EFLRE=class(Exception);
 
        CountSubMatches:longint;
 
-       CountInternalSubMatches:longint;
-
        ForwardInstructions:TFLREInstructions;
        CountForwardInstructions:longint;
 
@@ -754,7 +752,6 @@ const MaxDFAStates=16384;
       opJMP=4;
       opSPLIT=5;
       opSAVE=6;
-      opINTERNALSAVE=7;
       opBOL=8;
       opEOL=9;
       opBOT=10;
@@ -5570,10 +5567,6 @@ begin
      Instruction:=Instruction^.Next;
      continue;
     end;
-    opINTERNALSAVE:begin
-     Instruction:=Instruction^.Next;
-     continue;
-    end;
     opBOL:begin
      if Satisfy(sfEmptyBeginLine,Position) then begin
       Instruction:=Instruction^.Next;
@@ -5698,9 +5691,6 @@ begin
 {    if Instruction^.Value=0 then begin
       State.Flags:=State.Flags or sfDFAMatchBegins;
      end;{}
-     Instruction:=Instruction^.Next;
-    end;
-    opINTERNALSAVE:begin
      Instruction:=Instruction^.Next;
     end;
     opSPLIT:begin
@@ -6334,12 +6324,6 @@ var LocalInputLength,BasePosition,Len:longint;
        end;
       end;
      end;
-     opINTERNALSAVE:begin
-      Instruction:=Instruction^.Next;
-      if ShouldVisit(Instruction,Position) then begin
-       continue;
-      end;
-     end;
      opBOL:begin
       if Satisfy(sfEmptyBeginLine,Position) then begin
        Instruction:=Instruction^.Next;
@@ -6713,9 +6697,7 @@ begin
    SetLength(LookAssertionStrings,CountLookAssertionStrings);
   end;
 
-  CountSubMatches:=CountCaptures*2;
-
-  CountInternalSubMatches:=CountInternalCaptures*2;
+  CountSubMatches:=CountInternalCaptures*2;
 
   CompilePrefix;
 
@@ -8558,7 +8540,8 @@ var SourcePosition,SourceLength:longint;
            end else begin
             raise EFLRE.Create('Syntax error');
            end;
-           Value:=CountCaptures;
+           Value:=CountInternalCaptures;
+           inc(CountInternalCaptures);
            inc(CountCaptures);
            NamedGroupStringIntegerPairHashMap.Add(Name,Value);
            if NamedGroupStringList.IndexOf(Name)<0 then begin
@@ -8645,7 +8628,8 @@ var SourcePosition,SourceLength:longint;
             end else begin
              raise EFLRE.Create('Syntax error');
             end;
-            Value:=CountCaptures;
+            Value:=CountInternalCaptures;
+            inc(CountInternalCaptures);
             inc(CountCaptures);
             NamedGroupStringIntegerPairHashMap.Add(Name,Value);
             if NamedGroupStringList.IndexOf(Name)<0 then begin
@@ -8677,7 +8661,8 @@ var SourcePosition,SourceLength:longint;
             end else begin
              raise EFLRE.Create('Syntax error');
             end;
-            Value:=CountCaptures;
+            Value:=CountInternalCaptures;
+            inc(CountInternalCaptures);
             inc(CountCaptures);
             NamedGroupStringIntegerPairHashMap.Add(Name,Value);
             if NamedGroupStringList.IndexOf(Name)<0 then begin
@@ -8708,7 +8693,8 @@ var SourcePosition,SourceLength:longint;
         if rfNAMED in Flags then begin
          result:=ParseDisjunction;
         end else begin
-         Value:=CountCaptures;
+         Value:=CountInternalCaptures;
+         inc(CountInternalCaptures);
          inc(CountCaptures);
          GroupIndexIntegerStack.Add(Value);
          try
@@ -9181,7 +9167,7 @@ begin
   NamedGroupStringIntegerPairHashMap.Add('wholematch',0);
   NamedGroupStringList.Add('wholematch');
   CountCaptures:=1;
-  CountInternalCaptures:=0;
+  CountInternalCaptures:=1;
   GroupIndexIntegerStack:=TFLREIntegerList.Create;
   GroupNameStringStack:=TStringList.Create;
   try
@@ -9665,7 +9651,7 @@ var LowRangeString,HighRangeString:ansistring;
      inc(Index);
      Instruction:=Instruction^.Next;
     end;
-    opJMP,opSAVE,opINTERNALSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
+    opJMP,opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
      Instruction:=Instruction^.Next;
     end;
     opMATCH:begin
@@ -10017,7 +10003,7 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.OtherNext;
       continue;
      end;
-     opSAVE,opINTERNALSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
+     opSAVE,opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE:begin
       Instruction:=Instruction^.Next;
       continue;
      end;
@@ -10458,10 +10444,6 @@ begin
            Stack[StackPointer].Instruction:=Instruction^.Next;
            Stack[StackPointer].Condition:=Condition;
            inc(StackPointer);
-          end;
-          opINTERNALSAVE:begin
-           OnePassNFAReady:=false;
-           break;
           end;
           opBOL,opEOL,opBOT,opEOT,opBRK,opNBRK:begin
            case Instruction^.IndexAndOpcode and $ff of
