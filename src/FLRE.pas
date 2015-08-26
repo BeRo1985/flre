@@ -149,6 +149,9 @@ type EFLRE=class(Exception);
 {$ifend}
 {$endif}
 
+     PFLREParallelLock=^TFLREParallelLock;
+     TFLREParallelLock=longint;
+
      TFLRE=class;
 
      PFLREFlag=^TFLREFlag;
@@ -542,9 +545,9 @@ type EFLRE=class(Exception);
        NamedGroupStringList:TStringList;
        NamedGroupStringIntegerPairHashMap:TFLREStringIntegerPairHashMap;
 
-       CriticalSection:TCriticalSection;
+       ParallelLock:TFLREParallelLock;
 
-       ThreadLocalStorageInstanceManagerCriticalSection:TCriticalSection;
+       ThreadLocalStorageInstanceManagerParallelLock:TFLREParallelLock;
 
        ThreadLocalStorageInstances:TFLREThreadLocalStorageInstance;
        FreeThreadLocalStorageInstances:TFLREThreadLocalStorageInstance;
@@ -1025,6 +1028,128 @@ function InterlockedCompareExchange(var Target:longint;NewValue,Comperand:longin
 begin
  result:=System.InterlockedCompareExchange(Target,NewValue,Comperand);
 end;
+{$endif}
+
+function DCAS(Target,NewValue,Comperand:pointer):boolean;
+{$ifdef cpu386} assembler; register;
+{$define HasDCAS}
+asm
+ push ebx
+ push edi
+ push esi
+ mov edi,eax
+ mov esi,edx
+ mov edx,dword ptr [ecx+4]
+ mov eax,dword ptr [ecx+0]
+ mov ecx,dword ptr [esi+4]
+ mov ebx,dword ptr [esi+0]
+ lock cmpxchg8b [edi]
+ setz al
+ pop esi
+ pop edi
+ pop ebx
+end;
+{$else}
+{$ifdef cpuamd64} assembler; register;
+{$define HasDCAS}
+asm
+ push rbx
+{$ifdef windows}
+ push rdi
+ push rsi
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,qword ptr [r8+8]
+ mov rax,qword ptr [r8+0]
+{$else}
+ mov rax,qword ptr [rdx+0]
+ mov rdx,qword ptr [rdx+8]
+{$endif}
+ mov rcx,qword ptr [rsi+8]
+ mov rbx,qword ptr [rsi+0]
+ lock cmpxchg16b [rdi]
+ setz al
+{$ifdef windows}
+ pop rsi
+ pop rdi
+{$endif}
+ pop rbx
+end;
+{$else}
+{$undef HasDCAS}
+begin
+end;
+{$endif}
+{$endif}
+
+procedure ParallelLockEnter(Lock:PFLREParallelLock);{$ifdef cpu386}assembler; register; {$ifdef fpc}nostackframe;{$endif}
+asm
+ mov ecx,eax
+ xor edx,edx
+ not edx
+ @TryAgain:
+  xor eax,eax
+  lock cmpxchg dword ptr [ecx],edx
+  jz @End
+  @Wait:
+   rep nop // aka pause opcode
+   mov eax,dword ptr [ecx]
+   test eax,eax
+  jnz @Wait
+  jmp @TryAgain
+ @End:          
+end;
+{$else}{$ifdef cpuamd64}assembler; register; {$ifdef fpc}nostackframe;{$endif}
+asm
+ xor rdx,rdx
+ not rdx
+ @TryAgain:
+  xor rax,rax
+{$ifdef windows}
+  lock cmpxchg dword ptr [rcx],edx
+{$else}
+  lock cmpxchg dword ptr [rdi],edx
+{$endif}
+  jz @End
+  @Wait:
+   rep nop // aka pause opcode
+{$ifdef windows}
+   mov eax,dword ptr [rcx]
+{$else}
+   mov eax,dword ptr [rdi]
+{$endif}
+   test eax,eax
+  jnz @Wait
+  jmp @TryAgain
+ @End:
+end;
+{$else}
+begin
+ while InterlockedCompareExchange(Lock^,-1,0)<>0 do begin
+ end;
+end;
+{$endif}
+{$endif}
+
+procedure ParallelLockLeave(Lock:PFLREParallelLock);{$ifdef cpu386}assembler; register; {$ifdef fpc}nostackframe;{$endif}
+asm
+ xor edx,edx
+ lock xchg dword ptr [eax],edx // xchg doesn't need lock actually (see IA-32 Intel® Architecture Software Developer’s Manual Volume 3A: System Programming Guide, Part 1, 7.1.2.1), but sure is sure and it does no harm on the performance
+end;
+{$else}{$ifdef cpuamd64}assembler; register; {$ifdef fpc}nostackframe;{$endif}
+asm
+ xor rax,rax
+{$ifdef windows}
+ lock xchg dword ptr [rcx],eax // xchg doesn't need lock actually (see IA-32 Intel® Architecture Software Developer’s Manual Volume 3A: System Programming Guide, Part 1, 7.1.2.1), but sure is sure and it does no harm on the performance
+{$else}
+ lock xchg dword ptr [rdi],eax // xchg doesn't need lock actually (see IA-32 Intel® Architecture Software Developer’s Manual Volume 3A: System Programming Guide, Part 1, 7.1.2.1), but sure is sure and it does no harm on the performance
+{$endif}
+end;
+{$else}
+begin
+ InterlockedExchange(Lock^,0);
+end;
+{$endif}
 {$endif}
 
 function UnicodeGetCategoryFromTable(c:longword):longword; {$ifdef caninline}inline;{$endif}
@@ -5996,9 +6121,9 @@ begin
  NamedGroupStringList:=TStringList.Create;
  NamedGroupStringIntegerPairHashMap:=TFLREStringIntegerPairHashMap.Create;
 
- CriticalSection:=TCriticalSection.Create;
+ ParallelLock:=0;
 
- ThreadLocalStorageInstanceManagerCriticalSection:=TCriticalSection.Create;
+ ThreadLocalStorageInstanceManagerParallelLock:=0;
 
  ThreadLocalStorageInstances:=nil;
  FreeThreadLocalStorageInstances:=nil;
@@ -6100,10 +6225,6 @@ begin
  NamedGroupStringList.Free;
  NamedGroupStringIntegerPairHashMap.Free;
 
- ThreadLocalStorageInstanceManagerCriticalSection.Free;
-
- CriticalSection.Free;
- 
  RangeLow:='';
  RangeHigh:='';
 
@@ -10179,7 +10300,7 @@ end;
 
 function TFLRE.AcquireThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
- ThreadLocalStorageInstanceManagerCriticalSection.Enter;
+ ParallelLockEnter(@ThreadLocalStorageInstanceManagerParallelLock);
  try
   result:=FreeThreadLocalStorageInstances;
   if assigned(result) then begin
@@ -10190,18 +10311,18 @@ begin
    ThreadLocalStorageInstances:=result;
   end;
  finally
-  ThreadLocalStorageInstanceManagerCriticalSection.Leave;
+  ParallelLockLeave(@ThreadLocalStorageInstanceManagerParallelLock);
  end;
 end;
 
 procedure TFLRE.ReleaseThreadLocalStorageInstance(const ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
 begin
- ThreadLocalStorageInstanceManagerCriticalSection.Enter;
+ ParallelLockEnter(@ThreadLocalStorageInstanceManagerParallelLock);
  try
   ThreadLocalStorageInstance.FreeNext:=FreeThreadLocalStorageInstances;
   FreeThreadLocalStorageInstances:=ThreadLocalStorageInstance;
  finally
-  ThreadLocalStorageInstanceManagerCriticalSection.Leave;
+  ParallelLockLeave(@ThreadLocalStorageInstanceManagerParallelLock);
  end;
 end;
 
@@ -10672,7 +10793,7 @@ end;
 function TFLRE.GetRange(var LowRange,HighRange:ansistring):boolean;
 begin
  result:=false;
- CriticalSection.Enter;
+ ParallelLockEnter(@ParallelLock);
  try
   if not HasRange then begin
    CompileRange;
@@ -10683,7 +10804,7 @@ begin
    result:=true;
   end;
  finally
-  CriticalSection.Leave;
+  ParallelLockLeave(@ParallelLock);
  end;
 end;
 
@@ -10878,7 +10999,7 @@ end;
 function TFLRE.GetPrefilterExpression:ansistring;
 begin
  result:='';
- CriticalSection.Enter;
+ ParallelLockEnter(@ParallelLock);
  try
   if not HasPrefilter then begin
    PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
@@ -10892,14 +11013,14 @@ begin
    end;
   end;
  finally
-  CriticalSection.Leave;
+  ParallelLockLeave(@ParallelLock);
  end;
 end;
 
 function TFLRE.GetPrefilterShortExpression:ansistring;
 begin
  result:='';
- CriticalSection.Enter;
+ ParallelLockEnter(@ParallelLock);
  try
   if not HasPrefilter then begin
    PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
@@ -10916,14 +11037,14 @@ begin
    result:='*';
   end;
  finally
-  CriticalSection.Leave;
+  ParallelLockLeave(@ParallelLock);
  end;
 end;
 
 function TFLRE.GetPrefilterSQLBooleanFullTextExpression:ansistring;
 begin
  result:='';
- CriticalSection.Enter;
+ ParallelLockEnter(@ParallelLock);
  try
   if not HasPrefilter then begin
    PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
@@ -10937,14 +11058,14 @@ begin
    end;
   end;
  finally
-  CriticalSection.Leave;
+  ParallelLockLeave(@ParallelLock);
  end;
 end;
 
 function TFLRE.GetPrefilterSQLExpression(Field:ansistring):ansistring;
 begin
  result:='';
- CriticalSection.Enter;
+ ParallelLockEnter(@ParallelLock);
  try
   if not HasPrefilter then begin
    PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
@@ -10958,7 +11079,7 @@ begin
    result:=PrefilterRootNode.SQLExpression(Field);
   end;
  finally
-  CriticalSection.Leave;
+  ParallelLockLeave(@ParallelLock);
  end;
  if length(result)=0 then begin
   result:='('+Field+' LIKE "%")';
