@@ -217,7 +217,7 @@ type EFLRE=class(Exception);
       Next:PFLREParallelNFAState;
       ReferenceCounter:longint;
       Count:longint;
-      BitState:longword;
+      SubMatchesBitMask:longword;
       SubMatches:TFLREParallelNFAStateItems;
      end;
 
@@ -456,7 +456,7 @@ type EFLRE=class(Exception);
 
        function LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
 
-       function ParallelNFAStateAllocate(const Count:longint;const BitState:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+       function ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitMask:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        function ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        procedure ParallelNFAStateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
        function ParallelNFAStateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
@@ -497,7 +497,11 @@ type EFLRE=class(Exception);
 
        CountCaptures:longint;
 
+       CountInternalCaptures:longint;
+
        CountSubMatches:longint;
+
+       CountInternalSubMatches:longint;
 
        ForwardInstructions:TFLREInstructions;
        CountForwardInstructions:longint;
@@ -4730,8 +4734,8 @@ begin
  OnePassNFAMatchCaptures:=nil;
 
  if Instance.OnePassNFAReady then begin
-  SetLength(OnePassNFAWorkCaptures,Instance.CountCaptures*2);
-  SetLength(OnePassNFAMatchCaptures,Instance.CountCaptures*2);
+  SetLength(OnePassNFAWorkCaptures,Instance.CountSubMatches);
+  SetLength(OnePassNFAMatchCaptures,Instance.CountSubMatches);
  end;
 
  BitStateNFACountVisited:=0;
@@ -4742,8 +4746,8 @@ begin
  BitStateNFAMatchCaptures:=nil;
 
  if Instance.BitStateNFAReady then begin
-  SetLength(BitStateNFAWorkCaptures,Instance.CountCaptures*2);
-  SetLength(BitStateNFAMatchCaptures,Instance.CountCaptures*2);
+  SetLength(BitStateNFAWorkCaptures,Instance.CountSubMatches);
+  SetLength(BitStateNFAMatchCaptures,Instance.CountSubMatches);
  end;
 
  DFAStackInstructions:=nil;
@@ -4973,7 +4977,7 @@ begin
  result:=result xor Negative;
 end;
 
-function TFLREThreadLocalStorageInstance.ParallelNFAStateAllocate(const Count:longint;const BitState:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+function TFLREThreadLocalStorageInstance.ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitMask:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 begin
  if assigned(FreeParallelNFAStates) then begin
   result:=FreeParallelNFAStates;
@@ -4986,7 +4990,7 @@ begin
  end;
  result^.ReferenceCounter:=1;
  result^.Count:=Count;
- result^.BitState:=BitState;
+ result^.SubMatchesBitMask:=SubMatchesBitMask;
 end;
 
 function TFLREThreadLocalStorageInstance.ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
@@ -5006,18 +5010,18 @@ end;
 
 function TFLREThreadLocalStorageInstance.ParallelNFAStateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 var Counter:longint;
-    BitState:longword;
+    SubMatchesBitMask:longword;
 begin
  result:=State;
  if result^.ReferenceCounter>1 then begin
-  result:=ParallelNFAStateAllocate(State^.Count,State^.BitState);
+  result:=ParallelNFAStateAllocate(State^.Count,State^.SubMatchesBitMask);
 {$ifdef cpu386}
   asm
    push ebx
    push esi
    push edi
     mov ebx,dword ptr result
-    mov ecx,dword ptr [ebx+TFLREParallelNFAState.BitState]
+    mov ecx,dword ptr [ebx+TFLREParallelNFAState.SubMatchesBitMask]
     test ecx,ecx // or test ecx,$80000000; jnz @CopyAll 
     js @CopyAll
     jecxz @Done
@@ -5044,10 +5048,10 @@ begin
    pop ebx
   end;
 {$else}
-  if (result^.BitState and longword($80000000))=0 then begin
-   BitState:=result^.BitState;
-   while BitState<>0 do begin
-    Counter:=PopFirstOneBit(BitState);
+  if (result^.SubMatchesBitMask and longword($80000000))=0 then begin
+   SubMatchesBitMask:=result^.SubMatchesBitMask;
+   while SubMatchesBitMask<>0 do begin
+    Counter:=PopFirstOneBit(SubMatchesBitMask);
     result^.SubMatches[Counter]:=State^.SubMatches[Counter];
    end;
   end else begin
@@ -5057,13 +5061,13 @@ begin
   dec(State^.ReferenceCounter);
  end;
 {$ifdef cpu386}
- result^.BitState:=result^.BitState or ((longword(1) shl Index) or longword(-longword(longword(-(Index-30)) shr 31)));
+ result^.SubMatchesBitMask:=result^.SubMatchesBitMask or ((longword(1) shl Index) or longword(-longword(longword(-(Index-30)) shr 31)));
 {$else}
- if (result^.BitState and longword($80000000))=0 then begin
+ if (result^.SubMatchesBitMask and longword($80000000))=0 then begin
   if Index>30 then begin
-   result^.BitState:=$ffffffff;
+   result^.SubMatchesBitMask:=$ffffffff;
   end else begin
-   result^.BitState:=result^.BitState or (longword(1) shl Index);
+   result^.SubMatchesBitMask:=result^.SubMatchesBitMask or (longword(1) shl Index);
   end;
  end;
 {$endif}
@@ -5441,7 +5445,7 @@ var LocalInputLength,CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosit
     Instruction:PFLREInstruction;
     CurrentChar:ansichar;
     Capture:PFLRECapture;
-    BitState:longword;
+    SubMatchesBitMask:longword;
     LocalInput:pansichar;
 begin
  result:=false;
@@ -5505,12 +5509,12 @@ begin
     opMATCH:begin
      if rfLONGEST in Instance.Flags then begin
       if not assigned(BestState) then begin
-       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.BitState);
+       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitMask);
       end;
-      if State^.BitState<>0 then begin
+      if State^.SubMatchesBitMask<>0 then begin
        if LastPosition<CurrentPosition then begin
         LastPosition:=CurrentPosition;
-        BestState^.BitState:=State^.BitState;
+        BestState^.SubMatchesBitMask:=State^.SubMatchesBitMask;
         Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
        end;
       end;
@@ -5546,12 +5550,12 @@ begin
     opMATCH:begin
      if rfLONGEST in Instance.Flags then begin
       if not assigned(BestState) then begin
-       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.BitState);
+       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitMask);
       end;
-      if State^.BitState<>0 then begin
+      if State^.SubMatchesBitMask<>0 then begin
        if LastPosition<UntilExcludingPosition then begin
         LastPosition:=UntilExcludingPosition;
-        BestState^.BitState:=State^.BitState;
+        BestState^.SubMatchesBitMask:=State^.SubMatchesBitMask;
         Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
        end;
       end;
@@ -5579,19 +5583,19 @@ begin
 
  if assigned(Matched) then begin
   SetLength(Captures,Instance.CountCaptures);
-  BitState:=Matched^.BitState;
+  SubMatchesBitMask:=Matched^.SubMatchesBitMask;
   for Counter:=0 to Instance.CountCaptures-1 do begin
    Capture:=@Captures[Counter];
-   if (BitState and longword($80000000))<>0 then begin
+   if (SubMatchesBitMask and longword($80000000))<>0 then begin
     CurrentPosition:=Matched^.SubMatches[Counter shl 1];
     CurrentLength:=Matched^.SubMatches[(Counter shl 1) or 1]-CurrentPosition;
    end else begin
-    if (BitState and (longword(1) shl (Counter shl 1)))<>0 then begin
+    if (SubMatchesBitMask and (longword(1) shl (Counter shl 1)))<>0 then begin
      CurrentPosition:=Matched^.SubMatches[Counter shl 1];
     end else begin
      CurrentPosition:=0;
     end;
-    if (BitState and (longword(1) shl ((Counter shl 1) or 1)))<>0 then begin
+    if (SubMatchesBitMask and (longword(1) shl ((Counter shl 1) or 1)))<>0 then begin
      CurrentLength:=Matched^.SubMatches[(Counter shl 1) or 1]-CurrentPosition;
     end else begin
      CurrentLength:=0;
@@ -5823,12 +5827,12 @@ var LocalInputLength,BasePosition,Len:longint;
       if rfLONGEST in Instance.Flags then begin
        if LastPosition<Position then begin
         LastPosition:=Position;
-        for i:=0 to (Instance.CountCaptures*2)-1 do begin
+        for i:=0 to Instance.CountSubMatches-1 do begin
          BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
         end;
        end;
       end else begin
-       for i:=0 to (Instance.CountCaptures*2)-1 do begin
+       for i:=0 to Instance.CountSubMatches-1 do begin
         BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
        end;
        exit;
@@ -6048,6 +6052,8 @@ begin
 
  CountCaptures:=0;
 
+ CountInternalCaptures:=0;
+ 
  AnchoredRootNode:=nil;
 
  UnanchoredRootNode:=nil;
@@ -6227,6 +6233,8 @@ begin
   end;
 
   CountSubMatches:=CountCaptures*2;
+
+  CountInternalSubMatches:=CountInternalCaptures*2;
 
   CompilePrefix;
 
@@ -8667,6 +8675,7 @@ begin
   NamedGroupStringIntegerPairHashMap.Add('wholematch',0);
   NamedGroupStringList.Add('wholematch');
   CountCaptures:=1;
+  CountInternalCaptures:=0;
   AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
   while assigned(AnchoredRootNode) and OptimizeNode(@AnchoredRootNode) do begin
   end;
