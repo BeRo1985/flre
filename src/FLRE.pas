@@ -5906,7 +5906,7 @@ begin
 end;
 
 function TFLREThreadLocalStorageInstance.SearchMatchParallelNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
-var LocalInputLength,CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosition:longint;
+var LocalInputLength,CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosition,Index:longint;
     CurrentThreadList,NewThreadList,TemporaryThreadList:PFLREThreadList;
     State,Matched,BestState:PFLREParallelNFAState;
     CurrentThread:PFLREThread;
@@ -6055,17 +6055,18 @@ begin
   SubMatchesBitMask:=Matched^.SubMatchesBitMask;
   for Counter:=0 to Instance.CountCaptures-1 do begin
    Capture:=@Captures[Counter];
+   Index:=Instance.CapturesToSubMatchesMap[Counter] shl 1;
    if (SubMatchesBitMask and longword($80000000))<>0 then begin
-    CurrentPosition:=Matched^.SubMatches[Counter shl 1];
-    CurrentLength:=Matched^.SubMatches[(Counter shl 1) or 1]-CurrentPosition;
+    CurrentPosition:=Matched^.SubMatches[Index];
+    CurrentLength:=Matched^.SubMatches[Index or 1]-CurrentPosition;
    end else begin
-    if (SubMatchesBitMask and (longword(1) shl (Counter shl 1)))<>0 then begin
-     CurrentPosition:=Matched^.SubMatches[Counter shl 1];
+    if (SubMatchesBitMask and (longword(1) shl Index))<>0 then begin
+     CurrentPosition:=Matched^.SubMatches[Index];
     end else begin
      CurrentPosition:=0;
     end;
-    if (SubMatchesBitMask and (longword(1) shl ((Counter shl 1) or 1)))<>0 then begin
-     CurrentLength:=Matched^.SubMatches[(Counter shl 1) or 1]-CurrentPosition;
+    if (SubMatchesBitMask and (longword(1) shl (Index or 1)))<>0 then begin
+     CurrentLength:=Matched^.SubMatches[Index or 1]-CurrentPosition;
     end else begin
      CurrentLength:=0;
     end;
@@ -6086,7 +6087,7 @@ end;
 
 function TFLREThreadLocalStorageInstance.SearchMatchOnePassNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
 var State,Nodes:PFLREOnePassNFAState;
-    LocalInputLength,CurrentPosition,StateSize,CountSubMatches,Counter:longint;
+    LocalInputLength,CurrentPosition,StateSize,CountSubMatches,Counter,Index:longint;
     LocalByteMap:PFLREByteMap;
     Done:boolean;
     NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
@@ -6184,8 +6185,9 @@ begin
  if result then begin
   SetLength(Captures,Instance.CountCaptures);
   for Counter:=0 to Instance.CountCaptures-1 do begin
-   Captures[Counter].Start:=OnePassNFAMatchSubMatches[Counter*2];
-   Captures[Counter].Length:=OnePassNFAMatchSubMatches[(Counter*2)+1]-OnePassNFAMatchSubMatches[Counter*2];
+   Index:=Instance.CapturesToSubMatchesMap[Counter] shl 1;
+   Captures[Counter].Start:=OnePassNFAMatchSubMatches[Index];
+   Captures[Counter].Length:=OnePassNFAMatchSubMatches[Index or 1]-OnePassNFAMatchSubMatches[Index];
   end;
  end;
 
@@ -6396,7 +6398,7 @@ var LocalInputLength,BasePosition,Len:longint;
 
  end;
 var VisitedLength:longword;
-    Position,LastPosition,Counter:longint;
+    Position,LastPosition,Counter,Index:longint;
     StartInstruction:PFLREInstruction;
 begin
  result:=BitStateNFAError;
@@ -6428,8 +6430,9 @@ begin
  if TrySearch(StartInstruction,Position) then begin
   SetLength(Captures,Instance.CountCaptures);
   for Counter:=0 to Instance.CountCaptures-1 do begin
-   Captures[Counter].Start:=BitStateNFAMatchSubMatches[Counter*2];
-   Captures[Counter].Length:=BitStateNFAMatchSubMatches[(Counter*2)+1]-BitStateNFAMatchSubMatches[Counter*2];
+   Index:=Instance.CapturesToSubMatchesMap[Counter] shl 1;
+   Captures[Counter].Start:=BitStateNFAMatchSubMatches[Index];
+   Captures[Counter].Length:=BitStateNFAMatchSubMatches[Index or 1]-BitStateNFAMatchSubMatches[Index];
   end;
   result:=BitStateNFAMatch;
  end else begin
