@@ -8918,7 +8918,10 @@ var SourcePosition,SourceLength:longint;
            result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
           end;
           result^.Group:=byte(ansichar(Source[SourcePosition]))-byte(ansichar('0'));
-          inc(SourcePosition);        
+          inc(SourcePosition);
+          if (result^.Group>=CountCaptures) or (GroupIndexIntegerStack.IndexOf(result^.Group)>=0) then begin
+           raise EFLRE.Create('Syntax error');
+          end;
          end;
          'b','y':begin
           result:=NewNode(ntBRK,nil,nil,nil,0);
