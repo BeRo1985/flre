@@ -254,7 +254,7 @@ type EFLRE=class(Exception);
       Action:array[0..0] of longword;
      end;
 
-     TFLREOnePassNFACaptures=array of longint;
+     TFLREOnePassNFASubMatches=array of longint;
 
      PFLREBitStateNFAJob=^TFLREBitStateNFAJob;
      TFLREBitStateNFAJob=record
@@ -270,7 +270,7 @@ type EFLRE=class(Exception);
 
      TFLREBitStateNFAVisited=array[0..(32768 div SizeOf(longword))-1] of longword;
 
-     TFLREBitStateNFACaptures=array of longint;
+     TFLREBitStateNFASubMatches=array of longint;
 
      PFLREDFAState=^TFLREDFAState;
 
@@ -422,16 +422,16 @@ type EFLRE=class(Exception);
        FreeParallelNFAStates:PFLREParallelNFAState;
        AllParallelNFAStates:TList;
 
-       OnePassNFAWorkCaptures:TFLREOnePassNFACaptures;
-       OnePassNFAMatchCaptures:TFLREOnePassNFACaptures;
+       OnePassNFAWorkSubMatches:TFLREOnePassNFASubMatches;
+       OnePassNFAMatchSubMatches:TFLREOnePassNFASubMatches;
 
        BitStateNFAVisited:TFLREBitStateNFAVisited;
        BitStateNFACountVisited:longint;
        BitStateNFAJobs:TFLREBitStateNFAJobs;
        BitStateNFACountJobs:longint;
        BitStateNFAMaxJob:longint;
-       BitStateNFAWorkCaptures:TFLREBitStateNFACaptures;
-       BitStateNFAMatchCaptures:TFLREBitStateNFACaptures;
+       BitStateNFAWorkSubMatches:TFLREBitStateNFASubMatches;
+       BitStateNFAMatchSubMatches:TFLREBitStateNFASubMatches;
 
        DFAStackInstructions:TPFLREInstructions;
        DFAStateCache:TFLREDFAStateHashMap;
@@ -4730,24 +4730,24 @@ begin
  FreeParallelNFAStates:=nil;
  AllParallelNFAStates:=TList.Create;
 
- OnePassNFAWorkCaptures:=nil;
- OnePassNFAMatchCaptures:=nil;
+ OnePassNFAWorkSubMatches:=nil;
+ OnePassNFAMatchSubMatches:=nil;
 
  if Instance.OnePassNFAReady then begin
-  SetLength(OnePassNFAWorkCaptures,Instance.CountSubMatches);
-  SetLength(OnePassNFAMatchCaptures,Instance.CountSubMatches);
+  SetLength(OnePassNFAWorkSubMatches,Instance.CountSubMatches);
+  SetLength(OnePassNFAMatchSubMatches,Instance.CountSubMatches);
  end;
 
  BitStateNFACountVisited:=0;
  BitStateNFAJobs:=nil;
  BitStateNFACountJobs:=0;
  BitStateNFAMaxJob:=0;
- BitStateNFAWorkCaptures:=nil;
- BitStateNFAMatchCaptures:=nil;
+ BitStateNFAWorkSubMatches:=nil;
+ BitStateNFAMatchSubMatches:=nil;
 
  if Instance.BitStateNFAReady then begin
-  SetLength(BitStateNFAWorkCaptures,Instance.CountSubMatches);
-  SetLength(BitStateNFAMatchCaptures,Instance.CountSubMatches);
+  SetLength(BitStateNFAWorkSubMatches,Instance.CountSubMatches);
+  SetLength(BitStateNFAMatchSubMatches,Instance.CountSubMatches);
  end;
 
  DFAStackInstructions:=nil;
@@ -4836,12 +4836,12 @@ begin
 
  FreeAndNil(AllParallelNFAStates);
 
- SetLength(OnePassNFAWorkCaptures,0);
- SetLength(OnePassNFAMatchCaptures,0);
+ SetLength(OnePassNFAWorkSubMatches,0);
+ SetLength(OnePassNFAMatchSubMatches,0);
 
  SetLength(BitStateNFAJobs,0);
- SetLength(BitStateNFAWorkCaptures,0);
- SetLength(BitStateNFAMatchCaptures,0);
+ SetLength(BitStateNFAWorkSubMatches,0);
+ SetLength(BitStateNFAMatchSubMatches,0);
 
  DFADestroyStatePool(DFAStatePoolUsed);
  DFADestroyStatePool(DFAStatePoolFree);
@@ -5663,12 +5663,12 @@ begin
      (((Condition and sfMatchWins)<>0) or ((NextMatchCondition and sfEmptyAllFlags)<>0)) and
      (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
    for Counter:=0 to TwoCountOfCaptures-1 do begin
-    OnePassNFAMatchCaptures[Counter]:=OnePassNFAWorkCaptures[Counter];
+    OnePassNFAMatchSubMatches[Counter]:=OnePassNFAWorkSubMatches[Counter];
    end;
    if (MatchCondition and sfCapMask)<>0 then begin
     for Counter:=0 to TwoCountOfCaptures-1 do begin
      if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-      OnePassNFAMatchCaptures[Counter]:=CurrentPosition;
+      OnePassNFAMatchSubMatches[Counter]:=CurrentPosition;
      end;
     end;
    end;
@@ -5687,7 +5687,7 @@ begin
   if (Condition and sfCapMask)<>0 then begin
    for Counter:=0 to TwoCountOfCaptures-1 do begin
     if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-     OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
+     OnePassNFAWorkSubMatches[Counter]:=CurrentPosition;
     end;
    end;
   end;
@@ -5701,12 +5701,12 @@ begin
    if ((MatchCondition and sfCapMask)<>0) and (TwoCountOfCaptures>0) then begin
     for Counter:=0 to TwoCountOfCaptures-1 do begin
      if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin   
-      OnePassNFAWorkCaptures[Counter]:=CurrentPosition;
+      OnePassNFAWorkSubMatches[Counter]:=CurrentPosition;
      end;
     end;
    end;
    for Counter:=0 to TwoCountOfCaptures-1 do begin
-    OnePassNFAMatchCaptures[Counter]:=OnePassNFAWorkCaptures[Counter];
+    OnePassNFAMatchSubMatches[Counter]:=OnePassNFAWorkSubMatches[Counter];
    end;
    result:=true;
   end;
@@ -5715,8 +5715,8 @@ begin
  if result then begin
   SetLength(Captures,Instance.CountCaptures);
   for Counter:=0 to Instance.CountCaptures-1 do begin
-   Captures[Counter].Start:=OnePassNFAMatchCaptures[Counter*2];
-   Captures[Counter].Length:=OnePassNFAMatchCaptures[(Counter*2)+1]-OnePassNFAMatchCaptures[Counter*2];
+   Captures[Counter].Start:=OnePassNFAMatchSubMatches[Counter*2];
+   Captures[Counter].Length:=OnePassNFAMatchSubMatches[(Counter*2)+1]-OnePassNFAMatchSubMatches[Counter*2];
   end;
  end;
 
@@ -5828,12 +5828,12 @@ var LocalInputLength,BasePosition,Len:longint;
        if LastPosition<Position then begin
         LastPosition:=Position;
         for i:=0 to Instance.CountSubMatches-1 do begin
-         BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
+         BitStateNFAMatchSubMatches[i]:=BitStateNFAWorkSubMatches[i];
         end;
        end;
       end else begin
        for i:=0 to Instance.CountSubMatches-1 do begin
-        BitStateNFAMatchCaptures[i]:=BitStateNFAWorkCaptures[i];
+        BitStateNFAMatchSubMatches[i]:=BitStateNFAWorkSubMatches[i];
        end;
        exit;
       end;
@@ -5847,15 +5847,15 @@ var LocalInputLength,BasePosition,Len:longint;
      opSAVE:begin
       case Argument of
        0:begin
-        Push(Instruction,BitStateNFAWorkCaptures[Instruction^.Value],1);
-        BitStateNFAWorkCaptures[Instruction^.Value]:=Position;
+        Push(Instruction,BitStateNFAWorkSubMatches[Instruction^.Value],1);
+        BitStateNFAWorkSubMatches[Instruction^.Value]:=Position;
         Instruction:=Instruction^.Next;
         if ShouldVisit(Instruction,Position) then begin
          continue;
         end;
        end;
        1:begin
-        BitStateNFAWorkCaptures[Instruction^.Value]:=Position;
+        BitStateNFAWorkSubMatches[Instruction^.Value]:=Position;
        end;
       end;
      end;
@@ -5959,8 +5959,8 @@ begin
  if TrySearch(StartInstruction,Position) then begin
   SetLength(Captures,Instance.CountCaptures);
   for Counter:=0 to Instance.CountCaptures-1 do begin
-   Captures[Counter].Start:=BitStateNFAMatchCaptures[Counter*2];
-   Captures[Counter].Length:=BitStateNFAMatchCaptures[(Counter*2)+1]-BitStateNFAMatchCaptures[Counter*2];
+   Captures[Counter].Start:=BitStateNFAMatchSubMatches[Counter*2];
+   Captures[Counter].Length:=BitStateNFAMatchSubMatches[(Counter*2)+1]-BitStateNFAMatchSubMatches[Counter*2];
   end;
   result:=BitStateNFAMatch;
  end else begin
