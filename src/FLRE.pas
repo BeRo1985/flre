@@ -8583,6 +8583,55 @@ var SourcePosition,SourceLength:longint;
    raise;
   end;
  end;
+ function NewBackReferencePerIndex(const Group:longint):PFLRENode;
+ var Value:longint;
+ begin
+  if (Group>=CountCaptures) or (GroupIndexIntegerStack.IndexOf(Group)>=0) then begin
+   raise EFLRE.Create('Syntax error');
+  end;
+  Value:=CountInternalCaptures;
+  inc(CountInternalCaptures);
+  if rfIGNORECASE in Flags then begin
+   result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,nil,Value);
+  end else begin
+   result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
+  end;
+  result^.Group:=Group;
+ end;
+ function NewBackReferencePerName(const Name:ansistring):PFLRENode;
+ var Index,Value:longint;
+ begin
+  Value:=-1;
+  for Index:=1 to length(Name) do begin
+   if Name[Index] in ['0'..'9'] then begin
+    if Index>1 then begin
+     Value:=Value*10;
+    end else begin  
+     Value:=0;
+    end;
+    inc(Value,byte(ansichar(Name[Index]))-byte(ansichar('0')));
+   end else begin
+    Value:=-1;
+    break;
+   end;
+  end;
+  if Value>=0 then begin
+   result:=NewBackReferencePerIndex(Value);
+  end else begin
+   if (NamedGroupStringList.IndexOf(Name)<0) or (GroupNameStringStack.IndexOf(Name)>=0) then begin
+    raise EFLRE.Create('Syntax error');
+   end;
+   Value:=CountInternalCaptures;
+   inc(CountInternalCaptures);
+   if rfIGNORECASE in Flags then begin
+    result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,nil,Value);
+   end else begin
+    result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
+   end;
+   result^.Group:=-1;
+   result^.Name:=Name;
+  end;
+ end;
  function ParseAtom:PFLRENode;
  var Value,Index:longint;
      Negate,IsSingle,Done,IsNegative,First,Num:boolean;
@@ -8732,6 +8781,12 @@ var SourcePosition,SourceLength:longint;
            end else begin
             raise EFLRE.Create('Duplicate named group');
            end;
+           NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
+           if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
+            NamedGroupStringList.Add(IntToStr(Value));
+           end else begin
+            raise EFLRE.Create('Duplicate named group');
+           end;
            GroupIndexIntegerStack.Add(Value);
            GroupNameStringStack.Add(Name);
            try
@@ -8824,6 +8879,12 @@ var SourcePosition,SourceLength:longint;
             end else begin
              raise EFLRE.Create('Duplicate named group');
             end;
+            NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
+            if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
+             NamedGroupStringList.Add(IntToStr(Value));
+            end else begin
+             raise EFLRE.Create('Duplicate named group');
+            end;
             GroupIndexIntegerStack.Add(Value);
             GroupNameStringStack.Add(Name);
             try
@@ -8836,38 +8897,60 @@ var SourcePosition,SourceLength:longint;
           end;
           'P':begin
            inc(SourcePosition);
-           if (SourcePosition<=SourceLength) and (Source[SourcePosition]='<') then begin
-            inc(SourcePosition);
-            Name:='';
-            while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_']) do begin
-             Name:=Name+Source[SourcePosition];
-             inc(SourcePosition);
-            end;
-            if (SourcePosition<=SourceLength) and (Source[SourcePosition]='>') then begin
-             inc(SourcePosition);
-            end else begin
-             raise EFLRE.Create('Syntax error');
-            end;
-            Value:=CountInternalCaptures;
-            inc(CountInternalCaptures);
-            if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
-             SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
-            end;
-            CapturesToSubMatchesMap[CountCaptures]:=Value;
-            inc(CountCaptures);
-            NamedGroupStringIntegerPairHashMap.Add(Name,Value);
-            if NamedGroupStringList.IndexOf(Name)<0 then begin
-             NamedGroupStringList.Add(Name);
-            end else begin
-             raise EFLRE.Create('Duplicate named group');
-            end;
-            GroupIndexIntegerStack.Add(Value);
-            GroupNameStringStack.Add(Name);
-            try
-             result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
-            finally
-             GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
-             GroupNameStringStack.Delete(GroupNameStringStack.Count-1);
+           if SourcePosition<=SourceLength then begin
+            case Source[SourcePosition] of
+             '=':begin
+              inc(SourcePosition);
+              Name:='';
+              while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_']) do begin
+               Name:=Name+Source[SourcePosition];
+               inc(SourcePosition);
+              end;
+              result:=NewBackReferencePerName(Name);
+             end;
+             '<':begin
+              inc(SourcePosition);
+              Name:='';
+              while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_']) do begin
+               Name:=Name+Source[SourcePosition];
+               inc(SourcePosition);
+              end;
+              if (SourcePosition<=SourceLength) and (Source[SourcePosition]='>') then begin
+               inc(SourcePosition);
+              end else begin
+               raise EFLRE.Create('Syntax error');
+              end;
+              Value:=CountInternalCaptures;
+              inc(CountInternalCaptures);
+              if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
+               SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
+              end;
+              CapturesToSubMatchesMap[CountCaptures]:=Value;
+              inc(CountCaptures);
+              NamedGroupStringIntegerPairHashMap.Add(Name,Value);
+              if NamedGroupStringList.IndexOf(Name)<0 then begin
+               NamedGroupStringList.Add(Name);
+              end else begin
+               raise EFLRE.Create('Duplicate named group');
+              end;           
+              NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
+              if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
+               NamedGroupStringList.Add(IntToStr(Value));
+              end else begin
+               raise EFLRE.Create('Duplicate named group');
+              end;
+              GroupIndexIntegerStack.Add(Value);
+              GroupNameStringStack.Add(Name);
+              try
+               result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+              finally
+               GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
+               GroupNameStringStack.Delete(GroupNameStringStack.Count-1);
+              end;
+             end
+             else begin
+              raise EFLRE.Create('Syntax error');
+             end;
             end;
            end else begin
             raise EFLRE.Create('Syntax error');
@@ -8891,6 +8974,12 @@ var SourcePosition,SourceLength:longint;
          end;
          CapturesToSubMatchesMap[CountCaptures]:=Value;
          inc(CountCaptures);
+         NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
+         if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
+          NamedGroupStringList.Add(IntToStr(Value));
+         end else begin
+          raise EFLRE.Create('Duplicate named group');
+         end;
          GroupIndexIntegerStack.Add(Value);
          try
           result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
@@ -8910,18 +8999,8 @@ var SourcePosition,SourceLength:longint;
        if SourcePosition<=SourceLength then begin
         case Source[SourcePosition] of
          '0'..'9':begin
-          Value:=CountInternalCaptures;
-          inc(CountInternalCaptures);
-          if rfIGNORECASE in Flags then begin
-           result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,nil,Value);
-          end else begin
-           result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
-          end;
-          result^.Group:=byte(ansichar(Source[SourcePosition]))-byte(ansichar('0'));
+          result:=NewBackReferencePerIndex(byte(ansichar(Source[SourcePosition]))-byte(ansichar('0')));
           inc(SourcePosition);
-          if (result^.Group>=CountCaptures) or (GroupIndexIntegerStack.IndexOf(result^.Group)>=0) then begin
-           raise EFLRE.Create('Syntax error');
-          end;
          end;
          'b','y':begin
           result:=NewNode(ntBRK,nil,nil,nil,0);
@@ -8991,6 +9070,25 @@ var SourcePosition,SourceLength:longint;
            end;
           finally
            FreeAndNil(UnicodeCharClass);
+          end;
+         end;
+         'g':begin
+          inc(SourcePosition);
+          if (SourcePosition<=SourceLength) and (Source[SourcePosition]='{') then begin
+           inc(SourcePosition);
+           Name:='';
+           while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_']) do begin
+            Name:=Name+Source[SourcePosition];
+            inc(SourcePosition);
+           end;
+           if (SourcePosition<=SourceLength) and (Source[SourcePosition]='}') then begin
+            inc(SourcePosition);
+            result:=NewBackReferencePerName(Name);
+           end else begin
+            raise EFLRE.Create('Syntax error');
+           end;
+          end else begin
+           raise EFLRE.Create('Syntax error');
           end;
          end;
          else begin
