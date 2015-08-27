@@ -216,17 +216,13 @@ type EFLRE=class(Exception);
 
      TFLREParallelNFAStateItems=array of TFLREParallelNFAStateItem;
 
-     TFLREParallelNFAStateCheckBitmap=array of longword;
-
      PFLREParallelNFAState=^TFLREParallelNFAState;
      TFLREParallelNFAState=record
       Next:PFLREParallelNFAState;
       ReferenceCounter:longint;
-      UsedCheckBitmapSize:longword;
       Count:longint;
       SubMatchesBitmap:longword;
       SubMatches:TFLREParallelNFAStateItems;
-      CheckBitmap:TFLREParallelNFAStateCheckBitmap;
      end;
 
      PFLREThread=^TFLREThread;
@@ -500,7 +496,7 @@ type EFLRE=class(Exception);
 
        function BackReferenceAssertion(const CaptureStart,CaptureEnd,BackReferenceStart,BackReferenceEnd:longint;const IgnoreCase:boolean):boolean;
 
-       function ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitmap,UsedCheckBitmapSize:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+       function ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitmap:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        function ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        procedure ParallelNFAStateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
        function ParallelNFAStateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
@@ -5540,7 +5536,7 @@ begin
  end;
 end;
 
-function TFLREThreadLocalStorageInstance.ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitmap,UsedCheckBitmapSize:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+function TFLREThreadLocalStorageInstance.ParallelNFAStateAllocate(const Count:longint;const SubMatchesBitmap:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
 begin
  if assigned(FreeParallelNFAStates) then begin
   result:=FreeParallelNFAStates;
@@ -5549,13 +5545,11 @@ begin
   GetMem(result,SizeOf(TFLREParallelNFAState));
   FillChar(result^,SizeOf(TFLREParallelNFAState),#0);
   SetLength(result^.SubMatches,Instance.CountSubMatches);
-  SetLength(result^.CheckBitmap,0);
   AllParallelNFAStates.Add(result);
  end;
  result^.ReferenceCounter:=1;
  result^.Count:=Count;
  result^.SubMatchesBitmap:=SubMatchesBitmap;
- result^.UsedCheckBitmapSize:=UsedCheckBitmapSize;
 end;
 
 function TFLREThreadLocalStorageInstance.ParallelNFAStateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
@@ -5579,7 +5573,7 @@ var Counter:longint;
 begin
  result:=State;
  if result^.ReferenceCounter>1 then begin
-  result:=ParallelNFAStateAllocate(State^.Count,State^.SubMatchesBitmap,State^.UsedCheckBitmapSize);
+  result:=ParallelNFAStateAllocate(State^.Count,State^.SubMatchesBitmap);
 {$ifdef cpu386}
   asm
    push ebx
@@ -5623,9 +5617,6 @@ begin
    Move(State^.SubMatches[0],result^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
   end;
 {$endif}
-  for Counter:=0 to longint(longword(longword(result^.UsedCheckBitmapSize+31) shr 5))-1 do begin
-   result^.CheckBitmap[Counter]:=State^.CheckBitmap[Counter];
-  end;
   dec(State^.ReferenceCounter);
  end;
 {$ifdef cpu386}
@@ -6075,7 +6066,7 @@ begin
  CurrentThreadList^.Count:=0;
  NewThreadList^.Count:=0;
 
- State:=ParallelNFAStateAllocate(Instance.CountSubMatches,0,0);
+ State:=ParallelNFAStateAllocate(Instance.CountSubMatches,0);
 
  inc(Generation);
  if UnanchoredStart then begin
@@ -6125,16 +6116,13 @@ begin
     opMATCH:begin
      if rfLONGEST in Instance.Flags then begin
       if not assigned(BestState) then begin
-       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap,State^.UsedCheckBitmapSize);
+       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap);
       end;
       if State^.SubMatchesBitmap<>0 then begin
        if LastPosition<CurrentPosition then begin
         LastPosition:=CurrentPosition;
         BestState^.SubMatchesBitmap:=State^.SubMatchesBitmap;
         Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
-        for Counter:=0 to longint(longword(longword(State^.UsedCheckBitmapSize+31) shr 5))-1 do begin
-         BestState^.CheckBitmap[Counter]:=State^.CheckBitmap[Counter];
-        end;
        end;
       end;
      end else begin
@@ -6169,16 +6157,13 @@ begin
     opMATCH:begin
      if rfLONGEST in Instance.Flags then begin
       if not assigned(BestState) then begin
-       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap,State^.UsedCheckBitmapSize);
+       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap);
       end;
       if State^.SubMatchesBitmap<>0 then begin
        if LastPosition<UntilExcludingPosition then begin
         LastPosition:=UntilExcludingPosition;
         BestState^.SubMatchesBitmap:=State^.SubMatchesBitmap;
         Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
-        for Counter:=0 to longint(longword(longword(State^.UsedCheckBitmapSize+31) shr 5))-1 do begin
-         BestState^.CheckBitmap[Counter]:=State^.CheckBitmap[Counter];
-        end;
        end;
       end;
      end else begin
