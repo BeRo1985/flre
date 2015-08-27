@@ -9051,18 +9051,8 @@ var SourcePosition,SourceLength:longint;
              end;
              result:=NewBackReferencePerName(Name);
             end;
-            '{','''','<':begin
-             case Source[SourcePosition] of
-              '{':begin
-               TerminateChar:='}';
-              end;
-              '<':begin
-               TerminateChar:='>';
-              end;
-              else begin
-               TerminateChar:='''';
-              end;
-             end;
+            '{':begin
+             TerminateChar:='}';
              inc(SourcePosition);
              Name:='';
              while (SourcePosition<=SourceLength) and (Source[SourcePosition] in ['0'..'9','A'..'Z','a'..'z','_','-']) do begin
