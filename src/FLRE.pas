@@ -477,6 +477,7 @@ type EFLRE=class(Exception);
        DFAUnanchoredStartState:PFLREDFAState;
        DFAReversedStartState:PFLREDFAState;
        DFADeadState:PFLREDFAState;
+       DFAStartStates:array[0..2,0..(1 shl 6)-1] of PFLREDFAState;
        DFATemporaryState:TFLREDFAState;
        DFANewState:TFLREDFAState;
        DFACountStatesCached:longint;
@@ -5206,8 +5207,9 @@ begin
 end;
 
 constructor TFLREThreadLocalStorageInstance.Create(AInstance:TFLRE);
-var Index:longint;
+var Index,SubIndex:longint;
     FLREDFAStateCreateTempDFAState:TFLREDFAState;
+    DFAStartState:PFLREDFAState;
 begin
  inherited Create;
 
@@ -5267,6 +5269,7 @@ begin
  DFAStatePoolFree:=nil;
  DFAStatePoolSize:=0;
  DFAStatePoolSizePowerOfTwo:=0;
+ FillChar(DFAStartStates,SizeOf(DFAStartStates),AnsiChar(#0));
 
  begin
   DFACountStatesCached:=0;
@@ -5323,11 +5326,38 @@ begin
   DFADeadState^.Flags:=DFADeadState^.Flags or sfDFADead;
   DFAStateCache.Add(DFADeadState);
   inc(DFACountStatesCached);
+
+  for Index:=0 to length(DFAStartStates)-1 do begin
+   for SubIndex:=0 to length(DFAStartStates[Index])-1 do begin
+    inc(Generation);
+    GetMem(DFAStartState,DFAStateSize);
+    FillChar(DFAStartState^,DFAStateSize,AnsiChar(#0));
+    DFAStartState^.Flags:=SubIndex;
+    case Index of
+     0:begin
+      DFAAddInstructionThread(DFAStartState,Instance.AnchoredStartInstruction);
+     end;
+     1:begin
+      DFAAddInstructionThread(DFAStartState,Instance.UnanchoredStartInstruction);
+     end;
+     else {2:}begin
+      DFAAddInstructionThread(DFAStartState,Instance.ReversedStartInstruction);
+     end;
+    end;
+    DFAStartState^.Flags:=DFAStartState^.Flags or sfDFAStart;
+    DFAStateCache.Add(DFAStartState);
+    inc(DFACountStatesCached);
+    DFAStartStates[Index,SubIndex]:=DFAStartState;
+   end;
+  end;
+
  end;
+
 end;
 
 destructor TFLREThreadLocalStorageInstance.Destroy;
-var State:PFLREParallelNFAState;
+var Index,SubIndex:longint;
+    State:PFLREParallelNFAState;
 begin
 
  while assigned(FreeParallelNFAStates) do begin
@@ -5369,6 +5399,14 @@ begin
  if assigned(DFADeadState) then begin
   DFAFreeState(DFADeadState);
   FreeMem(DFADeadState);
+ end;
+ for Index:=0 to length(DFAStartStates)-1 do begin
+  for SubIndex:=0 to length(DFAStartStates[Index])-1 do begin
+   if assigned(DFAStartStates[Index,SubIndex]) then begin
+    DFAFreeState(DFAStartStates[Index,SubIndex]);
+    FreeMem(DFAStartStates[Index,SubIndex]);
+   end;
+  end;
  end;
  FreeAndNil(DFAStateCache);
  SetLength(DFAStackInstructions,0);
@@ -6004,7 +6042,8 @@ begin
 end;
 
 procedure TFLREThreadLocalStorageInstance.DFAReset;
-var State:PFLREDFAState;
+var Index,SubIndex:longint;
+    State:PFLREDFAState;
 begin
 
  // Reset state pools
@@ -6016,29 +6055,47 @@ begin
  DFACountStatesCached:=0;
 
  // Reset and recaching start states
- if assigned(DFAAnchoredStartState) then begin
-  State:=DFAAnchoredStartState;
-  FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
-  DFAStateCache.Add(State);
-  inc(DFACountStatesCached);
- end;
- if assigned(DFAUnanchoredStartState) then begin
-  State:=DFAUnanchoredStartState;
-  FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
-  DFAStateCache.Add(State);
-  inc(DFACountStatesCached);
- end;
- if assigned(DFAReversedStartState) then begin
-  State:=DFAReversedStartState;
-  FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
-  DFAStateCache.Add(State);
-  inc(DFACountStatesCached);
- end;
- if assigned(DFADeadState) then begin
-  State:=DFADeadState;
-  FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
-  DFAStateCache.Add(State);
-  inc(DFACountStatesCached);
+ begin
+
+  if assigned(DFAAnchoredStartState) then begin
+   State:=DFAAnchoredStartState;
+   FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
+   DFAStateCache.Add(State);
+   inc(DFACountStatesCached);
+  end;
+
+  if assigned(DFAUnanchoredStartState) then begin
+   State:=DFAUnanchoredStartState;
+   FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
+   DFAStateCache.Add(State);
+   inc(DFACountStatesCached);
+  end;
+
+  if assigned(DFAReversedStartState) then begin
+   State:=DFAReversedStartState;
+   FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
+   DFAStateCache.Add(State);
+   inc(DFACountStatesCached);
+  end;
+
+  if assigned(DFADeadState) then begin
+   State:=DFADeadState;
+   FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
+   DFAStateCache.Add(State);
+   inc(DFACountStatesCached);
+  end;
+
+  for Index:=0 to length(DFAStartStates)-1 do begin
+   for SubIndex:=0 to length(DFAStartStates[Index])-1 do begin
+    State:=DFAStartStates[Index,SubIndex];
+    if assigned(State) then begin
+     FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
+     DFAStateCache.Add(State);
+     inc(DFACountStatesCached);
+    end;
+   end;
+  end;
+
  end;
 
 end;
