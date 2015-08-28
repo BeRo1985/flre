@@ -7364,7 +7364,6 @@ var Position,Start,PreviousPosition,LocalInputLength:longint;
     LocalByteMap:PFLREByteMap;
     Flags,PreviousChar,CurrentChar:longword;
 begin
- writeln('===');
  result:=DFAFail;
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalInputLength:=ThreadLocalStorageInstance.InputLength;
@@ -7417,10 +7416,6 @@ begin
  end else begin
   StartInstruction:=Instance.AnchoredStartInstruction;
   inc(Start,sskAnchored);
- end;
- if StartPosition=5 then begin
-  if StartPosition=5 then begin
-  end;
  end;
  StartState:=@StartStates[Start];
  if assigned(StartState^) then begin
