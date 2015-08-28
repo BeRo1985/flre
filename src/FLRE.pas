@@ -339,6 +339,37 @@ type EFLRE=class(Exception);
        property Keys[const Key:PFLREDFAState]:PFLREDFAState read Get; default;
      end;
 
+     TFLRESparseSetIntegerArray=array of longint;
+
+     TFLRESparseSet=class
+      public
+       Size:longint;
+       MaxSize:longint;
+       SparseToDense:TFLRESparseSetIntegerArray;
+       Dense:TFLRESparseSetIntegerArray;
+       constructor Create(MaximumSize:longint=0);
+       destructor Destroy; override;
+       procedure Clear;
+       procedure Resize(NewMaximumSize:longint);
+       function Contains(const Value:longint):boolean;
+       procedure Add(const Value:longint);
+       procedure AddNew(const Value:longint);
+     end;
+
+     TFLREDFAWorkQueue=class(TFLRESparseSet)
+      public
+       QueueSize:longint;
+       QueueMaxMark:longint;
+       LastWasMark:longbool;
+       NextMark:longint;
+       constructor Create(SizeOfQueue,MaxMark:longint);
+       destructor Destroy; override;
+       procedure Clear; reintroduce;
+       procedure Mark;
+       procedure AddNew(const ID:longint); reintroduce;
+       procedure Add(const ID:longint); reintroduce;
+     end;
+
      TFLRECharPatternBitMasks=array[ansichar] of longword;
 
      TFLREBoyerMooreNext=array of longint;
@@ -3431,6 +3462,105 @@ begin
   CellToEntityIndex[Cell]:=ENT_DELETED;
   dec(RealSize);
   result:=true;
+ end;
+end;
+
+constructor TFLRESparseSet.Create(MaximumSize:longint=0);
+begin
+ inherited Create;
+ Size:=0;
+ MaxSize:=MaximumSize;
+ SparseToDense:=nil;
+ Dense:=nil;
+ SetLength(SparseToDense,MaxSize);
+ SetLength(Dense,MaxSize);
+ FillChar(SparseToDense[0],MaxSize*SizeOf(longint),$ff);
+ FillChar(Dense[0],MaxSize*SizeOf(longint),$ff);
+end;
+
+destructor TFLRESparseSet.Destroy;
+begin
+ SetLength(SparseToDense,0);
+ SetLength(Dense,0);
+ inherited Destroy;
+end;
+
+procedure TFLRESparseSet.Clear;
+begin
+ Size:=0;
+end;
+
+procedure TFLRESparseSet.Resize(NewMaximumSize:longint);
+begin
+ SetLength(SparseToDense,NewMaximumSize);
+ SetLength(Dense,NewMaximumSize);
+ if MaxSize<NewMaximumSize then begin
+  FillChar(SparseToDense[MaxSize],(MaxSize-NewMaximumSize)*SizeOf(longint),$ff);
+  FillChar(Dense[MaxSize],(MaxSize-NewMaximumSize)*SizeOf(longint),$ff);
+ end;
+ MaxSize:=NewMaximumSize;
+end;
+
+function TFLRESparseSet.Contains(const Value:longint):boolean;
+begin
+ result:=((Value>=0) and (Value<MaxSize) and (SparseToDense[Value]<Size)) and (Dense[SparseToDense[Value]]=Value);
+end;
+
+procedure TFLRESparseSet.Add(const Value:longint);
+begin
+ if (Value>=0) and (Value<MaxSize) then begin
+  SparseToDense[Value]:=Size;
+  Dense[Size]:=Value;
+  inc(Size);
+ end;
+end;
+
+procedure TFLRESparseSet.AddNew(const Value:longint);
+begin
+ if not Contains(Value) then begin
+  Add(Value);
+ end;
+end;
+
+constructor TFLREDFAWorkQueue.Create(SizeOfQueue,MaxMark:longint);
+begin
+ inherited Create(SizeOfQueue+MaxMark);
+ QueueSize:=SizeOfQueue;
+ QueueMaxMark:=MaxMark;
+ NextMark:=QueueSize;
+ LastWasMark:=true;
+end;
+
+destructor TFLREDFAWorkQueue.Destroy;
+begin
+ inherited Destroy;
+end;
+
+procedure TFLREDFAWorkQueue.Clear;
+begin
+ inherited Clear;
+ NextMark:=QueueSize;
+end;
+
+procedure TFLREDFAWorkQueue.Mark;
+begin
+ if not LastWasMark then begin
+  LastWasMark:=true;
+  inherited AddNew(NextMark);
+  inc(NextMark);
+ end;
+end;
+
+procedure TFLREDFAWorkQueue.AddNew(const ID:longint);
+begin
+ LastWasMark:=false;
+ inherited AddNew(ID);
+end;
+
+procedure TFLREDFAWorkQueue.Add(const ID:longint);
+begin
+ if not Contains(ID) then begin
+  AddNew(ID);
  end;
 end;
 
