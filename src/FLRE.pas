@@ -202,6 +202,7 @@ type EFLRE=class(Exception);
 
      TFLRELookAssertionStrings=array of TFLRELookAssertionString;
 
+     PPFLREInstruction=^PFLREInstruction;
      PFLREInstruction=^TFLREInstruction;
      TFLREInstruction=record
       IDandOpcode:TFLREPtrInt;
@@ -308,8 +309,6 @@ type EFLRE=class(Exception);
       Flags:longword;
       Instructions:TPFLREInstructions;
       CountInstructions:longint;
-      WorkQueueItems:TFLREDFAWorkQueueItems;
-      CountWorkQueueItems:longint;
       NextStates:TPFLREDFANextStatesByteBlock;
      end;
 
@@ -368,19 +367,23 @@ type EFLRE=class(Exception);
        procedure AddNew(const Value:longint);
      end;
 
-     TFLREDFAWorkQueue=class(TFLRESparseSet)
+     TFLREDFAWorkQueue=class
       public
-       QueueSize:longint;
-       QueueMaxMark:longint;
+       Instructions:TPFLREInstructions;
+       CountInstructions:longint;
+       SparseToDenseIDs:TFLRESparseSetIntegerArray;
+       DenseIDs:TFLRESparseSetIntegerArray;
+       CountIDs:longint;
+       AllocatedIDs:longint;
        LastWasMark:longbool;
-       NextMark:longint;
-       constructor Create(SizeOfQueue,MaxMark:longint);
+       constructor Create(Preallocated:longint=16);
        destructor Destroy; override;
-       procedure Clear; reintroduce;
+       procedure Clear;
        procedure Mark;
-       function IsMark(const Value:longint):boolean;
-       procedure AddNew(const ID:longint); reintroduce;
-       procedure Add(const ID:longint); reintroduce;
+       function IsMark(const Instruction:PFLREInstruction):boolean;
+       function Contains(const Instruction:PFLREInstruction):boolean;
+       procedure AddNew(const Instruction:PFLREInstruction);
+       procedure Add(const Instruction:PFLREInstruction);
      end;
 
      TFLREDFAWorkQueues=array[0..1] of TFLREDFAWorkQueue;
@@ -566,7 +569,8 @@ type EFLRE=class(Exception);
        InstructionGenerations:TFLREInstructionGenerations;
        StackInstructions:TPFLREInstructions;
        StateCache:TFLREDFAStateHashMap;
-       DefaultStates:array[0..6*3{skMax}] of PFLREDFAState;
+       DefaultStates:array[0..3{dskFastReversed}] of PFLREDFAState;
+       StartStates:array[0..4*3{sskMax}] of PFLREDFAState;
        TemporaryState:TFLREDFAState;
        NewState:TFLREDFAState;
        CountStatesCached:longint;
@@ -577,8 +581,8 @@ type EFLRE=class(Exception);
        StatePoolSize:TFLREPtrUInt;
        StatePoolSizePowerOfTwo:TFLREPtrUInt;
        WorkQueues:TFLREDFAWorkQueues;
-       QueueInstructionArray:TFLREDFAWorkQueueItems;
-       QueueStack:TFLREDFAWorkQueueItems;
+       QueueInstructionArray:TPFLREInstructions;
+       QueueStack:TPFLREInstructions;
 
        constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean);
        destructor Destroy; override;
@@ -599,10 +603,11 @@ type EFLRE=class(Exception);
 
        function WorkQueueToCachedState(const WorkQueue:TFLREDFAWorkQueue;Flags:longword):PFLREDFAState;
        procedure StateToWorkQueue(const DFAState:PFLREDFAState;const WorkQueue:TFLREDFAWorkQueue);
-       procedure AddToWorkQueue(const WorkQueue:TFLREDFAWorkQueue;ID:longint;Flags:longword);
+       procedure AddToWorkQueue(const WorkQueue:TFLREDFAWorkQueue;Instruction:PFLREInstruction;Flags:longword);
+       procedure ProcessWorkQueueOnZeroWidthString(const OldWorkQueue,NewWorkQueue:TFLREDFAWorkQueue;Flags:longword);
+       procedure ProcessWorkQueueOnByte(const OldWorkQueue,NewWorkQueue:TFLREDFAWorkQueue;CurrentChar,Flags:longword;var IsMatch:boolean);
+       function RunStateOnByte(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
 
-       procedure FullAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction;const Flags:longword);
-       function FullProcessNextState(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
        function SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
        function SearchMatchFullReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
 
@@ -831,7 +836,7 @@ const MaxDFAStates=4096;
 
       MaxGeneration=int64($4000000000000000);
 
-      Mark=-1;
+      Mark=nil;
 
       // State flags
       sfEmptyBeginLine=1 shl 0;
@@ -857,22 +862,22 @@ const MaxDFAStates=4096;
       sfDFANeedShift=16;
       sfDFAStartShifted=$80000000;
 
-      // Start state kind
-      sskAnchored=0;
-      sskUnanchored=1;
-      sskReversed=2;
+      // Default state kind
+      dskDead=0;
+      dskFastUnanchored=1;
+      dskFastAnchored=2;
+      dskFastReversed=3;
 
-      // Start kind
-      skFast=0*3;
-      skDead=1*3;
-      skBeginText=2*3;
-      skBeginLine=3*3;
-      skAfterWordChar=4*3;
-      skAfterNonWordChar=5*3;
-      skMax=6*3;
-      skUnanchored=0;
-      skAnchored=1;
-      skReversed=2;
+      // Start state kind
+      sskUnanchored=0;
+      sskAnchored=1;
+      sskReversed=2;
+      ///
+      sskBeginText=0*3;
+      sskBeginLine=1*3;
+      sskAfterWordChar=2*3;
+      sskAfterNonWordChar=3*3;
+      sskMax=4*3;
 
       // Node types
       ntALT=0;
@@ -3331,8 +3336,6 @@ begin
  if assigned(Key) and (Key.CountInstructions>0) then begin
   result:=HashData(@Key.Instructions[0],Key.CountInstructions*sizeof(PFLREInstruction));
   result:=result xor ((longword(Key.CountInstructions) shr 16) or (longword(Key.CountInstructions) shl 16));
-  result:=result xor HashData(@Key.WorkQueueItems[0],Key.CountWorkQueueItems*sizeof(longint));
-  result:=result xor ((longword(Key.CountWorkQueueItems) shr 16) or (longword(Key.CountWorkQueueItems) shl 16));
   result:=result xor ((Key.Flags shl 19) or (Key.Flags shr 13));
   if result=0 then begin
    result:=$ffffffff;
@@ -3348,16 +3351,10 @@ begin
  result:=a=b;
  if not result then begin
   if (assigned(a) and assigned(b)) and
-     ((a.CountInstructions=b.CountInstructions) and (a.CountWorkQueueItems=b.CountWorkQueueItems) and (a.Flags=b.Flags)) then begin
+     ((a.CountInstructions=b.CountInstructions) and (a.Flags=b.Flags)) then begin
    result:=true;
    for i:=0 to a.CountInstructions-1 do begin
     if a.Instructions[i]<>b.Instructions[i] then begin
-     result:=false;
-     exit;
-    end;
-   end;
-   for i:=0 to a.CountWorkQueueItems-1 do begin
-    if a.WorkQueueItems[i]<>b.WorkQueueItems[i] then begin
      result:=false;
      exit;
     end;
@@ -3578,50 +3575,84 @@ begin
  end;
 end;
 
-constructor TFLREDFAWorkQueue.Create(SizeOfQueue,MaxMark:longint);
+constructor TFLREDFAWorkQueue.Create(Preallocated:longint=16);
 begin
- inherited Create(SizeOfQueue+MaxMark);
- QueueSize:=SizeOfQueue;
- QueueMaxMark:=MaxMark;
- NextMark:=QueueSize;
- LastWasMark:=true;
+ inherited Create;
+ Instructions:=nil;
+ SetLength(Instructions,Preallocated);
+ CountInstructions:=0;
+ SparseToDenseIDs:=nil;
+ DenseIDs:=nil;
+ SetLength(SparseToDenseIDs,Preallocated);
+ SetLength(DenseIDs,Preallocated);
+ CountIDs:=0;
+ AllocatedIDs:=0;
+ LastWasMark:=false;
 end;
 
 destructor TFLREDFAWorkQueue.Destroy;
 begin
+ SetLength(Instructions,0);
+ SetLength(SparseToDenseIDs,0);
+ SetLength(DenseIDs,0);
  inherited Destroy;
 end;
 
 procedure TFLREDFAWorkQueue.Clear;
 begin
- inherited Clear;
- NextMark:=QueueSize;
+ CountInstructions:=0;
+ CountIDs:=0;
+ LastWasMark:=false;
 end;
 
 procedure TFLREDFAWorkQueue.Mark;
 begin
  if not LastWasMark then begin
   LastWasMark:=true;
-  inherited AddNew(NextMark);
-  inc(NextMark);
+  if (CountInstructions+1)>length(Instructions) then begin
+   SetLength(Instructions,(CountInstructions+1)*2);
+  end;
+  Instructions[CountInstructions]:=nil;
+  inc(CountInstructions);
  end;
 end;
 
-function TFLREDFAWorkQueue.IsMark(const Value:longint):boolean;
+function TFLREDFAWorkQueue.IsMark(const Instruction:PFLREInstruction):boolean;
 begin
- result:=Value>=QueueSize;
+ result:=not assigned(Instruction);
 end;
 
-procedure TFLREDFAWorkQueue.AddNew(const ID:longint);
+function TFLREDFAWorkQueue.Contains(const Instruction:PFLREInstruction):boolean;
+var ID:longint;
 begin
- LastWasMark:=false;
- inherited AddNew(ID);
+ ID:=Instruction^.IDandOpcode shr 8;
+ result:=((ID>=0) and (ID<AllocatedIDs) and (SparseToDenseIDs[ID]<CountIDs)) and (DenseIDs[SparseToDenseIDs[ID]]=ID);
 end;
 
-procedure TFLREDFAWorkQueue.Add(const ID:longint);
+procedure TFLREDFAWorkQueue.AddNew(const Instruction:PFLREInstruction);
+var ID:longint;
 begin
- if not Contains(ID) then begin
-  AddNew(ID);
+ ID:=Instruction^.IDandOpcode shr 8;
+ if (ID+1)>AllocatedIDs then begin
+  AllocatedIDs:=ID+1;
+  SetLength(SparseToDenseIDs,AllocatedIDs);
+  SetLength(DenseIDs,AllocatedIDs);
+ end;
+ if (CountInstructions+1)>length(Instructions) then begin
+  SetLength(Instructions,(CountInstructions+1)*2);
+ end;
+ Instructions[CountInstructions]:=Instruction;
+ inc(CountInstructions);
+ SparseToDenseIDs[ID]:=CountIDs;
+ DenseIDs[CountIDs]:=ID;
+ inc(CountIDs);
+end;
+
+procedure TFLREDFAWorkQueue.Add(const Instruction:PFLREInstruction);
+begin
+ if not Contains(Instruction) then begin
+  LastWasMark:=false;
+  AddNew(Instruction);
  end;
 end;
 
@@ -6361,6 +6392,7 @@ begin
  StatePoolSize:=0;
  StatePoolSizePowerOfTwo:=0;
  FillChar(DefaultStates,SizeOf(DefaultStates),AnsiChar(#0));
+ FillChar(StartStates,SizeOf(StartStates),AnsiChar(#0));
 
  begin
   CountStatesCached:=0;
@@ -6401,7 +6433,7 @@ begin
    DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
    StateCache.Add(DFAState);
    inc(CountStatesCached);
-   DefaultStates[skFast+skAnchored]:=DFAState;
+   DefaultStates[dskFastAnchored]:=DFAState;
 
    inc(Generation);
    GetMem(DFAState,StateSize);
@@ -6410,7 +6442,7 @@ begin
    DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
    StateCache.Add(DFAState);
    inc(CountStatesCached);
-   DefaultStates[skFast+skUnanchored]:=DFAState;
+   DefaultStates[dskFastUnanchored]:=DFAState;
 
    inc(Generation);
    GetMem(DFAState,StateSize);
@@ -6419,7 +6451,7 @@ begin
    DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
    StateCache.Add(DFAState);
    inc(CountStatesCached);
-   DefaultStates[skFast+skReversed]:=DFAState;
+   DefaultStates[dskFastReversed]:=DFAState;
 
   end;
 
@@ -6430,23 +6462,22 @@ begin
   DFAState^.Flags:=DFAState^.Flags or sfDFADead;
   StateCache.Add(DFAState);
   inc(CountStatesCached);
-  DefaultStates[skDead]:=DFAState;
+  DefaultStates[dskDead]:=DFAState;
 
  end;
+
+ QueueInstructionArray:=nil;
+ QueueStack:=nil;
 
  if Instance.DFAFast then begin
   WorkQueues[0]:=nil;
   WorkQueues[1]:=nil;
  end else begin
-  WorkQueues[0]:=TFLREDFAWorkQueue.Create(Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions),Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions));
-  WorkQueues[1]:=TFLREDFAWorkQueue.Create(Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions),Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions));
+  WorkQueues[0]:=TFLREDFAWorkQueue.Create(Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions)*3);
+  WorkQueues[1]:=TFLREDFAWorkQueue.Create(Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions)*3);
+  SetLength(QueueInstructionArray,Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions)*3);
+  SetLength(QueueStack,Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions)*3);
  end;
-
- QueueInstructionArray:=nil;
- SetLength(QueueInstructionArray,WorkQueues[0].Size);
-
- QueueStack:=nil;
- SetLength(QueueStack,WorkQueues[0].Size);
 
 end;
 
@@ -6570,13 +6601,9 @@ begin
  result:=GetState;
  result^.Instructions:=TakeOverFrom^.Instructions;
  result^.CountInstructions:=TakeOverFrom^.CountInstructions;
- result^.WorkQueueItems:=TakeOverFrom^.WorkQueueItems;
- result^.CountWorkQueueItems:=TakeOverFrom^.CountWorkQueueItems;
  result^.Flags:=TakeOverFrom^.Flags;
  TakeOverFrom^.Instructions:=nil;
  TakeOverFrom^.CountInstructions:=0;
- TakeOverFrom^.WorkQueueItems:=nil;
- TakeOverFrom^.CountWorkQueueItems:=0;
  TakeOverFrom^.Flags:=0;
 end;
 
@@ -6615,6 +6642,8 @@ begin
    inc(CountStatesCached);
   end;
  end;
+
+ FillChar(StartStates,SizeOf(StartStates),AnsiChar(#0));
 
 end;
 
@@ -6706,7 +6735,7 @@ begin
  // Dead state? If yes, ...
  if NewState.CountInstructions=0 then begin
   // ... drop it and take the dead state as the next state
-  result:=DefaultStates[skDead];
+  result:=DefaultStates[dskDead];
  end else begin
   // .. otherwise try caching it
   result:=CacheState(@NewState);
@@ -6727,9 +6756,9 @@ begin
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalByteMap:=@Instance.ByteMap;
  if UnanchoredStart then begin
-  State:=DefaultStates[skFast+skUnanchored];
+  State:=DefaultStates[dskFastUnanchored];
  end else begin
-  State:=DefaultStates[skFast+skAnchored];
+  State:=DefaultStates[dskFastAnchored];
  end;
  for Position:=StartPosition to UntilExcludingPosition-1 do begin
   LastState:=State;
@@ -6765,7 +6794,7 @@ begin
  result:=DFAFail;
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalByteMap:=@Instance.ByteMap;
- State:=DefaultStates[skFast+skReversed];
+ State:=DefaultStates[dskFastReversed];
  for Position:=StartPosition downto UntilIncludingPosition do begin
   LastState:=State;
   State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
@@ -7018,11 +7047,11 @@ function TFLREDFA.WorkQueueToCachedState(const WorkQueue:TFLREDFAWorkQueue;Flags
    IntroSort(0,CountItems-1,IntLog2(CountItems)*2);
   end;
  end;
-var Index,ID,n,Count:Longint;
+var Index,n,Count:Longint;
     NeedFlags:longword;
     SawMatch,SawMark,First:boolean;
     Instruction:PFLREInstruction;
-    CurrentItem,EndItem,MarkItem:PLongint;
+    CurrentItem,EndItem,MarkItem:PPFLREInstruction;
 begin
 
  n:=0;
@@ -7030,27 +7059,22 @@ begin
  SawMatch:=false;
  SawMark:=false;
 
- if WorkQueue.Size>length(QueueInstructionArray) then begin
-  SetLength(QueueInstructionArray,WorkQueue.Size);
+ if WorkQueue.CountInstructions>length(QueueInstructionArray) then begin
+  SetLength(QueueInstructionArray,WorkQueue.CountInstructions);
  end;
 
- for Index:=0 to WorkQueue.Size-1 do begin
-  ID:=WorkQueue.Dense[Index];
-  if SawMatch and ((MatchMode=mmFirstMatch) or WorkQueue.IsMark(ID)) then begin
+ for Index:=0 to WorkQueue.CountInstructions-1 do begin
+  Instruction:=WorkQueue.Instructions[Index];
+  if SawMatch and ((MatchMode=mmFirstMatch) or WorkQueue.IsMark(Instruction)) then begin
    break;
   end;
-  if WorkQueue.IsMark(ID) then begin
-   if (n>0) and (QueueInstructionArray[n-1]<>ID) then begin
+  if WorkQueue.IsMark(Instruction) then begin
+   if (n>0) and (QueueInstructionArray[n-1]<>Instruction) then begin
     SawMark:=true;
     QueueInstructionArray[n]:=Mark;
     inc(n);
    end;
    continue;
-  end;
-  if Reversed then begin
-   Instruction:=@Instance.BackwardInstructions[ID];
-  end else begin
-   Instruction:=@Instance.ForwardInstructions[ID];
   end;
   case Instruction^.IDandOpcode and $ff of
    opSINGLECHAR,opCHAR,opANY,opMATCH,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
@@ -7062,7 +7086,7 @@ begin
       // ToDo: Full match state optimization
      end;
     end;
-    QueueInstructionArray[n]:=ID;
+    QueueInstructionArray[n]:=Instruction;
     inc(n);
     if (Instruction^.IDandOpcode and $ff)=opZEROWIDTH then begin
      NeedFlags:=NeedFlags or longword(Instruction^.Value);
@@ -7086,7 +7110,7 @@ begin
  // Dead state? If yes, ...
  if (n=0) and (Flags=0) then begin
   // ... drop it and take the dead state as the next state
-  result:=DefaultStates[skDead];
+  result:=DefaultStates[dskDead];
   exit;
  end;
 
@@ -7101,7 +7125,7 @@ begin
     inc(MarkItem);
     inc(Count);
    end;
-   Sort(pointer(CurrentItem),Count);
+   //Sort(pointer(CurrentItem),Count);
    if PtrUInt(pointer(MarkItem))<PtrUInt(pointer(EndItem)) then begin
     inc(MarkItem);
    end;
@@ -7110,8 +7134,8 @@ begin
  end;
 
  NewState.Flags:=Flags or (NeedFlags shl sfDFANeedShift);
- NewState.WorkQueueItems:=copy(QueueInstructionArray,0,n);
- NewState.CountWorkQueueItems:=n;
+ NewState.Instructions:=copy(QueueInstructionArray,0,n);
+ NewState.CountInstructions:=n;
 
  result:=CacheState(@NewState);
 
@@ -7121,55 +7145,49 @@ procedure TFLREDFA.StateToWorkQueue(const DFAState:PFLREDFAState;const WorkQueue
 var Index:longint;
 begin
  WorkQueue.Clear;
- for Index:=0 to DFAState^.CountWorkQueueItems-1 do begin
-  if DFAState^.WorkQueueItems[Index]=Mark then begin
+ for Index:=0 to DFAState^.CountInstructions-1 do begin
+  if DFAState^.Instructions[Index]=Mark then begin
    WorkQueue.Mark;
   end else begin
-   WorkQueue.AddNew(DFAState^.WorkQueueItems[Index]);
+   WorkQueue.AddNew(DFAState^.Instructions[Index]);
   end;
  end;
 end;
 
-procedure TFLREDFA.AddToWorkQueue(const WorkQueue:TFLREDFAWorkQueue;ID:longint;Flags:longword);
+procedure TFLREDFA.AddToWorkQueue(const WorkQueue:TFLREDFAWorkQueue;Instruction:PFLREInstruction;Flags:longword);
 var StackPointer:longint;
-    Instruction:PFLREInstruction;
 begin
- QueueStack[0]:=ID;
+ QueueStack[0]:=Instruction;
  StackPointer:=1;
  while StackPointer>0 do begin
   dec(StackPointer);
-  ID:=QueueStack[StackPointer];
-  if ID=Mark then begin
+  Instruction:=QueueStack[StackPointer];
+  if Instruction=Mark then begin
    WorkQueue.Mark;
-  end else if (ID<>0) and not WorkQueue.Contains(ID) then begin
-   WorkQueue.AddNew(ID);
-   if Reversed then begin
-    Instruction:=@Instance.BackwardInstructions[ID];
-   end else begin
-    Instruction:=@Instance.ForwardInstructions[ID];
-   end;
+  end else if not WorkQueue.Contains(Instruction) then begin
+   WorkQueue.AddNew(Instruction);
    case Instruction^.IDandOpcode and $ff of
     opSINGLECHAR,opCHAR,opANY,opMATCH:begin
      // Just save onto the queue
     end;
     opJMP,opSAVE,opMULTIMATCH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
      // No-ops at DFA
-     QueueStack[StackPointer]:=Instruction^.Next^.IDandOpcode shr 8;
+     QueueStack[StackPointer]:=Instruction^.Next;
      inc(StackPointer);
     end;
     opSPLIT,opSPLITMATCH:begin
-     QueueStack[StackPointer]:=Instruction^.OtherNext^.IDandOpcode shr 8;
+     QueueStack[StackPointer]:=Instruction^.OtherNext;
      inc(StackPointer);
-     if (WorkQueue.QueueMaxMark>0) and IsUnanchored and (ID<>0) then begin
+     if {(WorkQueue.QueueMaxMark>0) and} IsUnanchored and assigned(Instruction) then begin
       QueueStack[StackPointer]:=Mark;
       inc(StackPointer);
      end;
-     QueueStack[StackPointer]:=Instruction^.Next^.IDandOpcode shr 8;
+     QueueStack[StackPointer]:=Instruction^.Next;
      inc(StackPointer);
     end;
     opZEROWIDTH:begin
      if (longword(Instruction^.Value) and not Flags)=0 then begin
-      QueueStack[StackPointer]:=Instruction^.Next^.IDandOpcode shr 8;
+      QueueStack[StackPointer]:=Instruction^.Next;
       inc(StackPointer);
      end;
     end;
@@ -7178,68 +7196,84 @@ begin
  end;
 end;
 
-procedure TFLREDFA.FullAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction;const Flags:longword);
-var StackPointer:longint;
-    Stack:PPFLREInstructionsStatic;
+procedure TFLREDFA.ProcessWorkQueueOnZeroWidthString(const OldWorkQueue,NewWorkQueue:TFLREDFAWorkQueue;Flags:longword);
+var Index:longint;
+    Instruction:PFLREInstruction;
 begin
- Stack:=@StackInstructions[0];
- StackPointer:=0;
- Stack^[StackPointer]:=Instruction;
- inc(StackPointer);
- while StackPointer>0 do begin
-  dec(StackPointer);
-  Instruction:=Stack[StackPointer];
-  while assigned(Instruction) and (InstructionGenerations[Instruction^.IDandOpcode shr 8]<>Generation) do begin
-   InstructionGenerations[Instruction^.IDandOpcode shr 8]:=Generation;
+ NewWorkQueue.Clear;
+ for Index:=0 to OldWorkQueue.CountInstructions-1 do begin
+  Instruction:=OldWorkQueue.Instructions[Index];
+  if OldWorkQueue.IsMark(Instruction) then begin
+   AddToWorkQueue(NewWorkQueue,Mark,Flags);
+  end else begin
+   AddToWorkQueue(NewWorkQueue,Instruction,Flags);
+  end;
+ end;
+end;
+
+procedure TFLREDFA.ProcessWorkQueueOnByte(const OldWorkQueue,NewWorkQueue:TFLREDFAWorkQueue;CurrentChar,Flags:longword;var IsMatch:boolean);
+var Index,ID:longint;
+    Instruction:PFLREInstruction;
+begin
+ NewWorkQueue.Clear;
+ for Index:=0 to OldWorkQueue.CountInstructions-1 do begin
+  Instruction:=OldWorkQueue.Instructions[Index];
+  if OldWorkQueue.IsMark(Instruction) then begin
+   if IsMatch then begin
+    exit;
+   end;
+   NewWorkQueue.Mark;
+  end else begin
    case Instruction^.IDandOpcode and $ff of
-    opJMP,opMULTIMATCH:begin
-     Instruction:=Instruction^.Next;
+    opJMP,opSAVE,opMULTIMATCH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
+     // Already processed
     end;
-    opSAVE:begin
-{    if Instruction^.Value=0 then begin
-      State.Flags:=State.Flags or sfDFAMatchBegins;
-     end;{}
-     Instruction:=Instruction^.Next;
-    end;
-    opSPLIT,opSPLITMATCH:begin
-     Stack^[StackPointer]:=Instruction^.OtherNext;
-     inc(StackPointer);
-     Instruction:=Instruction^.Next;
-    end;
-    opZEROWIDTH:begin
-     if ((Flags and sfEmptyAllFlags) and not Instruction^.Value)=0 then begin
-      Instruction:=Instruction^.Next;
+    opSINGLECHAR:begin
+     if CurrentChar=longword(Instruction^.Value) then begin
+      AddToWorkQueue(NewWorkQueue,Instruction^.Next,Flags);
      end;
     end;
-    opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
-     // No-ops at DFA
-     Instruction:=Instruction^.Next;
-    end;
-    else begin
-     if State.CountInstructions>=length(State.Instructions) then begin
-      SetLength(State.Instructions,(State.CountInstructions+1)*2);
+    opCHAR:begin
+     if (CurrentChar<>$ffffffff) and (ansichar(byte(CurrentChar)) in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
+      AddToWorkQueue(NewWorkQueue,Instruction^.Next,Flags);
      end;
-     State.Instructions[State.CountInstructions]:=Instruction;
-     inc(State.CountInstructions);
-{    case Instruction^.IDandOpcode and $ff of
-      opMATCH:begin
-       State.Flags:=State.Flags or sfDFAMatchWins;
+    end;
+    opANY:begin
+     if CurrentChar<>$ffffffff then begin
+      AddToWorkQueue(NewWorkQueue,Instruction^.Next,Flags);
+     end;
+    end;
+    opMATCH:begin
+     if not (Instance.EndingAnchor and (CurrentChar<>$ffffffff)) then begin
+      IsMatch:=true;
+      if MatchMode=mmFirstMatch then begin
+       exit;
       end;
-     end;{}
-     break;
+     end;
     end;
    end;
   end;
  end;
 end;
 
-function TFLREDFA.FullProcessNextState(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
+function TFLREDFA.RunStateOnByte(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
 var Counter:longint;
     Instruction:PFLREInstruction;
     NeedFlags,BeforeFlags,OldBeforeFlags,AfterFlags,Flags,UnicodeChar:longword;
     BaseState:PFLREDFAState;
     IsMatch,IsWordChar:boolean;
+    Queues:array[0..2] of TFLREDFAWorkQueue;
 begin
+
+ if State=DefaultStates[dskDead] then begin
+  result:=nil;
+  exit;
+ end;
+
+ Queues[0]:=WorkQueues[0];
+ Queues[1]:=WorkQueues[1];
+
+ StateToWorkQueue(State,Queues[0]);
 
  // Fetch flags
  NeedFlags:=State.Flags shr sfDFANeedShift;
@@ -7276,103 +7310,39 @@ begin
   BeforeFlags:=BeforeFlags or sfEmptyNonWordBoundary;
  end else begin
   BeforeFlags:=BeforeFlags or sfEmptyWordBoundary;
- end;{}
-
- writeln(chr(CurrentChar),' ',(BeforeFlags and sfEmptyWordBoundary)<>0,' ',(AfterFlags and sfEmptyWordBoundary)<>0);
-
- // Process empty-string step
- if ((BeforeFlags and not OldBeforeFlags) and NeedFlags)<>0 then begin
-  inc(Generation);
-  TemporaryState.CountInstructions:=0;
-  TemporaryState.Flags:=0;
-  for Counter:=0 to State.CountInstructions-1 do begin
-   FullAddInstructionThread(@TemporaryState,State.Instructions[Counter],BeforeFlags);
-  end;
-  BaseState:=@TemporaryState;
- end else{} begin
-  BaseState:=State;
  end;
 
- // Process state instructions
- inc(Generation);
- IsMatch:=false;
- Flags:=AfterFlags;
- NewState.CountInstructions:=0;
- NewState.Flags:=0;
- for Counter:=0 To State^.CountInstructions-1 do begin
-  Instruction:=State^.Instructions[Counter];
-// writeln(Instruction^.IDandOpcode shr 8:4,' ',Instruction^.IDandOpcode and $ff);
-  case Instruction^.IDandOpcode and $ff of
-   opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
-    continue;                        
-   end;
-   opSINGLECHAR:begin
-    if CurrentChar=longword(Instruction^.Value) then begin
-     FullAddInstructionThread(@NewState,Instruction^.Next,Flags);
-    end;
-   end;
-   opCHAR:begin
-    if (CurrentChar<>$ffffffff) and (ansichar(byte(CurrentChar)) in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
-     FullAddInstructionThread(@NewState,Instruction^.Next,Flags);
-    end;
-   end;
-   opANY:begin
-    FullAddInstructionThread(@NewState,Instruction^.Next,Flags);
-   end;
-   opMATCH:begin
-    IsMatch:=true;
-    if not ((MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch]) or Reversed) then begin
-     // We can stop processing the instruction list queue here since we found a match (for the PCRE leftmost first valid match behaviour)
-     break;
-    end;
-   end;
-   else begin
-    // Oops?! Invalid byte code instruction for the DFA processing context! So abort and fallback to NFA...
-    result:=nil;
-    exit;
-   end;
-  end;
- end;                 
+ writeln(chr(CurrentChar),' ',(BeforeFlags and sfEmptyWordBoundary)<>0,' ',(AfterFlags and sfEmptyWordBoundary)<>0);
+ 
+ if ((BeforeFlags and not OldBeforeFlags) and NeedFlags)<>0 then begin
+  ProcessWorkQueueOnZeroWidthString(Queues[0],Queues[1],BeforeFlags);
+  Queues[2]:=Queues[0];
+  Queues[0]:=Queues[1];
+  Queues[1]:=Queues[2];
+ end;
 
- // Add missed flags
- if IsMatch then begin              
+ IsMatch:=false;
+ ProcessWorkQueueOnByte(Queues[0],Queues[1],CurrentChar,AfterFlags,IsMatch);
+
+ if (CurrentChar<>$ffffffff) or (MatchMode<>mmMultiMatch) then begin
+  Queues[2]:=Queues[0];
+  Queues[0]:=Queues[1];
+  Queues[1]:=Queues[2];
+ end;
+
+ Flags:=AfterFlags;
+ if IsMatch then begin
   Flags:=Flags or sfDFAMatchWins;
  end;
  if IsWordChar then begin
   Flags:=Flags or sfDFALastWord;
  end;
 
- // Search needed flags for this next state
- NeedFlags:=0;
- for Counter:=0 To NewState.CountInstructions-1 do begin
-  Instruction:=NewState.Instructions[Counter];
-  case Instruction^.IDandOpcode and $ff of
-   opZEROWIDTH:begin
-    NeedFlags:=NeedFlags or longword(Instruction^.Value);
-   end;
-  end;
- end;
-
- // Drop flags if no empty-string instructions are there, to save unneeded cached states
- if NeedFlags=0 then begin
-  Flags:=Flags and sfDFAMatchWins;
- end;
-
- // Store flags in the new state
- NewState.Flags:=Flags or ((NeedFlags or (State.Flags and sfDFAStart)) shl sfDFANeedShift);
-
- // Dead state? If yes, ...
- if NewState.CountInstructions=0 then begin
-  // ... drop it and take the dead state as the next state
-  result:=DefaultStates[skDead];
- end else begin
-  // .. otherwise try caching it
-  result:=CacheState(@NewState);
- end;
+ result:=WorkQueueToCachedState(Queues[0],Flags);
 
  // Connect the last state to the new state with the current char
  State.NextStates[Instance.ByteMap[byte(ansichar(CurrentChar))]]:=result;
-
+ 
 end;
 
 function TFLREDFA.SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
@@ -7382,67 +7352,79 @@ var Position,Start,PreviousPosition:longint;
     StartInstruction:PFLREInstruction;
     LocalInput:pansichar;
     LocalByteMap:PFLREByteMap;
-    Flags,PreviousChar:longword;
+    Flags,PreviousChar,CurrentChar:longword;
 begin
+ writeln('===');
  result:=DFAFail;
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalByteMap:=@Instance.ByteMap;
- if StartPosition<=0 then begin
-  Start:=skBeginText;
-  Flags:=sfEmptyBeginText or sfEmptyBeginLine;
- end else begin
-  if rfUTF8 in Instance.Flags then begin
-   PreviousPosition:=StartPosition;
-   UTF8PtrDec(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
-   if (PreviousPosition>=0) and (PreviousPosition<=ThreadLocalStorageInstance.InputLength) then begin
-    PreviousChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
+ begin
+  if (StartPosition>=0) and (StartPosition<=ThreadLocalStorageInstance.InputLength) then begin
+   if rfUTF8 in Instance.Flags then begin
+    CurrentChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,StartPosition);
    end else begin
-    PreviousChar:=$ffffffff;
+    CurrentChar:=byte(ansichar(LocalInput[StartPosition]));
    end;
   end else begin
-   PreviousChar:=byte(ansichar(LocalInput[StartPosition-1]));
+   CurrentChar:=$ffffffff;
   end;
-  case PreviousChar of
-   $0a,$0d,$85,$2028,$2029:begin
-    Start:=skBeginLine;
-    Flags:=sfEmptyBeginLine;
-   end;
-   else begin
-    if Instance.IsWordChar(PreviousChar) then begin
-     Start:=skAfterWordChar;
-     Flags:=sfDFALastWord;
+  if StartPosition<=0 then begin
+   Start:=sskBeginText;
+   Flags:=sfEmptyBeginText or sfEmptyBeginLine;
+  end else begin
+   if rfUTF8 in Instance.Flags then begin
+    PreviousPosition:=StartPosition;
+    UTF8PtrDec(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
+    if (PreviousPosition>=0) and (PreviousPosition<=ThreadLocalStorageInstance.InputLength) then begin
+     PreviousChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
     end else begin
-     Start:=skAfterNonWordChar;
-     Flags:=0;
+     PreviousChar:=$ffffffff;
+    end;
+   end else begin
+    PreviousChar:=byte(ansichar(LocalInput[StartPosition-1]));
+   end;
+   case PreviousChar of
+    $0a,$0d,$85,$2028,$2029:begin
+     Start:=sskBeginLine;
+     Flags:=sfEmptyBeginLine;
+    end;
+    else begin
+     if Instance.IsWordChar(PreviousChar) then begin
+      Start:=sskAfterWordChar;
+      Flags:=sfDFALastWord;
+     end else begin
+      Start:=sskAfterNonWordChar;
+      Flags:=0;
+     end;
     end;
    end;
   end;
  end;
  if UnanchoredStart then begin
   StartInstruction:=Instance.UnanchoredStartInstruction;
-  inc(Start,skUnanchored);
+  inc(Start,sskUnanchored);
  end else begin
   StartInstruction:=Instance.AnchoredStartInstruction;
-  inc(Start,skAnchored);
+  inc(Start,sskAnchored);
  end;
- StartState:=@DefaultStates[Start];
+ if StartPosition=5 then begin
+  if StartPosition=5 then begin
+  end;
+ end;
+ StartState:=@StartStates[Start];
  if assigned(StartState^) then begin
   State:=StartState^;
  end else begin
-  inc(Generation);
-  GetMem(State,StateSize);
-  FillChar(State^,StateSize,AnsiChar(#0));
-  FullAddInstructionThread(State,StartInstruction,ThreadLocalStorageInstance.GetSatisfyFlags(StartPosition));
-  State^.Flags:=Flags or sfDFAStart;
-  StateCache.Add(State);
-  inc(CountStatesCached);
+  WorkQueues[0].Clear;
+  AddToWorkQueue(WorkQueues[0],StartInstruction,Flags);
+  State:=WorkQueueToCachedState(WorkQueues[0],Flags);
   StartState^:=State;
  end;
  for Position:=StartPosition to UntilExcludingPosition-1 do begin
   LastState:=State;
   State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
   if not assigned(State) then begin
-   State:=FullProcessNextState(LastState,Position,byte(ansichar(LocalInput[Position])),false);
+   State:=RunStateOnByte(LastState,Position,byte(ansichar(LocalInput[Position])),false);
    if not assigned(State) then begin
     result:=DFAError;
     exit;
@@ -7477,7 +7459,7 @@ begin
   LastState:=State;
   State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
   if not assigned(State) then begin
-   State:=FullProcessNextState(LastState,Position,byte(ansichar(LocalInput[Position])),true);
+   State:=RunStateOnByte(LastState,Position,byte(ansichar(LocalInput[Position])),true);
    if not assigned(State) then begin
     result:=DFAError;
     exit;
