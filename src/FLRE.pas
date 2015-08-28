@@ -569,6 +569,7 @@ type EFLRE=class(Exception);
        InstructionGenerations:TFLREInstructionGenerations;
        StackInstructions:TPFLREInstructions;
        StateCache:TFLREDFAStateHashMap;
+       LocalByteMap:array[0..256] of longword;
        DefaultStates:array[0..3{dskFastReversed}] of PFLREDFAState;
        StartStates:array[0..4*3{sskMax}] of PFLREDFAState;
        TemporaryState:TFLREDFAState;
@@ -6394,6 +6395,11 @@ begin
  FillChar(DefaultStates,SizeOf(DefaultStates),AnsiChar(#0));
  FillChar(StartStates,SizeOf(StartStates),AnsiChar(#0));
 
+ for Index:=0 to 255 do begin
+  LocalByteMap[Index]:=Instance.ByteMap[Index];
+ end;
+ LocalByteMap[256]:=Instance.ByteMapCount;
+
  begin
   CountStatesCached:=0;
 
@@ -6403,7 +6409,7 @@ begin
   StatePoolUsed:=nil;
   StatePoolFree:=nil;
 
-  NextStatesSize:=Instance.ByteMapCount*sizeof(PFLREDFAState);
+  NextStatesSize:=(Instance.ByteMapCount+1)*sizeof(PFLREDFAState);
   StateSize:=ptrint(ptruint(pointer(@FLREDFAStateCreateTempDFAState.NextStates))-ptruint(pointer(@FLREDFAStateCreateTempDFAState)))+NextStatesSize;
 
   StatePoolSize:=(65536 div StateSize)*StateSize;
@@ -7282,7 +7288,7 @@ begin
  AfterFlags:=0;
 
  // Calculate flags
- if CurrentChar<>$ffffffff then begin
+ if CurrentChar<>256 then begin
   if (rfUTF8 in Instance.Flags) and (CurrentChar>=$80) then begin
    UnicodeChar:=UTF8PtrCodeUnitGetCharFallback(ThreadLocalStorageInstance.Input,ThreadLocalStorageInstance.InputLength,Position);
    case UnicodeChar of
@@ -7313,7 +7319,8 @@ begin
  end;
 
  writeln(chr(CurrentChar),' ',(BeforeFlags and sfEmptyWordBoundary)<>0,' ',(AfterFlags and sfEmptyWordBoundary)<>0);
- 
+
+ // Process zero-width-string step
  if ((BeforeFlags and not OldBeforeFlags) and NeedFlags)<>0 then begin
   ProcessWorkQueueOnZeroWidthString(Queues[0],Queues[1],BeforeFlags);
   Queues[2]:=Queues[0];
@@ -7321,6 +7328,7 @@ begin
   Queues[1]:=Queues[2];
  end;
 
+ // Process state instructions
  IsMatch:=false;
  ProcessWorkQueueOnByte(Queues[0],Queues[1],CurrentChar,AfterFlags,IsMatch);
 
@@ -7330,6 +7338,7 @@ begin
   Queues[1]:=Queues[2];
  end;
 
+ // Add missed flags
  Flags:=AfterFlags;
  if IsMatch then begin
   Flags:=Flags or sfDFAMatchWins;
@@ -7338,15 +7347,16 @@ begin
   Flags:=Flags or sfDFALastWord;
  end;
 
+ // Convert and cache it
  result:=WorkQueueToCachedState(Queues[0],Flags);
 
  // Connect the last state to the new state with the current char
- State.NextStates[Instance.ByteMap[byte(ansichar(CurrentChar))]]:=result;
+ State.NextStates[Instance.ByteMap[CurrentChar]]:=result;
  
 end;
 
 function TFLREDFA.SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-var Position,Start,PreviousPosition:longint;
+var Position,Start,PreviousPosition,LocalInputLength:longint;
     State,LastState:PFLREDFAState;
     StartState:PPFLREDFAState;
     StartInstruction:PFLREInstruction;
@@ -7357,6 +7367,7 @@ begin
  writeln('===');
  result:=DFAFail;
  LocalInput:=ThreadLocalStorageInstance.Input;
+ LocalInputLength:=ThreadLocalStorageInstance.InputLength;
  LocalByteMap:=@Instance.ByteMap;
  begin
   if (StartPosition>=0) and (StartPosition<=ThreadLocalStorageInstance.InputLength) then begin
@@ -7420,11 +7431,16 @@ begin
   State:=WorkQueueToCachedState(WorkQueues[0],Flags);
   StartState^:=State;
  end;
- for Position:=StartPosition to UntilExcludingPosition-1 do begin
+ for Position:=StartPosition to UntilExcludingPosition{-1} do begin // No -1 because match can be delayed of one byte
   LastState:=State;
-  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+  if Position<LocalInputLength then begin
+   CurrentChar:=byte(ansichar(LocalInput[Position]));
+  end else begin
+   CurrentChar:=256;
+  end;
+  State:=State^.NextStates[LocalByteMap[CurrentChar]];
   if not assigned(State) then begin
-   State:=RunStateOnByte(LastState,Position,byte(ansichar(LocalInput[Position])),false);
+   State:=RunStateOnByte(LastState,Position,CurrentChar,false);
    if not assigned(State) then begin
     result:=DFAError;
     exit;
@@ -7438,7 +7454,7 @@ begin
     exit;
    end;
    if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchEnd:=Position;
+    MatchEnd:=Position-1;
     result:=DFAMatch;
    end;
   end;
