@@ -7471,7 +7471,7 @@ begin
    Flags:=sfEmptyBeginText or sfEmptyBeginLine;
   end else begin
    if (rfUTF8 in Instance.Flags) and ((byte(ansichar(LocalInput[StartPosition])) and $80)<>0) then begin
-    PreviousPosition:=StartPosition;
+    PreviousPosition:=StartPosition+1;
     while (PreviousPosition>0) and ((byte(ansichar(LocalInput[PreviousPosition])) and $80)<>0) do begin
      dec(PreviousPosition);
     end;
@@ -7481,7 +7481,7 @@ begin
      PreviousChar:=$ffffffff;
     end;
    end else begin
-    PreviousChar:=byte(ansichar(LocalInput[StartPosition]));
+    PreviousChar:=byte(ansichar(LocalInput[StartPosition+1]));
    end;
    case PreviousChar of
     $0a,$0d,$85,$2028,$2029:begin
@@ -12595,7 +12595,7 @@ begin
   ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
   case ThreadLocalStorageInstance.DFA.SearchMatchFull(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
    DFAMatch:begin
-    if UnanchoredStart then begin
+    if true or UnanchoredStart then begin
      // For unanchored searchs, we must do also a "backward" DFA search
      case ThreadLocalStorageInstance.ReversedDFA.SearchMatchFullReversed(MatchEnd,StartPosition,MatchBegin) of
       DFAMatch:begin
