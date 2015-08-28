@@ -478,6 +478,18 @@ type EFLRE=class(Exception);
        function SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
      end;
 
+     TFLREOnePassNFA=class
+      public
+       Instance:TFLRE;
+       ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+       SearchLongest:longbool;
+       OnePassNFAWorkSubMatches:TFLREOnePassNFASubMatches;
+       OnePassNFAMatchSubMatches:TFLREOnePassNFASubMatches;
+       constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
+       destructor Destroy; override;
+       function SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
+     end;
+
      TFLREThreadLocalStorageInstance=class
       private
        AllNext:TFLREThreadLocalStorageInstance;
@@ -494,8 +506,7 @@ type EFLRE=class(Exception);
 
        ParallelNFA:TFLREParallelNFA;
 
-       OnePassNFAWorkSubMatches:TFLREOnePassNFASubMatches;
-       OnePassNFAMatchSubMatches:TFLREOnePassNFASubMatches;
+       OnePassNFA:TFLREOnePassNFA;
 
        BitStateNFAVisited:TFLREBitStateNFAVisited;
        BitStateNFACountVisited:longint;
@@ -545,7 +556,6 @@ type EFLRE=class(Exception);
        procedure DFAFreeState(State:PFLREDFAState);
        procedure DFAReset;
 
-       function SearchMatchOnePassNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
        function SearchMatchBitStateNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
        function SearchMatchDFAFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
        function SearchMatchReversedDFAFast(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
@@ -5702,6 +5712,141 @@ begin
 
 end;
 
+constructor TFLREOnePassNFA.Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
+begin
+ inherited Create;
+
+ ThreadLocalStorageInstance:=AThreadLocalStorageInstance;
+
+ Instance:=ThreadLocalStorageInstance.Instance;
+
+ SearchLongest:=ThreadLocalStorageInstance.SearchLongest;
+
+ OnePassNFAWorkSubMatches:=nil;
+ OnePassNFAMatchSubMatches:=nil;
+
+ if Instance.OnePassNFAReady then begin
+  SetLength(OnePassNFAWorkSubMatches,Instance.CountSubMatches);
+  SetLength(OnePassNFAMatchSubMatches,Instance.CountSubMatches);
+ end;
+
+end;
+
+destructor TFLREOnePassNFA.Destroy;
+begin
+ SetLength(OnePassNFAWorkSubMatches,0);
+ SetLength(OnePassNFAMatchSubMatches,0);
+ inherited Destroy;
+end;
+
+function TFLREOnePassNFA.SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
+var State,Nodes:PFLREOnePassNFAState;
+    LocalInputLength,CurrentPosition,StateSize,CountSubMatches,Counter,Index:longint;
+    LocalByteMap:PFLREByteMap;
+    Done:boolean;
+    NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
+    LocalInput:pansichar;
+begin
+
+ CountSubMatches:=Instance.CountSubMatches;
+
+ LocalInput:=ThreadLocalStorageInstance.Input;
+ LocalInputLength:=ThreadLocalStorageInstance.InputLength;
+
+ State:=Instance.OnePassNFAStart;
+ Nodes:=Instance.OnePassNFANodes;
+ StateSize:=Instance.OnePassNFAStateSize;
+ LocalByteMap:=@Instance.ByteMap;
+
+ result:=false;
+ Done:=false;
+
+ NextMatchCondition:=State^.MatchCondition;
+ Condition:=0;
+ CurrentPosition:=StartPosition;
+
+ while CurrentPosition<UntilExcludingPosition do begin
+ 
+  Condition:=State^.Action[LocalByteMap^[byte(ansichar(LocalInput[CurrentPosition]))]];
+  MatchCondition:=NextMatchCondition;
+
+  if ((Condition and sfEmptyAllFlags)=0) or
+     (((Condition and sfEmptyAllFlags) and not ThreadLocalStorageInstance.GetSatisfyFlags(CurrentPosition))=0) then begin
+   NextIndex:=Condition shr sfIndexShift;
+   State:=pointer(@pansichar(Nodes)[StateSize*longint(NextIndex)]);
+   NextMatchCondition:=State^.MatchCondition;
+  end else begin
+   State:=nil;
+   NextMatchCondition:=sfImpossible;
+  end;
+
+  if (MatchCondition<>sfImpossible) and
+     (((Condition and sfMatchWins)<>0) or ((NextMatchCondition and sfEmptyAllFlags)<>0)) and
+     (((MatchCondition and sfEmptyAllFlags)=0) or
+      (((MatchCondition and sfEmptyAllFlags) and not ThreadLocalStorageInstance.GetSatisfyFlags(CurrentPosition))=0)) then begin
+   for Counter:=0 to CountSubMatches-1 do begin
+    OnePassNFAMatchSubMatches[Counter]:=OnePassNFAWorkSubMatches[Counter];
+   end;
+   if (MatchCondition and sfCapMask)<>0 then begin
+    for Counter:=0 to CountSubMatches-1 do begin
+     if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin
+      OnePassNFAMatchSubMatches[Counter]:=CurrentPosition;
+     end;
+    end;
+   end;
+   result:=true;
+   if ((Condition and sfMatchWins)<>0) and not SearchLongest then begin
+    Done:=true;
+    break;
+   end;
+  end;
+
+  if not assigned(State) then begin
+   Done:=true;
+   break;
+  end;
+
+  if (Condition and sfCapMask)<>0 then begin
+   for Counter:=0 to CountSubMatches-1 do begin
+    if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
+     OnePassNFAWorkSubMatches[Counter]:=CurrentPosition;
+    end;
+   end;
+  end;
+
+  inc(CurrentPosition);
+ end;
+ 
+ if assigned(State) and not Done then begin
+  MatchCondition:=State^.MatchCondition;
+  if (MatchCondition<>sfImpossible) and
+     (((MatchCondition and sfEmptyAllFlags)=0) or
+      (((MatchCondition and sfEmptyAllFlags) and not ThreadLocalStorageInstance.GetSatisfyFlags(CurrentPosition))=0)) then begin
+   if ((MatchCondition and sfCapMask)<>0) and (CountSubMatches>0) then begin
+    for Counter:=0 to CountSubMatches-1 do begin
+     if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin   
+      OnePassNFAWorkSubMatches[Counter]:=CurrentPosition;
+     end;
+    end;
+   end;
+   for Counter:=0 to CountSubMatches-1 do begin
+    OnePassNFAMatchSubMatches[Counter]:=OnePassNFAWorkSubMatches[Counter];
+   end;
+   result:=true;
+  end;
+ end;
+
+ if result then begin
+  SetLength(Captures,Instance.CountCaptures);
+  for Counter:=0 to Instance.CountCaptures-1 do begin
+   Index:=Instance.CapturesToSubMatchesMap[Counter] shl 1;
+   Captures[Counter].Start:=OnePassNFAMatchSubMatches[Index];
+   Captures[Counter].Length:=OnePassNFAMatchSubMatches[Index or 1]-OnePassNFAMatchSubMatches[Index];
+  end;
+ end;
+
+end;
+
 constructor TFLREThreadLocalStorageInstance.Create(AInstance:TFLRE);
 var Index,SubIndex:longint;
     FLREDFAStateCreateTempDFAState:TFLREDFAState;
@@ -5722,12 +5867,8 @@ begin
 
  ParallelNFA:=TFLREParallelNFA.Create(self);
 
- OnePassNFAWorkSubMatches:=nil;
- OnePassNFAMatchSubMatches:=nil;
-
  if Instance.OnePassNFAReady then begin
-  SetLength(OnePassNFAWorkSubMatches,Instance.CountSubMatches);
-  SetLength(OnePassNFAMatchSubMatches,Instance.CountSubMatches);
+  OnePassNFA:=TFLREOnePassNFA.Create(self);
  end;
 
  BitStateNFACountVisited:=0;
@@ -5832,8 +5973,7 @@ begin
 
  ParallelNFA.Free;
 
- SetLength(OnePassNFAWorkSubMatches,0);
- SetLength(OnePassNFAMatchSubMatches,0);
+ OnePassNFA.Free;
 
  SetLength(BitStateNFAJobs,0);
  SetLength(BitStateNFAWorkSubMatches,0);
@@ -6447,114 +6587,6 @@ begin
    FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
    DFAStateCache.Add(State);
    inc(DFACountStatesCached);
-  end;
- end;
-
-end;
-
-function TFLREThreadLocalStorageInstance.SearchMatchOnePassNFA(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
-var State,Nodes:PFLREOnePassNFAState;
-    LocalInputLength,CurrentPosition,StateSize,CountSubMatches,Counter,Index:longint;
-    LocalByteMap:PFLREByteMap;
-    Done:boolean;
-    NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
-    LocalInput:pansichar;
-begin
-
- CountSubMatches:=Instance.CountSubMatches;
-
- LocalInput:=Input;
- LocalInputLength:=InputLength;
-
- State:=Instance.OnePassNFAStart;
- Nodes:=Instance.OnePassNFANodes;
- StateSize:=Instance.OnePassNFAStateSize;
- LocalByteMap:=@Instance.ByteMap;
-
- result:=false;
- Done:=false;
-
- NextMatchCondition:=State^.MatchCondition;
- Condition:=0;
- CurrentPosition:=StartPosition;
-
- while CurrentPosition<UntilExcludingPosition do begin
- 
-  Condition:=State^.Action[LocalByteMap^[byte(ansichar(LocalInput[CurrentPosition]))]];
-  MatchCondition:=NextMatchCondition;
-
-  if ((Condition and sfEmptyAllFlags)=0) or
-     (((Condition and sfEmptyAllFlags) and not GetSatisfyFlags(CurrentPosition))=0) then begin
-   NextIndex:=Condition shr sfIndexShift;
-   State:=pointer(@pansichar(Nodes)[StateSize*longint(NextIndex)]);
-   NextMatchCondition:=State^.MatchCondition;
-  end else begin
-   State:=nil;
-   NextMatchCondition:=sfImpossible;
-  end;
-
-  if (MatchCondition<>sfImpossible) and
-     (((Condition and sfMatchWins)<>0) or ((NextMatchCondition and sfEmptyAllFlags)<>0)) and
-     (((MatchCondition and sfEmptyAllFlags)=0) or
-      (((MatchCondition and sfEmptyAllFlags) and not GetSatisfyFlags(CurrentPosition))=0)) then begin
-   for Counter:=0 to CountSubMatches-1 do begin
-    OnePassNFAMatchSubMatches[Counter]:=OnePassNFAWorkSubMatches[Counter];
-   end;
-   if (MatchCondition and sfCapMask)<>0 then begin
-    for Counter:=0 to CountSubMatches-1 do begin
-     if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-      OnePassNFAMatchSubMatches[Counter]:=CurrentPosition;
-     end;
-    end;
-   end;
-   result:=true;
-   if ((Condition and sfMatchWins)<>0) and not SearchLongest then begin
-    Done:=true;
-    break;
-   end;
-  end;
-
-  if not assigned(State) then begin
-   Done:=true;
-   break;
-  end;
-
-  if (Condition and sfCapMask)<>0 then begin
-   for Counter:=0 to CountSubMatches-1 do begin
-    if (Condition and ((1 shl sfCapShift) shl Counter))<>0 then begin
-     OnePassNFAWorkSubMatches[Counter]:=CurrentPosition;
-    end;
-   end;
-  end;
-
-  inc(CurrentPosition);
- end;
- 
- if assigned(State) and not Done then begin
-  MatchCondition:=State^.MatchCondition;
-  if (MatchCondition<>sfImpossible) and
-     (((MatchCondition and sfEmptyAllFlags)=0) or
-      (((MatchCondition and sfEmptyAllFlags) and not GetSatisfyFlags(CurrentPosition))=0)) then begin
-   if ((MatchCondition and sfCapMask)<>0) and (CountSubMatches>0) then begin
-    for Counter:=0 to CountSubMatches-1 do begin
-     if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin   
-      OnePassNFAWorkSubMatches[Counter]:=CurrentPosition;
-     end;
-    end;
-   end;
-   for Counter:=0 to CountSubMatches-1 do begin
-    OnePassNFAMatchSubMatches[Counter]:=OnePassNFAWorkSubMatches[Counter];
-   end;
-   result:=true;
-  end;
- end;
-
- if result then begin
-  SetLength(Captures,Instance.CountCaptures);
-  for Counter:=0 to Instance.CountCaptures-1 do begin
-   Index:=Instance.CapturesToSubMatchesMap[Counter] shl 1;
-   Captures[Counter].Start:=OnePassNFAMatchSubMatches[Index];
-   Captures[Counter].Length:=OnePassNFAMatchSubMatches[Index or 1]-OnePassNFAMatchSubMatches[Index];
   end;
  end;
 
@@ -11805,7 +11837,7 @@ begin
   end;
  end;(**)
  if false and OnePassNFAReady and not UnanchoredStart then begin
-  result:=ThreadLocalStorageInstance.SearchMatchOnePassNFA(Captures,StartPosition,UntilExcludingPosition);
+  result:=ThreadLocalStorageInstance.OnePassNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition);
  end else begin
   if false and BitStateNFAReady then begin
    case ThreadLocalStorageInstance.SearchMatchBitStateNFA(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
