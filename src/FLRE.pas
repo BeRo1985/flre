@@ -5856,22 +5856,17 @@ begin
   while assigned(Instruction) and (DFAInstructionGenerations[Instruction^.IDandOpcode shr 8]<>DFAGeneration) do begin
    DFAInstructionGenerations[Instruction^.IDandOpcode shr 8]:=DFAGeneration;
    case Instruction^.IDandOpcode and $ff of
-    opJMP:begin
-     Instruction:=Instruction^.Next;
-    end;
-    opSAVE:begin
-{    if Instruction^.Value=0 then begin
-      State.Flags:=State.Flags or sfDFAMatchBegins;
-     end;{}
+    opJMP,
+    opSAVE,
+    opZEROWIDTH,
+    opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,
+    opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+     // No-ops at DFA
      Instruction:=Instruction^.Next;
     end;
     opSPLIT:begin
      Stack^[StackPointer]:=Instruction^.OtherNext;
      inc(StackPointer);
-     Instruction:=Instruction^.Next;
-    end;
-    opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
-     // No-ops at DFA
      Instruction:=Instruction^.Next;
     end;
     else begin
@@ -11671,7 +11666,7 @@ var MatchBegin,MatchEnd:longint;
 begin
  result:=false;
  ThreadLocalStorageInstance.CheckGenerationOverflow;
-(*
+(**)
  if DFAFast then begin
   case ThreadLocalStorageInstance.SearchMatchDFAFast(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
    DFAMatch:begin
