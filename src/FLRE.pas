@@ -302,14 +302,14 @@ type EFLRE=class(Exception);
      PPFLREDFANextStatesByteBlock=^TPFLREDFANextStatesByteBlock;
      TPFLREDFANextStatesByteBlock=array[byte] of PFLREDFAState;
 
-     TFLREIndirectInstructions=array of longint;
+     TFLREDFAWorkQueueItems=array of longint;
 
      TFLREDFAState=record
       Flags:longword;
       Instructions:TPFLREInstructions;
       CountInstructions:longint;
-      IndirectInstructions:TFLREIndirectInstructions;
-      CountIndirectInstructions:longint;
+      WorkQueueItems:TFLREDFAWorkQueueItems;
+      CountWorkQueueItems:longint;
       NextStates:TPFLREDFANextStatesByteBlock;
      end;
 
@@ -577,8 +577,8 @@ type EFLRE=class(Exception);
        StatePoolSize:TFLREPtrUInt;
        StatePoolSizePowerOfTwo:TFLREPtrUInt;
        WorkQueues:TFLREDFAWorkQueues;
-       QueueInstructionArray:TFLREIndirectInstructions;
-       QueueStack:TFLREIndirectInstructions;
+       QueueInstructionArray:TFLREDFAWorkQueueItems;
+       QueueStack:TFLREDFAWorkQueueItems;
 
        constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean);
        destructor Destroy; override;
@@ -3331,8 +3331,8 @@ begin
  if assigned(Key) and (Key.CountInstructions>0) then begin
   result:=HashData(@Key.Instructions[0],Key.CountInstructions*sizeof(PFLREInstruction));
   result:=result xor ((longword(Key.CountInstructions) shr 16) or (longword(Key.CountInstructions) shl 16));
-  result:=result xor HashData(@Key.IndirectInstructions[0],Key.CountIndirectInstructions*sizeof(longint));
-  result:=result xor ((longword(Key.CountIndirectInstructions) shr 16) or (longword(Key.CountIndirectInstructions) shl 16));
+  result:=result xor HashData(@Key.WorkQueueItems[0],Key.CountWorkQueueItems*sizeof(longint));
+  result:=result xor ((longword(Key.CountWorkQueueItems) shr 16) or (longword(Key.CountWorkQueueItems) shl 16));
   result:=result xor ((Key.Flags shl 19) or (Key.Flags shr 13));
   if result=0 then begin
    result:=$ffffffff;
@@ -3348,7 +3348,7 @@ begin
  result:=a=b;
  if not result then begin
   if (assigned(a) and assigned(b)) and
-     ((a.CountInstructions=b.CountInstructions) and (a.CountIndirectInstructions=b.CountIndirectInstructions) and (a.Flags=b.Flags)) then begin
+     ((a.CountInstructions=b.CountInstructions) and (a.CountWorkQueueItems=b.CountWorkQueueItems) and (a.Flags=b.Flags)) then begin
    result:=true;
    for i:=0 to a.CountInstructions-1 do begin
     if a.Instructions[i]<>b.Instructions[i] then begin
@@ -3356,8 +3356,8 @@ begin
      exit;
     end;
    end;
-   for i:=0 to a.CountIndirectInstructions-1 do begin
-    if a.IndirectInstructions[i]<>b.IndirectInstructions[i] then begin
+   for i:=0 to a.CountWorkQueueItems-1 do begin
+    if a.WorkQueueItems[i]<>b.WorkQueueItems[i] then begin
      result:=false;
      exit;
     end;
@@ -6570,13 +6570,13 @@ begin
  result:=GetState;
  result^.Instructions:=TakeOverFrom^.Instructions;
  result^.CountInstructions:=TakeOverFrom^.CountInstructions;
- result^.IndirectInstructions:=TakeOverFrom^.IndirectInstructions;
- result^.CountIndirectInstructions:=TakeOverFrom^.CountIndirectInstructions;
+ result^.WorkQueueItems:=TakeOverFrom^.WorkQueueItems;
+ result^.CountWorkQueueItems:=TakeOverFrom^.CountWorkQueueItems;
  result^.Flags:=TakeOverFrom^.Flags;
  TakeOverFrom^.Instructions:=nil;
  TakeOverFrom^.CountInstructions:=0;
- TakeOverFrom^.IndirectInstructions:=nil;
- TakeOverFrom^.CountIndirectInstructions:=0;
+ TakeOverFrom^.WorkQueueItems:=nil;
+ TakeOverFrom^.CountWorkQueueItems:=0;
  TakeOverFrom^.Flags:=0;
 end;
 
@@ -7110,8 +7110,8 @@ begin
  end;
 
  NewState.Flags:=Flags or (NeedFlags shl sfDFANeedShift);
- NewState.IndirectInstructions:=copy(QueueInstructionArray,0,n);
- NewState.CountIndirectInstructions:=n;
+ NewState.WorkQueueItems:=copy(QueueInstructionArray,0,n);
+ NewState.CountWorkQueueItems:=n;
 
  result:=CacheState(@NewState);
 
@@ -7121,11 +7121,11 @@ procedure TFLREDFA.StateToWorkQueue(const DFAState:PFLREDFAState;const WorkQueue
 var Index:longint;
 begin
  WorkQueue.Clear;
- for Index:=0 to DFAState^.CountIndirectInstructions-1 do begin
-  if DFAState^.IndirectInstructions[Index]=Mark then begin
+ for Index:=0 to DFAState^.CountWorkQueueItems-1 do begin
+  if DFAState^.WorkQueueItems[Index]=Mark then begin
    WorkQueue.Mark;
   end else begin
-   WorkQueue.AddNew(DFAState^.IndirectInstructions[Index]);
+   WorkQueue.AddNew(DFAState^.WorkQueueItems[Index]);
   end;
  end;
 end;
