@@ -370,6 +370,8 @@ type EFLRE=class(Exception);
        procedure Add(const ID:longint); reintroduce;
      end;
 
+     TFLREDFAWorkQueues=array[0..1] of TFLREDFAWorkQueue;
+
      TFLRECharPatternBitMasks=array[ansichar] of longword;
 
      TFLREBoyerMooreNext=array of longint;
@@ -557,6 +559,7 @@ type EFLRE=class(Exception);
        StatePoolFree:PFLREDFAStatePool;
        StatePoolSize:TFLREPtrUInt;
        StatePoolSizePowerOfTwo:TFLREPtrUInt;
+       WorkQueues:TFLREDFAWorkQueues;
        constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
        destructor Destroy; override;
        function CacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
@@ -6330,6 +6333,14 @@ begin
 
  end;
 
+ if Instance.DFAFast then begin
+  WorkQueues[0]:=nil;
+  WorkQueues[1]:=nil;
+ end else begin
+  WorkQueues[0]:=TFLREDFAWorkQueue.Create(Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions),Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions));
+  WorkQueues[1]:=TFLREDFAWorkQueue.Create(Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions),Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions));
+ end;
+
 end;
 
 destructor TFLREDFA.Destroy;
@@ -6350,6 +6361,8 @@ begin
  FreeAndNil(StateCache);
  SetLength(StackInstructions,0);
  SetLength(InstructionGenerations,0);
+ WorkQueues[0].Free;
+ WorkQueues[1].Free;
  inherited Destroy;
 end;
 
