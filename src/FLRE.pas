@@ -5737,7 +5737,7 @@ procedure TFLREThreadLocalStorageInstance.ParallelNFAAddThread(const ThreadList:
  end;
 var Thread:PFLREParallelNFAThread;
     StackItem:PFLREParallelNFAStackItem;
-    StackSize:longint;
+    StackSize,InstructionID:longint;
 begin
  StackSize:=0;
  StackItem:=@ParallelNFAStack[StackSize];
@@ -5750,11 +5750,12 @@ begin
   Instruction:=StackItem^.Instruction;
   State:=StackItem^.State;
   while assigned(Instruction) do begin
-   if ParallelNFAInstructionGenerations[Instruction^.IDandOpcode shr 8]=ParallelNFAGeneration then begin
+   InstructionID:=Instruction^.IDandOpcode shr 8;
+   if ParallelNFAInstructionGenerations[InstructionID]=ParallelNFAGeneration then begin
     ParallelNFAStateRelease(State);
     break;
    end else begin
-    ParallelNFAInstructionGenerations[Instruction^.IDandOpcode shr 8]:=ParallelNFAGeneration;
+    ParallelNFAInstructionGenerations[InstructionID]:=ParallelNFAGeneration;
     case Instruction^.IDandOpcode and $ff of
      opJMP:begin
       Instruction:=Instruction^.Next;
@@ -5764,10 +5765,10 @@ begin
       StackItem:=@ParallelNFAStack[StackSize];
       StackItem^.Instruction:=Instruction^.OtherNext;
       StackItem^.State:=State;
-      inc(StackSize);
+      inc(StackSize);        
       Instruction:=Instruction^.Next;
       State:=ParallelNFAStateAcquire(State);
-      continue;
+      continue;              
      end;
      opSAVE:begin
       State:=ParallelNFAStateUpdate(State,Instruction^.Value,Position);
