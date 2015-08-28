@@ -568,7 +568,11 @@ type EFLRE=class(Exception);
 
        ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 
+       CountInstructions:longint;
+
        MatchMode:TFLREMatchMode;
+
+       NeedMark:longbool;
 
        Reversed:longbool;
 
@@ -6683,10 +6687,20 @@ begin
  Instance:=ThreadLocalStorageInstance.Instance;
 
  if AReversed then begin
+
+  CountInstructions:=Instance.CountBackwardInstructions;
+
   MatchMode:=mmLongestMatch;
+
  end else begin
+
+  CountInstructions:=Instance.CountForwardInstructions;
+
   MatchMode:=ThreadLocalStorageInstance.MatchMode;
+
  end;
+
+ NeedMark:=MatchMode=mmLongestMatch;
 
  Reversed:=AReversed;
 
@@ -6735,16 +6749,18 @@ begin
   FillChar(NewState,SizeOf(TFLREDFAState),AnsiChar(#0));
 
   InstructionGenerations:=nil;
-  SetLength(InstructionGenerations,Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions));
-  for Index:=0 to length(InstructionGenerations)-1 do begin
-   InstructionGenerations[Index]:=-1;
+
+  if DoFastDFA then begin
+   SetLength(InstructionGenerations,CountInstructions);
+   for Index:=0 to length(InstructionGenerations)-1 do begin
+    InstructionGenerations[Index]:=-1;
+   end;
   end;
 
   inc(Generation);
   GetMem(DFAState,StateSize);
   FillChar(DFAState^,StateSize,AnsiChar(#0));
-  FastAddInstructionThread(DFAState,Instance.AnchoredStartInstruction);
-  DFAState^.Flags:=DFAState^.Flags or sfDFADead;
+  DFAState^.Flags:=sfDFADead;
   StateCache.Add(DFAState);
   inc(CountStatesCached);
   DefaultStates[dskDead]:=DFAState;
@@ -6752,8 +6768,7 @@ begin
   inc(Generation);
   GetMem(DFAState,StateSize);
   FillChar(DFAState^,StateSize,AnsiChar(#0));
-  FastAddInstructionThread(DFAState,Instance.AnchoredStartInstruction);
-  DFAState^.Flags:=DFAState^.Flags or sfDFAFullMatch;
+  DFAState^.Flags:=sfDFAFullMatch;
   StateCache.Add(DFAState);
   inc(CountStatesCached);
   DefaultStates[dskFullMatch]:=DFAState;
@@ -6795,10 +6810,17 @@ begin
   WorkQueues[0]:=nil;
   WorkQueues[1]:=nil;
  end else begin
-  WorkQueues[0]:=TFLREDFAWorkQueue.Create(Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions)*3);
-  WorkQueues[1]:=TFLREDFAWorkQueue.Create(Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions)*3);
-  SetLength(QueueInstructionArray,Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions)*3);
-  SetLength(QueueStack,Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions)*3);
+  if NeedMark then begin
+   WorkQueues[0]:=TFLREDFAWorkQueue.Create(CountInstructions*3);
+   WorkQueues[1]:=TFLREDFAWorkQueue.Create(CountInstructions*3);
+   SetLength(QueueInstructionArray,CountInstructions*3);
+   SetLength(QueueStack,CountInstructions*3);
+  end else begin
+   WorkQueues[0]:=TFLREDFAWorkQueue.Create(CountInstructions*2);
+   WorkQueues[1]:=TFLREDFAWorkQueue.Create(CountInstructions*2);
+   SetLength(QueueInstructionArray,CountInstructions*2);
+   SetLength(QueueStack,CountInstructions*2);
+  end;
  end;
 
 end;
@@ -7041,7 +7063,7 @@ begin
     FastAddInstructionThread(@NewState,Instruction^.Next);
    end;
    opMATCH:begin
-    if not ((MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch]) or Reversed) then begin
+    if not (MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch]) then begin
      // We can stop processing the instruction list queue here since we found a match (for the PCRE leftmost first valid match behaviour)
      break;
     end;
@@ -7165,8 +7187,11 @@ begin
    break;
   end;
   if WorkQueue.IsMark(Instruction) then begin
-   if (n>0) and (QueueInstructionArray[n-1]<>Instruction) then begin
+   if (n>0) and (QueueInstructionArray[n-1]<>Mark) then begin
     SawMark:=true;
+    if (n+1)>length(QueueInstructionArray) then begin
+     SetLength(QueueInstructionArray,(n+1)*2);
+    end;
     QueueInstructionArray[n]:=Mark;
     inc(n);
    end;
@@ -7179,8 +7204,12 @@ begin
         ((MatchMode<>mmFirstMatch) or ((Index=0) and IsInstructionGreedy(Instruction))) and
         ((MatchMode<>mmLongestMatch) or not SawMark) and
         ((Flags and sfDFAMatchWins)<>0) then begin
-      // ToDo: Full match state optimization
+     {result:=DefaultStates[dskFullMatch];
+      exit;{}
      end;
+    end;
+    if (n+1)>length(QueueInstructionArray) then begin
+     SetLength(QueueInstructionArray,(n+1)*2);
     end;
     QueueInstructionArray[n]:=Instruction;
     inc(n);
@@ -7211,6 +7240,7 @@ begin
  end;
 
  if MatchMode=mmLongestMatch then begin
+  // Sort in longest match mode to reduce the number of distinct sets which must be stored
   CurrentItem:=@QueueInstructionArray[0];
   EndItem:=CurrentItem;
   inc(EndItem,n);
@@ -7253,8 +7283,12 @@ end;
 procedure TFLREDFA.AddToWorkQueue(const WorkQueue:TFLREDFAWorkQueue;Instruction:PFLREInstruction;Flags:longword);
 var StackPointer:longint;
 begin
- QueueStack[0]:=Instruction;
- StackPointer:=1;
+ StackPointer:=0;
+ if (StackPointer+1)>length(QueueStack) then begin
+  SetLength(QueueStack,(StackPointer+1)*2);
+ end;
+ QueueStack[StackPointer]:=Instruction;
+ inc(StackPointer);
  while StackPointer>0 do begin
   dec(StackPointer);
   Instruction:=QueueStack[StackPointer];
@@ -7268,13 +7302,19 @@ begin
     end;
     opJMP,opSAVE,opMULTIMATCH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
      // No-ops at DFA
+     if (StackPointer+1)>length(QueueStack) then begin
+      SetLength(QueueStack,(StackPointer+1)*2);
+     end;
      QueueStack[StackPointer]:=Instruction^.Next;
      inc(StackPointer);
     end;
     opSPLIT,opSPLITMATCH:begin
+     if (StackPointer+3)>length(QueueStack) then begin
+      SetLength(QueueStack,(StackPointer+3)*2);
+     end;
      QueueStack[StackPointer]:=Instruction^.OtherNext;
      inc(StackPointer);
-     if {(WorkQueue.QueueMaxMark>0) and} IsUnanchored and assigned(Instruction) then begin
+     if NeedMark and IsUnanchored and assigned(Instruction) then begin
       QueueStack[StackPointer]:=Mark;
       inc(StackPointer);
      end;
@@ -7283,6 +7323,9 @@ begin
     end;
     opZEROWIDTH:begin
      if (longword(Instruction^.Value) and not Flags)=0 then begin
+      if (StackPointer+1)>length(QueueStack) then begin
+       SetLength(QueueStack,(StackPointer+1)*2);
+      end;
       QueueStack[StackPointer]:=Instruction^.Next;
       inc(StackPointer);
      end;
