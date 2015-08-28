@@ -5731,10 +5731,6 @@ begin
 end;
 
 procedure TFLREThreadLocalStorageInstance.ParallelNFAAddThread(const ThreadList:PFLREParallelNFAThreadList;Instruction:PFLREInstruction;State:PFLREParallelNFAState;const Position:longint);
- function Satisfy(const NextFlags:longword;const Position:longint):boolean;
- begin
-  result:=((NextFlags and sfEmptyAllFlags) and not GetSatisfyFlags(Position))=0;
- end;
 var Thread:PFLREParallelNFAThread;
     StackItem:PFLREParallelNFAStackItem;
     StackSize,InstructionID:longint;
@@ -5776,7 +5772,7 @@ begin
       continue;
      end;
      opZEROWIDTH:begin
-      if Satisfy(Instruction^.Value,Position) then begin
+      if ((longword(Instruction^.Value) and sfEmptyAllFlags) and not GetSatisfyFlags(Position))=0 then begin
        Instruction:=Instruction^.Next;
        continue;
       end else begin
@@ -6433,10 +6429,6 @@ var State,Nodes:PFLREOnePassNFAState;
     Done:boolean;
     NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
     LocalInput:pansichar;
- function Satisfy(Condition:longword):boolean;
- begin
-  result:=((Condition and sfEmptyAllFlags) and not GetSatisfyFlags(CurrentPosition))=0;
- end;
 begin
 
  CountSubMatches:=Instance.CountSubMatches;
@@ -6461,7 +6453,8 @@ begin
   Condition:=State^.Action[LocalByteMap^[byte(ansichar(LocalInput[CurrentPosition]))]];
   MatchCondition:=NextMatchCondition;
 
-  if ((Condition and sfEmptyAllFlags)=0) or Satisfy(Condition) then begin
+  if ((Condition and sfEmptyAllFlags)=0) or
+     (((Condition and sfEmptyAllFlags) and not GetSatisfyFlags(CurrentPosition))=0) then begin
    NextIndex:=Condition shr sfIndexShift;
    State:=pointer(@pansichar(Nodes)[StateSize*longint(NextIndex)]);
    NextMatchCondition:=State^.MatchCondition;
@@ -6472,7 +6465,8 @@ begin
 
   if (MatchCondition<>sfImpossible) and
      (((Condition and sfMatchWins)<>0) or ((NextMatchCondition and sfEmptyAllFlags)<>0)) and
-     (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
+     (((MatchCondition and sfEmptyAllFlags)=0) or
+      (((MatchCondition and sfEmptyAllFlags) and not GetSatisfyFlags(CurrentPosition))=0)) then begin
    for Counter:=0 to CountSubMatches-1 do begin
     OnePassNFAMatchSubMatches[Counter]:=OnePassNFAWorkSubMatches[Counter];
    end;
@@ -6508,7 +6502,9 @@ begin
  
  if assigned(State) and not Done then begin
   MatchCondition:=State^.MatchCondition;
-  if (MatchCondition<>sfImpossible) and (((MatchCondition and sfEmptyAllFlags)=0) or Satisfy(MatchCondition)) then begin
+  if (MatchCondition<>sfImpossible) and
+     (((MatchCondition and sfEmptyAllFlags)=0) or
+      (((MatchCondition and sfEmptyAllFlags) and not GetSatisfyFlags(CurrentPosition))=0)) then begin
    if ((MatchCondition and sfCapMask)<>0) and (CountSubMatches>0) then begin
     for Counter:=0 to CountSubMatches-1 do begin
      if (MatchCondition and ((1 shl sfCapShift) shl Counter))<>0 then begin   
@@ -6566,10 +6562,6 @@ var LocalInputLength,BasePosition,Len:longint;
      Argument,i,LastPosition:longint;
      CurrentChar,LocalFlags:longword;
      InputIsUTF8:boolean;
-  function Satisfy(const NextFlags:longword;const Position:longint):boolean;
-  begin
-   result:=((NextFlags and sfEmptyAllFlags) and not GetSatisfyFlags(Position))=0;
-  end;
  begin
   result:=false;
 
@@ -6672,7 +6664,7 @@ var LocalInputLength,BasePosition,Len:longint;
       end;
      end;
      opZEROWIDTH:begin
-      if Satisfy(Instruction^.Value,Position) then begin
+      if ((longword(Instruction^.Value) and sfEmptyAllFlags) and not GetSatisfyFlags(Position))=0 then begin
        Instruction:=Instruction^.Next;
        if ShouldVisit(Instruction,Position) then begin
         continue;
