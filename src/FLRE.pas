@@ -114,10 +114,11 @@ const FLREVersion=$00000001;
       carfNAMED=1 shl 4;
       carfUNGREEDY=1 shl 5;
       carfLONGEST=1 shl 6;
-      carfUTF8=1 shl 7;
-      carfDELIMITERS=1 shl 8;
-      carfSAFE=1 shl 9;
-      carfFAST=1 shl 10;
+      carfMULTIMATCH=1 shl 7;
+      carfUTF8=1 shl 8;
+      carfDELIMITERS=1 shl 9;
+      carfSAFE=1 shl 10;
+      carfFAST=1 shl 11;
 
 type EFLRE=class(Exception);
 
@@ -162,6 +163,7 @@ type EFLRE=class(Exception);
                 rfNAMED,
                 rfUNGREEDY,
                 rfLONGEST,
+                rfMULTIMATCH,
                 rfUTF8,
                 rfDELIMITERS,
                 rfSAFE,
@@ -457,7 +459,7 @@ type EFLRE=class(Exception);
        property Values[const Key:ansistring]:TFLREStringIntegerPairHashMapData read GetValue write SetValue; default;
      end;
 
-     TFLREManySubMatches=array of longint;
+     TFLREMultiSubMatches=array of longint;
 
      TFLREInstructionGenerations=array of int64;
 
@@ -600,7 +602,7 @@ type EFLRE=class(Exception);
 
        SearchLongest:longbool;
 
-       ManySubMatches:TFLREManySubMatches;
+       MultiSubMatches:TFLREMultiSubMatches;
 
        ParallelNFA:TFLREParallelNFA;
 
@@ -638,7 +640,7 @@ type EFLRE=class(Exception);
 
        CountSubMatches:longint;
 
-       CountManySubMatches:longint;
+       CountMultiSubMatches:longint;
 
        CapturesToSubMatchesMap:TFLRECapturesToSubMatchesMap;
 
@@ -860,7 +862,7 @@ const MaxDFAStates=4096;
       ntSTAR=6;
       ntPLUS=7;
       ntEXACT=8;
-      ntMANY=9;
+      ntMULTIMATCH=9;
       ntZEROWIDTH=10;
       ntLOOKBEHINDNEGATIVE=11;
       ntLOOKBEHINDPOSITIVE=12;
@@ -877,7 +879,7 @@ const MaxDFAStates=4096;
       opJMP=4;
       opSPLIT=5;
       opSAVE=6;
-      opMANY=7;
+      opMULTIMATCH=7;
       opZEROWIDTH=8;
       opLOOKBEHINDNEGATIVE=9;
       opLOOKBEHINDPOSITIVE=10;
@@ -5656,9 +5658,9 @@ begin
       Instruction:=Instruction^.Next;
       continue;
      end;
-     opMANY:begin
-      if ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]<Position then begin
-       ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]:=Position;
+     opMULTIMATCH:begin
+      if ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<Position then begin
+       ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=Position;
       end;
       Instruction:=Instruction^.Next;
       continue;
@@ -5735,8 +5737,8 @@ begin
  CurrentThreadList^.CountThreads:=0;
  NewThreadList^.CountThreads:=0;
 
- for Index:=0 to Instance.CountManySubMatches-1 do begin
-  ThreadLocalStorageInstance.ManySubMatches[Index]:=-1;
+ for Index:=0 to Instance.CountMultiSubMatches-1 do begin
+  ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
  end;
 
  State:=StateAllocate(Instance.CountSubMatches,0);
@@ -6178,12 +6180,12 @@ var LocalInputLength,BasePosition,Len:longint;
        end;
       end;
      end;
-     opMANY:begin
+     opMULTIMATCH:begin
       case Argument of
        0:begin
-        Push(Instruction,ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value],1);
-        if ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]<Position then begin
-         ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]:=Position;
+        Push(Instruction,ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value],1);
+        if ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<Position then begin
+         ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=Position;
         end;
         Instruction:=Instruction^.Next;
         if ShouldVisit(Instruction,Position) then begin
@@ -6191,8 +6193,8 @@ var LocalInputLength,BasePosition,Len:longint;
         end;
        end;
        1:begin
-        if ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]<Position then begin
-         ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]:=Position;
+        if ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<Position then begin
+         ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=Position;
         end;
        end;
       end;
@@ -6267,8 +6269,8 @@ begin
   StartInstruction:=Instance.AnchoredStartInstruction;
  end;
 
- for Counter:=0 to Instance.CountManySubMatches-1 do begin
-  ThreadLocalStorageInstance.ManySubMatches[Counter]:=-1;
+ for Counter:=0 to Instance.CountMultiSubMatches-1 do begin
+  ThreadLocalStorageInstance.MultiSubMatches[Counter]:=-1;
  end;
  
  if TrySearch(StartInstruction,Position) then begin
@@ -6568,7 +6570,7 @@ begin
    case Instruction^.IDandOpcode and $ff of
     opJMP,
     opSAVE,
-    opMANY,
+    opMULTIMATCH,
     opZEROWIDTH,
     opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,
     opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
@@ -6739,7 +6741,7 @@ begin
   while assigned(Instruction) and (InstructionGenerations[Instruction^.IDandOpcode shr 8]<>Generation) do begin
    InstructionGenerations[Instruction^.IDandOpcode shr 8]:=Generation;
    case Instruction^.IDandOpcode and $ff of
-    opJMP,opMANY:begin
+    opJMP,opMULTIMATCH:begin
      Instruction:=Instruction^.Next;
     end;
     opSAVE:begin
@@ -7057,10 +7059,10 @@ begin
  Input:=nil;
  InputLength:=0;
 
- SearchLongest:=(Instance.CountManySubMatches>0) or (rfLONGEST in Instance.Flags);
+ SearchLongest:=(Instance.CountMultiSubMatches>0) or (rfLONGEST in Instance.Flags);
 
- ManySubMatches:=nil;
- SetLength(ManySubMatches,Instance.CountManySubMatches);
+ MultiSubMatches:=nil;
+ SetLength(MultiSubMatches,Instance.CountMultiSubMatches);
 
  ParallelNFA:=TFLREParallelNFA.Create(self);
 
@@ -7084,7 +7086,7 @@ end;
 destructor TFLREThreadLocalStorageInstance.Destroy;
 begin
 
- SetLength(ManySubMatches,0);
+ SetLength(MultiSubMatches,0);
 
  ParallelNFA.Free;
 
@@ -7437,7 +7439,7 @@ begin
  PrefilterRootNode:=nil;
  HasPrefilter:=false;
 
- CountManySubMatches:=0;
+ CountMultiSubMatches:=0;
 
  try
 
@@ -10085,12 +10087,41 @@ var SourcePosition,SourceLength:longint;
     if SourcePosition<=SourceLength then begin
      case Source[SourcePosition] of
       '|':begin
-       inc(SourcePosition);
+       if (rfMULTIMATCH in Flags) and (((SourcePosition+1)<=SourceLength) and (Source[SourcePosition+1]='|')) then begin
+        break;
+       end else begin
+        inc(SourcePosition);
+       end;
       end;
       ')':begin
        break;
       end;
      end;
+    end else begin
+     break;
+    end;
+   end;
+  except
+   raise;
+  end;
+ end;
+ function ParseMultiMatch:PFLRENode;
+ var Node:PFLRENode;
+ begin
+  result:=nil;
+  try
+   SkipFreeSpacingWhiteSpace;
+   while SourcePosition<=SourceLength do begin
+    Node:=NewNode(ntMULTIMATCH,ParseDisjunction,nil,nil,CountMultiSubMatches);
+    inc(CountMultiSubMatches);
+    SkipFreeSpacingWhiteSpace;
+    if assigned(result) then begin
+     result:=NewAlt(Result,Node);
+    end else begin
+     result:=Node;
+    end;
+    if ((SourcePosition+1)<=SourceLength) and (Source[SourcePosition]='|') and (Source[SourcePosition+1]='|') then begin
+     inc(SourcePosition,2);
     end else begin
      break;
     end;
@@ -10116,7 +10147,11 @@ begin
   GroupIndexIntegerStack:=TFLREIntegerList.Create;
   GroupNameStringStack:=TStringList.Create;
   try
-   AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
+   if rfMULTIMATCH in Flags then begin
+    AnchoredRootNode:=NewNode(ntPAREN,ParseMultiMatch,nil,nil,0);
+   end else begin
+    AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
+   end;
   finally
    GroupIndexIntegerStack.Free;
    GroupNameStringStack.Free;
@@ -10133,7 +10168,7 @@ begin
   for Counter:=0 to Nodes.Count-1 do begin
    Node:=Nodes[Counter];
    case Node^.NodeType of
-    ntMANY:begin
+    ntMULTIMATCH:begin
      DFANeedVerification:=true;
     end;
     ntZEROWIDTH:begin
@@ -10432,11 +10467,11 @@ procedure TFLRE.Compile;
        end;
       end;
      end;
-     ntMANY:begin
+     ntMULTIMATCH:begin
       Emit(Node^.Left);
       if not assigned(BackreferenceParentNode) then begin
        Emit(Node^.Left);
-       i0:=NewInstruction(opMANY);
+       i0:=NewInstruction(opMULTIMATCH);
        Instructions[i0].Value:=Node^.Value;
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
       end;
@@ -10661,7 +10696,7 @@ var LowRangeString,HighRangeString:ansistring;
      inc(Index);
      Instruction:=Instruction^.Next;
     end;
-    opJMP,opSAVE,opMANY,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    opJMP,opSAVE,opMULTIMATCH,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
      Instruction:=Instruction^.Next;
     end;
     opMATCH:begin
@@ -10785,7 +10820,7 @@ begin
    Argument:=Stack[StackPointer].Argument;
    while assigned(Node) do begin
     case Node^.NodeType of
-     ntPAREN,ntMANY:begin
+     ntPAREN,ntMULTIMATCH:begin
       case Argument of
        1:begin
         if assigned(Node^.Left) then begin
@@ -11024,7 +11059,7 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.OtherNext;
       continue;
      end;
-     opSAVE,opMANY,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+     opSAVE,opMULTIMATCH,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
       Instruction:=Instruction^.Next;
       continue;
      end;
@@ -11477,7 +11512,7 @@ begin
            Stack[StackPointer].Condition:=Condition;
            inc(StackPointer);
           end;
-          opMANY,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+          opMULTIMATCH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
            OnePassNFAReady:=false;
            break;
           end;
@@ -11684,7 +11719,7 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
       result:=Right;
      end;
     end;
-    ntPAREN,ntMANY:begin
+    ntPAREN,ntMULTIMATCH:begin
      result:=Process(Node^.Left);
     end;
     ntCHAR:begin
@@ -12645,7 +12680,7 @@ function TFLRE.DumpRegularExpression:ansistring;
     ntANY:begin
      result:=result+'.';
     end;
-    ntPAREN,ntMANY:begin
+    ntPAREN,ntMULTIMATCH:begin
      result:='('+ProcessNode(Node^.Left)+')';
     end;
     ntQUEST:begin
@@ -12876,6 +12911,9 @@ begin
   end;
   if (Flags and carfLONGEST)<>0 then begin
    Include(RealFlags,rfLONGEST);
+  end;
+  if (Flags and carfMULTIMATCH)<>0 then begin
+   Include(RealFlags,rfMULTIMATCH);
   end;
   if (Flags and carfUTF8)<>0 then begin
    Include(RealFlags,rfUTF8);
