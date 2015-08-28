@@ -464,6 +464,7 @@ type EFLRE=class(Exception);
        InputLength:longint;
 
        SearchLongest:longbool;
+       ManyMatch:longbool;
 
        ParallelNFAThreadLists:TFLREParallelNFAThreadLists;
 
@@ -474,6 +475,8 @@ type EFLRE=class(Exception);
 
        FreeParallelNFAStates:PFLREParallelNFAState;
        AllParallelNFAStates:TList;
+
+       ParallelNFASatisfyFlags:longword;
 
        OnePassNFAWorkSubMatches:TFLREOnePassNFASubMatches;
        OnePassNFAMatchSubMatches:TFLREOnePassNFASubMatches;
@@ -5263,6 +5266,7 @@ begin
  InputLength:=0;
 
  SearchLongest:=rfLONGEST in Instance.Flags;
+ ManyMatch:=false;
 
  ParallelNFAGeneration:=0;
 
@@ -5772,7 +5776,10 @@ begin
       continue;
      end;
      opZEROWIDTH:begin
-      if ((longword(Instruction^.Value) and sfEmptyAllFlags) and not GetSatisfyFlags(Position))=0 then begin
+      if ParallelNFASatisfyFlags=$ffffffff then begin
+       ParallelNFASatisfyFlags:=GetSatisfyFlags(Position);
+      end;
+      if ((longword(Instruction^.Value) and sfEmptyAllFlags) and not ParallelNFASatisfyFlags)=0 then begin
        Instruction:=Instruction^.Next;
        continue;
       end else begin
@@ -6287,6 +6294,8 @@ begin
 
  State:=ParallelNFAStateAllocate(Instance.CountSubMatches,0);
 
+ ParallelNFASatisfyFlags:=$ffffffff;
+
  inc(ParallelNFAGeneration);
  if UnanchoredStart then begin
   ParallelNFAAddThread(CurrentThreadList,Instance.UnanchoredStartInstruction,State,StartPosition);
@@ -6310,6 +6319,7 @@ begin
    CurrentChar:=-1;
   end;
   inc(ParallelNFAGeneration);
+  ParallelNFASatisfyFlags:=$ffffffff;
   for ThreadIndex:=0 to CurrentThreadList^.CountThreads-1 do begin
    CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
    Instruction:=CurrentThread^.Instruction;
