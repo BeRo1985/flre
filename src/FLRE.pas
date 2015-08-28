@@ -457,6 +457,8 @@ type EFLRE=class(Exception);
        property Values[const Key:ansistring]:TFLREStringIntegerPairHashMapData read GetValue write SetValue; default;
      end;
 
+     TFLREManySubMatches=array of longint;
+
      TFLREInstructionGenerations=array of int64;
 
      TFLREPrefilterNode=class;
@@ -533,7 +535,6 @@ type EFLRE=class(Exception);
        Jobs:TFLREBitStateNFAJobs;
        CountJobs:longint;
        MaxJob:longint;
-       ManySubMatches:TFLREOnePassNFASubMatches;
        WorkSubMatches:TFLREBitStateNFASubMatches;
        MatchSubMatches:TFLREBitStateNFASubMatches;
        constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
@@ -600,6 +601,8 @@ type EFLRE=class(Exception);
        ManyMatch:longbool;
 
        SearchLongest:longbool;
+
+       ManySubMatches:TFLREManySubMatches;
 
        ParallelNFA:TFLREParallelNFA;
 
@@ -5656,7 +5659,9 @@ begin
       continue;
      end;
      opMANY:begin
-      // TODO
+      if ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]<Position then begin
+       ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]:=Position;
+      end;
       Instruction:=Instruction^.Next;
       continue;
      end;
@@ -5731,6 +5736,10 @@ begin
 
  CurrentThreadList^.CountThreads:=0;
  NewThreadList^.CountThreads:=0;
+
+ for Index:=0 to Instance.CountManySubMatches-1 do begin
+  ThreadLocalStorageInstance.ManySubMatches[Index]:=-1;
+ end;
 
  State:=StateAllocate(Instance.CountSubMatches,0);
 
@@ -6022,11 +6031,9 @@ begin
  CountJobs:=0;
  MaxJob:=0;
 
- ManySubMatches:=nil;
  WorkSubMatches:=nil;
  MatchSubMatches:=nil;
 
- SetLength(ManySubMatches,Instance.CountManySubMatches);
  SetLength(WorkSubMatches,Instance.CountSubMatches);
  SetLength(MatchSubMatches,Instance.CountSubMatches);
 
@@ -6035,7 +6042,6 @@ end;
 destructor TFLREBitStateNFA.Destroy;
 begin
  SetLength(Jobs,0);
- SetLength(ManySubMatches,0);
  SetLength(WorkSubMatches,0);
  SetLength(MatchSubMatches,0);
  inherited Destroy;
@@ -6177,16 +6183,16 @@ var LocalInputLength,BasePosition,Len:longint;
      opMANY:begin
       case Argument of
        0:begin
-        Push(Instruction,ManySubMatches[Instruction^.Value],1);
-        ManySubMatches[Instruction^.Value]:=Position;
+        Push(Instruction,ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value],1);
+        ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]:=Position;
         Instruction:=Instruction^.Next;
         if ShouldVisit(Instruction,Position) then begin
          continue;
         end;
        end;
        1:begin
-        if ManySubMatches[Instruction^.Value]<Position then begin
-         ManySubMatches[Instruction^.Value]:=Position;
+        if ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]<Position then begin
+         ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]:=Position;
         end;
        end;
       end;
@@ -6262,7 +6268,7 @@ begin
  end;
 
  for Counter:=0 to Instance.CountManySubMatches-1 do begin
-  ManySubMatches[Counter]:=-1;
+  ThreadLocalStorageInstance.ManySubMatches[Counter]:=-1;
  end;
  
  if TrySearch(StartInstruction,Position) then begin
@@ -7055,6 +7061,9 @@ begin
 
  SearchLongest:=ManyMatch or (rfLONGEST in Instance.Flags);
 
+ ManySubMatches:=nil;
+ SetLength(ManySubMatches,Instance.CountManySubMatches);
+
  ParallelNFA:=TFLREParallelNFA.Create(self);
 
  if Instance.OnePassNFAReady then begin
@@ -7076,6 +7085,8 @@ end;
 
 destructor TFLREThreadLocalStorageInstance.Destroy;
 begin
+
+ SetLength(ManySubMatches,0);
 
  ParallelNFA.Free;
 
