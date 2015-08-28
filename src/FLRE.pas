@@ -558,30 +558,54 @@ type EFLRE=class(Exception);
        function SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
      end;
 
+     PFLREDFAByteMap=^TFLREDFAByteMap;
+     TFLREDFAByteMap=array[0..256] of longword;
+
      TFLREDFA=class
       public
+
        Instance:TFLRE;
+
        ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+
        MatchMode:TFLREMatchMode;
+
        Reversed:longbool;
+
        IsUnanchored:longbool;
+
+       DoFastDFA:longbool;
+
        Generation:int64;
+
        InstructionGenerations:TFLREInstructionGenerations;
+
        StackInstructions:TPFLREInstructions;
+
        StateCache:TFLREDFAStateHashMap;
-       LocalByteMap:array[0..256] of longword;
-       DefaultStates:array[0..3{dskFastReversed}] of PFLREDFAState;
+
+       ByteMap:TFLREDFAByteMap;
+
+       DefaultStates:array[0..4{dskFastReversed}] of PFLREDFAState;
+
        StartStates:array[0..4*3{sskMax}] of PFLREDFAState;
+
        TemporaryState:TFLREDFAState;
+
        NewState:TFLREDFAState;
+
        CountStatesCached:longint;
+
        NextStatesSize:TFLREPtrInt;
+
        StateSize:TFLREPtrInt;
        StatePoolUsed:PFLREDFAStatePool;
        StatePoolFree:PFLREDFAStatePool;
        StatePoolSize:TFLREPtrUInt;
        StatePoolSizePowerOfTwo:TFLREPtrUInt;
+
        WorkQueues:TFLREDFAWorkQueues;
+
        QueueInstructionArray:TPFLREInstructions;
        QueueStack:TPFLREInstructions;
 
@@ -607,10 +631,10 @@ type EFLRE=class(Exception);
        procedure AddToWorkQueue(const WorkQueue:TFLREDFAWorkQueue;Instruction:PFLREInstruction;Flags:longword);
        procedure ProcessWorkQueueOnZeroWidthString(const OldWorkQueue,NewWorkQueue:TFLREDFAWorkQueue;Flags:longword);
        procedure ProcessWorkQueueOnByte(const OldWorkQueue,NewWorkQueue:TFLREDFAWorkQueue;CurrentChar,Flags:longword;var IsMatch:boolean);
-       function RunStateOnByte(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
+       function RunStateOnByte(State:PFLREDFAState;const Position:longint;const CurrentChar:longword):PFLREDFAState;
+       function InitializeStartState(const StartPosition:longint;const UnanchoredStart:boolean):PFLREDFAState;
 
-       function SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-       function SearchMatchFullReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
+       function SearchMatch(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
 
      end;
 
@@ -859,15 +883,15 @@ const MaxDFAStates=4096;
       sfDFAMatchWins=$1000;
       sfDFALastWord=$2000;
       sfDFADead=$4000;
-      sfDFAStart=$8000;
+      sfDFAFullMatch=$8000;
       sfDFANeedShift=16;
-      sfDFAStartShifted=$80000000;
 
       // Default state kind
       dskDead=0;
-      dskFastUnanchored=1;
-      dskFastAnchored=2;
-      dskFastReversed=3;
+      dskFullMatch=1;
+      dskFastUnanchored=2;
+      dskFastAnchored=3;
+      dskFastReversed=4;
 
       // Start state kind
       sskUnanchored=0;
@@ -6668,6 +6692,8 @@ begin
 
  IsUnanchored:=false;
 
+ DoFastDFA:=Instance.DFAFast;
+
  StackInstructions:=nil;
  StateCache:=TFLREDFAStateHashMap.Create;
  NextStatesSize:=0;
@@ -6680,9 +6706,9 @@ begin
  FillChar(StartStates,SizeOf(StartStates),AnsiChar(#0));
 
  for Index:=0 to 255 do begin
-  LocalByteMap[Index]:=Instance.ByteMap[Index];
+  ByteMap[Index]:=Instance.ByteMap[Index];
  end;
- LocalByteMap[256]:=Instance.ByteMapCount;
+ ByteMap[256]:=Instance.ByteMapCount;
 
  begin
   CountStatesCached:=0;
@@ -6714,37 +6740,6 @@ begin
    InstructionGenerations[Index]:=-1;
   end;
 
-  if Instance.DFAFast then begin
-
-   inc(Generation);
-   GetMem(DFAState,StateSize);
-   FillChar(DFAState^,StateSize,AnsiChar(#0));
-   FastAddInstructionThread(DFAState,Instance.AnchoredStartInstruction);
-   DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
-   StateCache.Add(DFAState);
-   inc(CountStatesCached);
-   DefaultStates[dskFastAnchored]:=DFAState;
-
-   inc(Generation);
-   GetMem(DFAState,StateSize);
-   FillChar(DFAState^,StateSize,AnsiChar(#0));
-   FastAddInstructionThread(DFAState,Instance.UnanchoredStartInstruction);
-   DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
-   StateCache.Add(DFAState);
-   inc(CountStatesCached);
-   DefaultStates[dskFastUnanchored]:=DFAState;
-
-   inc(Generation);
-   GetMem(DFAState,StateSize);
-   FillChar(DFAState^,StateSize,AnsiChar(#0));
-   FastAddInstructionThread(DFAState,Instance.ReversedStartInstruction);
-   DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
-   StateCache.Add(DFAState);
-   inc(CountStatesCached);
-   DefaultStates[dskFastReversed]:=DFAState;
-
-  end;
-
   inc(Generation);
   GetMem(DFAState,StateSize);
   FillChar(DFAState^,StateSize,AnsiChar(#0));
@@ -6754,12 +6749,49 @@ begin
   inc(CountStatesCached);
   DefaultStates[dskDead]:=DFAState;
 
+  inc(Generation);
+  GetMem(DFAState,StateSize);
+  FillChar(DFAState^,StateSize,AnsiChar(#0));
+  FastAddInstructionThread(DFAState,Instance.AnchoredStartInstruction);
+  DFAState^.Flags:=DFAState^.Flags or sfDFAFullMatch;
+  StateCache.Add(DFAState);
+  inc(CountStatesCached);
+  DefaultStates[dskFullMatch]:=DFAState;
+
+  if DoFastDFA then begin
+
+   inc(Generation);
+   GetMem(DFAState,StateSize);
+   FillChar(DFAState^,StateSize,AnsiChar(#0));
+   FastAddInstructionThread(DFAState,Instance.AnchoredStartInstruction);
+   StateCache.Add(DFAState);
+   inc(CountStatesCached);
+   DefaultStates[dskFastAnchored]:=DFAState;
+
+   inc(Generation);
+   GetMem(DFAState,StateSize);
+   FillChar(DFAState^,StateSize,AnsiChar(#0));
+   FastAddInstructionThread(DFAState,Instance.UnanchoredStartInstruction);
+   StateCache.Add(DFAState);
+   inc(CountStatesCached);
+   DefaultStates[dskFastUnanchored]:=DFAState;
+
+   inc(Generation);
+   GetMem(DFAState,StateSize);
+   FillChar(DFAState^,StateSize,AnsiChar(#0));
+   FastAddInstructionThread(DFAState,Instance.ReversedStartInstruction);
+   StateCache.Add(DFAState);
+   inc(CountStatesCached);
+   DefaultStates[dskFastReversed]:=DFAState;
+
+  end;
+
  end;
 
  QueueInstructionArray:=nil;
  QueueStack:=nil;
 
- if Instance.DFAFast then begin
+ if DoFastDFA then begin
   WorkQueues[0]:=nil;
   WorkQueues[1]:=nil;
  end else begin
@@ -6991,7 +7023,7 @@ begin
  // Process state instructions
  inc(Generation);
  NewState.CountInstructions:=0;
- NewState.Flags:=(State^.Flags and sfDFAStart) shl sfDFANeedShift;
+ NewState.Flags:=0;
  for Counter:=0 To State^.CountInstructions-1 do begin
   Instruction:=State^.Instructions[Counter];
   case Instruction^.IDandOpcode and $ff of
@@ -7320,7 +7352,7 @@ begin
  end;
 end;
 
-function TFLREDFA.RunStateOnByte(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
+function TFLREDFA.RunStateOnByte(State:PFLREDFAState;const Position:longint;const CurrentChar:longword):PFLREDFAState;
 var Counter:longint;
     Instruction:PFLREInstruction;
     NeedFlags,BeforeFlags,OldBeforeFlags,AfterFlags,Flags,UnicodeChar:longword;
@@ -7329,7 +7361,15 @@ var Counter:longint;
     Queues:array[0..2] of TFLREDFAWorkQueue;
 begin
 
- if State=DefaultStates[dskDead] then begin
+ if assigned(State) then begin
+  if (State^.Flags and sfDFADead)<>0 then begin
+   result:=nil;
+   exit;
+  end else if (State^.Flags and sfDFAFullMatch)<>0 then begin
+   result:=DefaultStates[dskFullMatch];
+   exit;
+  end;
+ end else begin
   result:=nil;
   exit;
  end;
@@ -7410,127 +7450,22 @@ begin
 
  // Connect the last state to the new state with the current char
  State.NextStates[Instance.ByteMap[CurrentChar]]:=result;
- 
+
 end;
 
-function TFLREDFA.SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-var Position,Start,PreviousPosition,LocalInputLength:longint;
-    State,LastState:PFLREDFAState;
-    StartState:PPFLREDFAState;
-    StartInstruction:PFLREInstruction;
+function TFLREDFA.InitializeStartState(const StartPosition:longint;const UnanchoredStart:boolean):PFLREDFAState;
+var LocalInputLength,Start,PreviousPosition,NextPosition:longint;
+    CurrentChar,PreviousChar,NextChar,Flags:longword;
     LocalInput:pansichar;
-    Flags,PreviousChar,CurrentChar:longword;
+    StartInstruction:PFLREInstruction;
+    StartState:PPFLREDFAState;
 begin
- result:=DFAFail;
 
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalInputLength:=ThreadLocalStorageInstance.InputLength;
 
- begin
-  if (StartPosition>=0) and (StartPosition<ThreadLocalStorageInstance.InputLength) then begin
-   if rfUTF8 in Instance.Flags then begin
-    CurrentChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,StartPosition);
-   end else begin
-    CurrentChar:=byte(ansichar(LocalInput[StartPosition]));
-   end;
-  end else begin
-   CurrentChar:=$ffffffff;
-  end;
-  if StartPosition<=0 then begin
-   Start:=sskBeginText;
-   Flags:=sfEmptyBeginText or sfEmptyBeginLine;
-  end else begin
-   if rfUTF8 in Instance.Flags then begin
-    PreviousPosition:=StartPosition;
-    UTF8PtrDec(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
-    if (PreviousPosition>=0) and (PreviousPosition<ThreadLocalStorageInstance.InputLength) then begin
-     PreviousChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
-    end else begin
-     PreviousChar:=$ffffffff;
-    end;
-   end else begin
-    PreviousChar:=byte(ansichar(LocalInput[StartPosition-1]));
-   end;
-   case PreviousChar of
-    $0a,$0d,$85,$2028,$2029:begin
-     Start:=sskBeginLine;
-     Flags:=sfEmptyBeginLine;
-    end;
-    else begin
-     if Instance.IsWordChar(PreviousChar) then begin
-      Start:=sskAfterWordChar;
-      Flags:=sfDFALastWord;
-     end else begin
-      Start:=sskAfterNonWordChar;
-      Flags:=0;
-     end;
-    end;
-   end;
-  end;
- end;
+ if Reversed then begin
 
- if UnanchoredStart then begin
-  StartInstruction:=Instance.UnanchoredStartInstruction;
-  inc(Start,sskUnanchored);
- end else begin
-  StartInstruction:=Instance.AnchoredStartInstruction;
-  inc(Start,sskAnchored);
- end;
-
- StartState:=@StartStates[Start];
- if assigned(StartState^) then begin
-  State:=StartState^;
- end else begin
-  WorkQueues[0].Clear;
-  AddToWorkQueue(WorkQueues[0],StartInstruction,Flags);
-  State:=WorkQueueToCachedState(WorkQueues[0],Flags);
-  StartState^:=State;
- end;
-
- for Position:=StartPosition to UntilExcludingPosition{-1} do begin // No -1 because match can be delayed of one byte
-  LastState:=State;
-  if Position<LocalInputLength then begin
-   CurrentChar:=byte(ansichar(LocalInput[Position]));
-  end else begin
-   CurrentChar:=256;
-  end;
-  State:=State^.NextStates[LocalByteMap[CurrentChar]];
-  if not assigned(State) then begin
-   State:=RunStateOnByte(LastState,Position,CurrentChar,false);
-   if not assigned(State) then begin
-    result:=DFAError;
-    exit;
-   end;
-  end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
-   if (State^.Flags and sfDFADead)<>0 then begin
-    if result<>DFAMatch then begin
-     result:=DFAFail;
-    end;
-    exit;
-   end;
-   if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchEnd:=Position-1;
-    result:=DFAMatch;
-   end;
-  end;
- end;
-
-end;
-
-function TFLREDFA.SearchMatchFullReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-var Position,Start,NextPosition,LocalInputLength:longint;
-    State,LastState:PFLREDFAState;
-    StartState:PPFLREDFAState;
-    StartInstruction:PFLREInstruction;
-    LocalInput:pansichar;
-    Flags,NextChar,CurrentChar:longword;
-begin
- result:=DFAFail;
- LocalInput:=ThreadLocalStorageInstance.Input;
- LocalInputLength:=ThreadLocalStorageInstance.InputLength;
-
- begin
   if StartPosition=(ThreadLocalStorageInstance.InputLength-1) then begin
    Start:=sskBeginText;
    Flags:=sfEmptyBeginText or sfEmptyBeginLine;
@@ -7562,50 +7497,241 @@ begin
     end;
    end;
   end;
- end;
 
- StartInstruction:=Instance.ReversedStartInstruction;
- inc(Start,sskReversed);
+  StartInstruction:=Instance.ReversedStartInstruction;
+  inc(Start,sskReversed);
+
+ end else begin
+
+  if (StartPosition>=0) and (StartPosition<ThreadLocalStorageInstance.InputLength) then begin
+   if rfUTF8 in Instance.Flags then begin
+    CurrentChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,StartPosition);
+   end else begin
+    CurrentChar:=byte(ansichar(LocalInput[StartPosition]));
+   end;
+  end else begin
+   CurrentChar:=$ffffffff;
+  end;
+
+  if StartPosition<=0 then begin
+   Start:=sskBeginText;
+   Flags:=sfEmptyBeginText or sfEmptyBeginLine;
+  end else begin
+   if rfUTF8 in Instance.Flags then begin
+    PreviousPosition:=StartPosition;
+    UTF8PtrDec(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
+    if (PreviousPosition>=0) and (PreviousPosition<ThreadLocalStorageInstance.InputLength) then begin
+     PreviousChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
+    end else begin
+     PreviousChar:=$ffffffff;
+    end;
+   end else begin
+    PreviousChar:=byte(ansichar(LocalInput[StartPosition-1]));
+   end;
+   case PreviousChar of
+    $0a,$0d,$85,$2028,$2029:begin
+     Start:=sskBeginLine;
+     Flags:=sfEmptyBeginLine;
+    end;
+    else begin
+     if Instance.IsWordChar(PreviousChar) then begin
+      Start:=sskAfterWordChar;
+      Flags:=sfDFALastWord;
+     end else begin
+      Start:=sskAfterNonWordChar;
+      Flags:=0;
+     end;
+    end;
+   end;
+  end;
+
+  if UnanchoredStart then begin
+   StartInstruction:=Instance.UnanchoredStartInstruction;
+   inc(Start,sskUnanchored);
+  end else begin
+   StartInstruction:=Instance.AnchoredStartInstruction;
+   inc(Start,sskAnchored);
+  end;
+
+ end;
 
  StartState:=@StartStates[Start];
  if assigned(StartState^) then begin
-  State:=StartState^;
+  result:=StartState^;
  end else begin
   WorkQueues[0].Clear;
   AddToWorkQueue(WorkQueues[0],StartInstruction,Flags);
-  State:=WorkQueueToCachedState(WorkQueues[0],Flags);
-  StartState^:=State;
+  result:=WorkQueueToCachedState(WorkQueues[0],Flags);
+  StartState^:=result;
  end;
 
- for Position:=StartPosition downto UntilIncludingPosition-1 do begin //-1 because match can be delayed of one byte
-  LastState:=State;
-  if Position>=0 then begin
-   CurrentChar:=byte(ansichar(LocalInput[Position]));
+end;
+
+function TFLREDFA.SearchMatch(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+var Position,LocalInputLength,Direction:longint;
+    State,LastState:PFLREDFAState;
+    LocalInput:pansichar;
+    Flags,CurrentChar:longword;
+    LocalByteMap:PFLREDFAByteMap;
+begin
+
+ if DoFastDFA then begin
+
+  if Reversed then begin
+   result:=SearchMatchFastReversed(StartPosition,UntilExcludingPosition,MatchEnd);
   end else begin
-   CurrentChar:=256;
+   result:=SearchMatchFast(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart);
   end;
-  State:=State^.NextStates[LocalByteMap[CurrentChar]];
-  if not assigned(State) then begin
-   State:=RunStateOnByte(LastState,Position,CurrentChar,true);
-   if not assigned(State) then begin
-    result:=DFAError;
-    exit;
-   end;
-  end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
-   if (State^.Flags and sfDFADead)<>0 then begin
-    if result<>DFAMatch then begin
-     result:=DFAFail;
+
+ end else begin
+
+  result:=DFAFail;
+
+  State:=InitializeStartState(StartPosition,UnanchoredStart);
+
+  LocalInput:=ThreadLocalStorageInstance.Input;
+  LocalInputLength:=ThreadLocalStorageInstance.InputLength;
+
+  LocalByteMap:=@ByteMap;
+
+  if Reversed then begin
+
+   for Position:=StartPosition downto UntilExcludingPosition do begin
+    CurrentChar:=byte(ansichar(LocalInput[Position]));
+    LastState:=State;
+    State:=State^.NextStates[LocalByteMap^[CurrentChar]];
+    if not assigned(State) then begin
+     State:=RunStateOnByte(LastState,Position,CurrentChar);
+     if not assigned(State) then begin
+      result:=DFAError;
+      exit;
+     end;
     end;
-    exit;
+    if (State^.Flags and (sfDFAMatchWins or sfDFADead or sfDFAFullMatch))<>0 then begin
+     if (State^.Flags and sfDFADead)<>0 then begin
+      if result<>DFAMatch then begin
+       result:=DFAFail;
+      end;
+      exit;
+     end;
+     if (State^.Flags and sfDFAFullMatch)<>0 then begin
+      MatchEnd:=UntilExcludingPosition-1;
+      result:=DFAMatch;
+      exit;
+     end;
+     if (State^.Flags and sfDFAMatchWins)<>0 then begin
+      MatchEnd:=Position+1;
+      result:=DFAMatch;
+     end;
+    end;
    end;
-   if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchBegin:=Position+1;
-    result:=DFAMatch;
+
+   Position:=UntilExcludingPosition-1;
+
+   if (Position>=0) and (Position<LocalInputLength) then begin
+    CurrentChar:=byte(ansichar(LocalInput[Position]));
+   end else begin
+    CurrentChar:=256;
    end;
+
+   LastState:=State;
+   State:=State^.NextStates[LocalByteMap^[CurrentChar]];
+   if not assigned(State) then begin
+    State:=RunStateOnByte(LastState,Position,CurrentChar);
+    if not assigned(State) then begin
+     result:=DFAError;
+     exit;
+    end;
+   end;
+   if (State^.Flags and (sfDFAMatchWins or sfDFADead or sfDFAFullMatch))<>0 then begin
+    if (State^.Flags and sfDFADead)<>0 then begin
+     if result<>DFAMatch then begin
+      result:=DFAFail;
+     end;
+     exit;
+    end;
+    if (State^.Flags and sfDFAFullMatch)<>0 then begin
+     MatchEnd:=UntilExcludingPosition;
+     result:=DFAMatch;
+     exit;
+    end;
+    if (State^.Flags and sfDFAMatchWins)<>0 then begin
+     MatchEnd:=Position+1;
+     result:=DFAMatch;
+    end;
+   end;
+
+  end else begin
+
+   for Position:=StartPosition to UntilExcludingPosition-1 do begin
+    CurrentChar:=byte(ansichar(LocalInput[Position]));
+    LastState:=State;
+    State:=State^.NextStates[LocalByteMap^[CurrentChar]];
+    if not assigned(State) then begin
+     State:=RunStateOnByte(LastState,Position,CurrentChar);
+     if not assigned(State) then begin
+      result:=DFAError;
+      exit;
+     end;
+    end;
+    if (State^.Flags and (sfDFAMatchWins or sfDFADead or sfDFAFullMatch))<>0 then begin
+     if (State^.Flags and sfDFADead)<>0 then begin
+      if result<>DFAMatch then begin
+       result:=DFAFail;
+      end;
+      exit;
+     end;
+     if (State^.Flags and sfDFAFullMatch)<>0 then begin
+      MatchEnd:=UntilExcludingPosition-1;
+      result:=DFAMatch;
+      exit;
+     end;
+     if (State^.Flags and sfDFAMatchWins)<>0 then begin
+      MatchEnd:=Position-1;
+      result:=DFAMatch;
+     end;
+    end;
+   end;
+
+   Position:=UntilExcludingPosition;
+
+   if (Position>=0) and (Position<LocalInputLength) then begin
+    CurrentChar:=byte(ansichar(LocalInput[Position]));
+   end else begin
+    CurrentChar:=256;
+   end;
+
+   LastState:=State;
+   State:=State^.NextStates[LocalByteMap^[CurrentChar]];
+   if not assigned(State) then begin
+    State:=RunStateOnByte(LastState,Position,CurrentChar);
+    if not assigned(State) then begin
+     result:=DFAError;
+     exit;
+    end;
+   end;
+   if (State^.Flags and (sfDFAMatchWins or sfDFADead or sfDFAFullMatch))<>0 then begin
+    if (State^.Flags and sfDFADead)<>0 then begin
+     if result<>DFAMatch then begin
+      result:=DFAFail;
+     end;
+     exit;
+    end;
+    if (State^.Flags and sfDFAFullMatch)<>0 then begin
+     MatchEnd:=UntilExcludingPosition-1;
+     result:=DFAMatch;
+     exit;
+    end;
+    if (State^.Flags and sfDFAMatchWins)<>0 then begin
+     MatchEnd:=Position-1;
+     result:=DFAMatch;
+    end;
+   end;
+
   end;
+
  end;
- 
+
 end;
 
 constructor TFLREThreadLocalStorageInstance.Create(AInstance:TFLRE);
@@ -12607,108 +12733,55 @@ var MatchBegin,MatchEnd:longint;
 begin
  result:=false;
 (**)
- if DFAFast then begin
-  case ThreadLocalStorageInstance.DFA.SearchMatchFast(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
-   DFAMatch:begin
-    if UnanchoredStart then begin
-     // For unanchored searchs, we must do also a "backward" DFA search
-     case ThreadLocalStorageInstance.ReversedDFA.SearchMatchFastReversed(MatchEnd,StartPosition,MatchBegin) of
-      DFAMatch:begin
-       if MatchBegin<StartPosition then begin
-        MatchBegin:=StartPosition;
-       end;
-       if (CountCaptures=1) and not DFANeedVerification then begin
-        // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-        SetLength(Captures,1);
-        Captures[0].Start:=MatchBegin;
-        Captures[0].Length:=(MatchEnd-MatchBegin)+1;
-        result:=true;
-        exit;
-       end else begin
-        // Otherwise if we have group captures or if we do need verify the found, set the new stat position *NFA algorithms
-        StartPosition:=MatchBegin;
-        UnanchoredStart:=true;
-       end;
+ ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
+ case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
+  DFAMatch:begin
+   if true or UnanchoredStart then begin
+    // For unanchored searchs, we must do also a "backward" DFA search
+    case ThreadLocalStorageInstance.ReversedDFA.SearchMatch(MatchEnd,StartPosition,MatchBegin,false) of
+     DFAMatch:begin
+      if MatchBegin<StartPosition then begin
+       MatchBegin:=StartPosition;
+      end;
+      if (CountCaptures=1) and not DFANeedVerification then begin
+       // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
+       SetLength(Captures,1);
+       Captures[0].Start:=MatchBegin;
+       Captures[0].Length:=(MatchEnd-MatchBegin)+1;
+       result:=true;
+       exit;
+      end else begin
+       // Otherwise if we have group captures or if we do need verify the found, set the new stat position *NFA algorithms
+       StartPosition:=MatchBegin;
+       UnanchoredStart:=true;
       end;
      end;
     end;
-    if (CountCaptures=1) and not (DFANeedVerification or UnanchoredStart) then begin
-     // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-     SetLength(Captures,1);
-     Captures[0].Start:=StartPosition;
-     Captures[0].Length:=(MatchEnd-StartPosition)+1;
-     result:=true;
-     exit;
-    end else begin
-     // Otherwise if we have group captures or if we do need verify the found, limit search length for the slower *NFA algorithms
-     if UntilExcludingPosition>(MatchEnd+1) then begin
-      UntilExcludingPosition:=MatchEnd+1;
-     end;
-    end;
    end;
-   DFAFail:begin
-    // No DFA match => stop
-    result:=false;
+   if (CountCaptures=1) and not (DFANeedVerification or UnanchoredStart) then begin
+    // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
+    SetLength(Captures,1);
+    Captures[0].Start:=StartPosition;
+    Captures[0].Length:=(MatchEnd-StartPosition)+1;
+    result:=true;
     exit;
-   end;
-   else {DFAError:}begin
-    // Internal error?
- {$ifdef debug}
-    Assert(false,'Internal error in DFA code');
- {$endif}
+   end else begin
+    // Otherwise if we have group captures or if we do need verify the found, limit search length for the slower *NFA algorithms
+    if UntilExcludingPosition>(MatchEnd+1) then begin
+     UntilExcludingPosition:=MatchEnd+1;
+    end;
    end;
   end;
- end else begin
-  ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
-  case ThreadLocalStorageInstance.DFA.SearchMatchFull(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
-   DFAMatch:begin
-    if true or UnanchoredStart then begin
-     // For unanchored searchs, we must do also a "backward" DFA search
-     case ThreadLocalStorageInstance.ReversedDFA.SearchMatchFullReversed(MatchEnd,StartPosition,MatchBegin) of
-      DFAMatch:begin
-       if MatchBegin<StartPosition then begin
-        MatchBegin:=StartPosition;
-       end;
-       if (CountCaptures=1) and not DFANeedVerification then begin
-        // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-        SetLength(Captures,1);
-        Captures[0].Start:=MatchBegin;
-        Captures[0].Length:=(MatchEnd-MatchBegin)+1;
-        result:=true;
-        exit;
-       end else begin
-        // Otherwise if we have group captures or if we do need verify the found, set the new stat position *NFA algorithms
-        StartPosition:=MatchBegin;
-        UnanchoredStart:=true;
-       end;
-      end;
-     end;
-    end;
-    if (CountCaptures=1) and not (DFANeedVerification or UnanchoredStart) then begin
-     // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-     SetLength(Captures,1);
-     Captures[0].Start:=StartPosition;
-     Captures[0].Length:=(MatchEnd-StartPosition)+1;
-     result:=true;
-     exit;
-    end else begin
-     // Otherwise if we have group captures or if we do need verify the found, limit search length for the slower *NFA algorithms
-     if UntilExcludingPosition>(MatchEnd+1) then begin
-      UntilExcludingPosition:=MatchEnd+1;
-     end;
-    end;
-   end;
-   DFAFail:begin
-    // No DFA match => stop
-    result:=false;
-    exit;
-   end;
-   else {DFAError:}begin
-    // Internal error?
- {$ifdef debug}
-    Assert(false,'Internal error in DFA code');
- {$endif}
-   end;
+  DFAFail:begin
+   // No DFA match => stop
+   result:=false;
+   exit;
+  end;
+  else {DFAError:}begin
+   // Internal error?
+{$ifdef debug}
+   Assert(false,'Internal error in DFA code');
+{$endif}
   end;
  end;(**)
  if false and OnePassNFAReady and not UnanchoredStart then begin
