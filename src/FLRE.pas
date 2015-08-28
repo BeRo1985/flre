@@ -761,7 +761,7 @@ procedure InitializeFLRE;
 
 implementation
 
-const MaxDFAStates=16384;
+const MaxDFAStates=4096;
 
       MaxGeneration=int64($4000000000000000);
 
