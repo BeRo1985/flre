@@ -561,6 +561,7 @@ type EFLRE=class(Exception);
        ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
        MatchMode:TFLREMatchMode;
        Reversed:longbool;
+       IsUnanchored:longbool;
        Generation:int64;
        InstructionGenerations:TFLREInstructionGenerations;
        StackInstructions:TPFLREInstructions;
@@ -577,6 +578,7 @@ type EFLRE=class(Exception);
        StatePoolSizePowerOfTwo:TFLREPtrUInt;
        WorkQueues:TFLREDFAWorkQueues;
        QueueInstructionArray:TFLREIndirectInstructions;
+       QueueStack:TFLREIndirectInstructions;
 
        constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean);
        destructor Destroy; override;
@@ -597,6 +599,7 @@ type EFLRE=class(Exception);
 
        function WorkQueueToCachedState(const WorkQueue:TFLREDFAWorkQueue;Flags:longword):PFLREDFAState;
        procedure StateToWorkQueue(const DFAState:PFLREDFAState;const WorkQueue:TFLREDFAWorkQueue);
+       procedure AddToWorkQueue(const WorkQueue:TFLREDFAWorkQueue;ID:longint;Flags:longword);
 
        procedure FullAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction;const Flags:longword);
        function FullProcessNextState(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
@@ -6347,6 +6350,8 @@ begin
 
  Reversed:=AReversed;
 
+ IsUnanchored:=false;
+
  StackInstructions:=nil;
  StateCache:=TFLREDFAStateHashMap.Create;
  NextStatesSize:=0;
@@ -6440,12 +6445,16 @@ begin
  QueueInstructionArray:=nil;
  SetLength(QueueInstructionArray,WorkQueues[0].Size);
 
+ QueueStack:=nil;
+ SetLength(QueueStack,WorkQueues[0].Size);
+
 end;
 
 destructor TFLREDFA.Destroy;
 var Index:longint;
 begin
  SetLength(QueueInstructionArray,0);
+ SetLength(QueueStack,0);
  DestroyStatePool(StatePoolUsed);
  DestroyStatePool(StatePoolFree);
  StatePoolUsed:=nil;
@@ -7117,6 +7126,54 @@ begin
    WorkQueue.Mark;
   end else begin
    WorkQueue.AddNew(DFAState^.IndirectInstructions[Index]);
+  end;
+ end;
+end;
+
+procedure TFLREDFA.AddToWorkQueue(const WorkQueue:TFLREDFAWorkQueue;ID:longint;Flags:longword);
+var StackPointer:longint;
+    Instruction:PFLREInstruction;
+begin
+ QueueStack[0]:=ID;
+ StackPointer:=1;
+ while StackPointer>0 do begin
+  dec(StackPointer);
+  ID:=QueueStack[StackPointer];
+  if ID=Mark then begin
+   WorkQueue.Mark;
+  end else if (ID<>0) and not WorkQueue.Contains(ID) then begin
+   WorkQueue.AddNew(ID);
+   if Reversed then begin
+    Instruction:=@Instance.BackwardInstructions[ID];
+   end else begin
+    Instruction:=@Instance.ForwardInstructions[ID];
+   end;
+   case Instruction^.IDandOpcode and $ff of
+    opSINGLECHAR,opCHAR,opANY,opMATCH:begin
+     // Just save onto the queue
+    end;
+    opJMP,opSAVE,opMULTIMATCH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+     // No-ops at DFA
+     QueueStack[StackPointer]:=Instruction^.Next^.IDandOpcode shr 8;
+     inc(StackPointer);
+    end;
+    opSPLIT,opSPLITMATCH:begin
+     QueueStack[StackPointer]:=Instruction^.OtherNext^.IDandOpcode shr 8;
+     inc(StackPointer);
+     if (WorkQueue.QueueMaxMark>0) and IsUnanchored and (ID<>0) then begin
+      QueueStack[StackPointer]:=Mark;
+      inc(StackPointer);
+     end;
+     QueueStack[StackPointer]:=Instruction^.Next^.IDandOpcode shr 8;
+     inc(StackPointer);
+    end;
+    opZEROWIDTH:begin
+     if (longword(Instruction^.Value) and not Flags)=0 then begin
+      QueueStack[StackPointer]:=Instruction^.Next^.IDandOpcode shr 8;
+      inc(StackPointer);
+     end;
+    end;
+   end;
   end;
  end;
 end;
@@ -12492,6 +12549,7 @@ begin
    end;
   end;
  end else begin
+  ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
   case ThreadLocalStorageInstance.DFA.SearchMatchFull(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
    DFAMatch:begin
     if UnanchoredStart then begin
