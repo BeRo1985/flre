@@ -1086,6 +1086,313 @@ begin
  end;
 end;
 
+function CompareInstruction(const a,b:pointer):longint;
+begin
+ if assigned(a) and assigned(b) then begin
+  result:=longint(PFLREInstruction(a)^.IDandOpcode shr 8)-longint(PFLREInstruction(b)^.IDandOpcode shr 8);
+ end else if assigned(a) then begin
+  result:=1;
+ end else if assigned(b) then begin
+  result:=-1;
+ end else begin
+  result:=0;
+ end;
+end;
+
+type TSortCompareFunction=function(const a,b:pointer):longint;
+
+function IntLog2(x:longword):longword; {$ifdef cpu386}assembler; register;
+asm
+ test eax,eax
+ jz @Done
+ bsr eax,eax
+ @Done:
+end;
+{$else}
+begin
+ x:=x or (x shr 1);
+ x:=x or (x shr 2);
+ x:=x or (x shr 4);
+ x:=x or (x shr 8);
+ x:=x or (x shr 16);
+ x:=x shr 1;
+ x:=x-((x shr 1) and $55555555);
+ x:=((x shr 2) and $33333333)+(x and $33333333);
+ x:=((x shr 4)+x) and $0f0f0f0f;
+ x:=x+(x shr 8);
+ x:=x+(x shr 16);
+ result:=x and $3f;
+end;
+{$endif}
+
+procedure DirectIntroSort(Items:pointer;Left,Right,ElementSize:longint;CompareFunc:TSortCompareFunction);
+type PByteArray=^TByteArray;
+     TByteArray=array[0..$3fffffff] of byte;
+     PStackItem=^TStackItem;
+     TStackItem=record
+      Left,Right,Depth:longint;
+     end;
+var Depth,i,j,Middle,Size,Parent,Child:longint;
+    Pivot,Temp:pointer;
+    StackItem:PStackItem;
+    Stack:array[0..31] of TStackItem;
+begin
+ if Left<Right then begin
+  GetMem(Temp,ElementSize);
+  GetMem(Pivot,ElementSize);
+  try
+   StackItem:=@Stack[0];
+   StackItem^.Left:=Left;
+   StackItem^.Right:=Right;
+   StackItem^.Depth:=IntLog2((Right-Left)+1) shl 1;
+   inc(StackItem);
+   while ptruint(pointer(StackItem))>ptruint(pointer(@Stack[0])) do begin
+    dec(StackItem);
+    Left:=StackItem^.Left;
+    Right:=StackItem^.Right;
+    Depth:=StackItem^.Depth;
+    if (Right-Left)<16 then begin
+     // Insertion sort
+     for i:=Left+1 to Right do begin
+      j:=i-1;
+      if (j>=Left) and (CompareFunc(pointer(@PByteArray(Items)^[j*ElementSize]),pointer(@PByteArray(Items)^[i*ElementSize]))>0) then begin
+       Move(PByteArray(Items)^[i*ElementSize],Temp^,ElementSize);
+       repeat
+        Move(PByteArray(Items)^[j*ElementSize],PByteArray(Items)^[(j+1)*ElementSize],ElementSize);
+        dec(j);
+       until not ((j>=Left) and (CompareFunc(pointer(@PByteArray(Items)^[j*ElementSize]),Temp)>0));
+       Move(Temp^,PByteArray(Items)^[(j+1)*ElementSize],ElementSize);
+      end;
+     end;
+    end else begin
+     if (Depth=0) or (ptruint(pointer(StackItem))>=ptruint(pointer(@Stack[high(Stack)-1]))) then begin
+      // Heap sort
+      Size:=(Right-Left)+1;
+      i:=Size div 2;
+      repeat
+       if i>Left then begin
+        dec(i);
+        Move(PByteArray(Items)^[(Left+i)*ElementSize],Temp^,ElementSize);
+       end else begin
+        if Size=0 then begin
+         break;
+        end else begin
+         dec(Size);
+         Move(PByteArray(Items)^[(Left+Size)*ElementSize],Temp^,ElementSize);
+         Move(PByteArray(Items)^[Left*ElementSize],PByteArray(Items)^[(Left+Size)*ElementSize],ElementSize);
+        end;
+       end;
+       Parent:=i;
+       Child:=(i*2)+1;
+       while Child<Size do begin
+        if ((Child+1)<Size) and (CompareFunc(pointer(@PByteArray(Items)^[((Left+Child)+1)*ElementSize]),pointer(@PByteArray(Items)^[(Left+Child)*ElementSize]))>0) then begin
+         inc(Child);
+        end;
+        if CompareFunc(pointer(@PByteArray(Items)^[(Left+Child)*ElementSize]),Temp)>0 then begin
+         Move(PByteArray(Items)^[(Left+Child)*ElementSize],PByteArray(Items)^[(Left+Parent)*ElementSize],ElementSize);
+         Parent:=Child;
+         Child:=(Parent*2)+1;
+        end else begin
+         break;
+        end;
+       end;
+       Move(Temp^,PByteArray(Items)^[(Left+Parent)*ElementSize],ElementSize);
+      until false;
+     end else begin
+      // Quick sort width median-of-three optimization
+      Middle:=Left+((Right-Left) shr 1);
+      if (Right-Left)>3 then begin
+       if CompareFunc(pointer(@PByteArray(Items)^[Left*ElementSize]),pointer(@PByteArray(Items)^[Middle*ElementSize]))>0 then begin
+        Move(PByteArray(Items)^[Left*ElementSize],Temp^,ElementSize);
+        Move(PByteArray(Items)^[Middle*ElementSize],PByteArray(Items)^[Left*ElementSize],ElementSize);
+        Move(Temp^,PByteArray(Items)^[Middle*ElementSize],ElementSize);
+       end;
+       if CompareFunc(pointer(@PByteArray(Items)^[Left*ElementSize]),pointer(@PByteArray(Items)^[Right*ElementSize]))>0 then begin
+        Move(PByteArray(Items)^[Left*ElementSize],Temp^,ElementSize);
+        Move(PByteArray(Items)^[Right*ElementSize],PByteArray(Items)^[Left*ElementSize],ElementSize);
+        Move(Temp^,PByteArray(Items)^[Right*ElementSize],ElementSize);
+       end;
+       if CompareFunc(pointer(@PByteArray(Items)^[Middle*ElementSize]),pointer(@PByteArray(Items)^[Right*ElementSize]))>0 then begin
+        Move(PByteArray(Items)^[Middle*ElementSize],Temp^,ElementSize);
+        Move(PByteArray(Items)^[Right*ElementSize],PByteArray(Items)^[Middle*ElementSize],ElementSize);
+        Move(Temp^,PByteArray(Items)^[Right*ElementSize],ElementSize);
+       end;
+      end;
+      Move(PByteArray(Items)^[Middle*ElementSize],Pivot^,ElementSize);
+      i:=Left;
+      j:=Right;
+      repeat
+       while (i<Right) and (CompareFunc(pointer(@PByteArray(Items)^[i*ElementSize]),Pivot)<0) do begin
+        inc(i);
+       end;
+       while (j>=i) and (CompareFunc(pointer(@PByteArray(Items)^[j*ElementSize]),Pivot)>0) do begin
+        dec(j);
+       end;
+       if i>j then begin
+        break;
+       end else begin
+        if i<>j then begin
+         Move(PByteArray(Items)^[i*ElementSize],Temp^,ElementSize);
+         Move(PByteArray(Items)^[j*ElementSize],PByteArray(Items)^[i*ElementSize],ElementSize);
+         Move(Temp^,PByteArray(Items)^[j*ElementSize],ElementSize);
+        end;
+        inc(i);
+        dec(j);
+       end;
+      until false;
+      if i<Right then begin
+       StackItem^.Left:=i;
+       StackItem^.Right:=Right;
+       StackItem^.Depth:=Depth-1;
+       inc(StackItem);
+      end;
+      if Left<j then begin
+       StackItem^.Left:=Left;
+       StackItem^.Right:=j;
+       StackItem^.Depth:=Depth-1;
+       inc(StackItem);
+      end;
+     end;
+    end;
+   end;
+  finally
+   FreeMem(Pivot);
+   FreeMem(Temp);
+  end;
+ end;
+end;
+
+procedure IndirectIntroSort(Items:pointer;Left,Right:longint;CompareFunc:TSortCompareFunction);
+type PPointers=^TPointers;
+     TPointers=array[0..$ffff] of pointer;
+     PStackItem=^TStackItem;
+     TStackItem=record
+      Left,Right,Depth:longint;
+     end;
+var Depth,i,j,Middle,Size,Parent,Child:longint;
+    Pivot,Temp:pointer;
+    StackItem:PStackItem;
+    Stack:array[0..31] of TStackItem;
+begin
+ if Left<Right then begin
+  StackItem:=@Stack[0];
+  StackItem^.Left:=Left;
+  StackItem^.Right:=Right;
+  StackItem^.Depth:=IntLog2((Right-Left)+1) shl 1;
+  inc(StackItem);
+  while ptruint(pointer(StackItem))>ptruint(pointer(@Stack[0])) do begin
+   dec(StackItem);
+   Left:=StackItem^.Left;
+   Right:=StackItem^.Right;
+   Depth:=StackItem^.Depth;
+   if (Right-Left)<16 then begin
+    // Insertion sort
+    for i:=Left+1 to Right do begin
+     Temp:=PPointers(Items)^[i];
+     j:=i-1;
+     if (j>=Left) and (CompareFunc(PPointers(Items)^[j],Temp)>0) then begin
+      repeat
+       PPointers(Items)^[j+1]:=PPointers(Items)^[j];
+       dec(j);
+      until not ((j>=Left) and (CompareFunc(PPointers(Items)^[j],Temp)>0));
+      PPointers(Items)^[j+1]:=Temp;
+     end;
+    end;
+   end else begin
+    if (Depth=0) or (ptruint(pointer(StackItem))>=ptruint(pointer(@Stack[high(Stack)-1]))) then begin
+     // Heap sort
+     Size:=(Right-Left)+1;
+     i:=Size div 2;
+     Temp:=nil;
+     repeat
+      if i>Left then begin
+       dec(i);
+       Temp:=PPointers(Items)^[Left+i];
+      end else begin
+       if Size=0 then begin
+        break;
+       end else begin
+        dec(Size);
+        Temp:=PPointers(Items)^[Left+Size];
+        PPointers(Items)^[Left+Size]:=PPointers(Items)^[Left];
+       end;
+      end;
+      Parent:=i;
+      Child:=(i*2)+1;
+      while Child<Size do begin
+       if ((Child+1)<Size) and (CompareFunc(PPointers(Items)^[Left+Child+1],PPointers(Items)^[Left+Child])>0) then begin
+        inc(Child);
+       end;
+       if CompareFunc(PPointers(Items)^[Left+Child],Temp)>0 then begin
+        PPointers(Items)^[Left+Parent]:=PPointers(Items)^[Left+Child];
+        Parent:=Child;
+        Child:=(Parent*2)+1;
+       end else begin
+        break;
+       end;
+      end;
+      PPointers(Items)^[Left+Parent]:=Temp;
+     until false;
+    end else begin
+     // Quick sort width median-of-three optimization
+     Middle:=Left+((Right-Left) shr 1);
+     if (Right-Left)>3 then begin
+      if CompareFunc(PPointers(Items)^[Left],PPointers(Items)^[Middle])>0 then begin
+       Temp:=PPointers(Items)^[Left];
+       PPointers(Items)^[Left]:=PPointers(Items)^[Middle];
+       PPointers(Items)^[Middle]:=Temp;
+      end;
+      if CompareFunc(PPointers(Items)^[Left],PPointers(Items)^[Right])>0 then begin
+       Temp:=PPointers(Items)^[Left];
+       PPointers(Items)^[Left]:=PPointers(Items)^[Right];
+       PPointers(Items)^[Right]:=Temp;
+      end;
+      if CompareFunc(PPointers(Items)^[Middle],PPointers(Items)^[Right])>0 then begin
+       Temp:=PPointers(Items)^[Middle];
+       PPointers(Items)^[Middle]:=PPointers(Items)^[Right];
+       PPointers(Items)^[Right]:=Temp;
+      end;
+     end;
+     Pivot:=PPointers(Items)^[Middle];
+     i:=Left;
+     j:=Right;
+     repeat
+      while (i<Right) and (CompareFunc(PPointers(Items)^[i],Pivot)<0) do begin
+       inc(i);
+      end;
+      while (j>=i) and (CompareFunc(PPointers(Items)^[j],Pivot)>0) do begin
+       dec(j);
+      end;
+      if i>j then begin
+       break;
+      end else begin
+       if i<>j then begin
+        Temp:=PPointers(Items)^[i];
+        PPointers(Items)^[i]:=PPointers(Items)^[j];
+        PPointers(Items)^[j]:=Temp;
+       end;
+       inc(i);
+       dec(j);
+      end;
+     until false;
+     if i<Right then begin
+      StackItem^.Left:=i;
+      StackItem^.Right:=Right;
+      StackItem^.Depth:=Depth-1;
+      inc(StackItem);
+     end;
+     if Left<j then begin
+      StackItem^.Left:=Left;
+      StackItem^.Right:=j;
+      StackItem^.Depth:=Depth-1;
+      inc(StackItem);
+     end;
+    end;
+   end;
+  end;
+ end;
+end;
+
 {$ifdef cpuamd64}
 function InterlockedCompareExchange128Ex(Target,NewValue,Comperand:pointer):boolean; assembler; register;
 asm
@@ -3863,29 +4170,6 @@ begin
 end;
 
 procedure TFLREIntegerList.Sort;
- function IntLog2(x:longword):longword; {$ifdef cpu386}assembler; register;
- asm
-  test eax,eax
-  jz @Done
-  bsr eax,eax
-  @Done:
- end;
-{$else}
- begin
-  x:=x or (x shr 1);
-  x:=x or (x shr 2);
-  x:=x or (x shr 4);
-  x:=x or (x shr 8);
-  x:=x or (x shr 16);
-  x:=x shr 1;
-  x:=x-((x shr 1) and $55555555);
-  x:=((x shr 2) and $33333333)+(x and $33333333);
-  x:=((x shr 4)+x) and $0f0f0f0f;
-  x:=x+(x shr 8);
-  x:=x+(x shr 16);
-  result:=x and $3f;
- end;
-{$endif}
  procedure IntroSort(Left,Right,Depth:longint);
   procedure SiftDown(Current,MaxIndex:longint);
   var SiftLeft,SiftRight,Largest:longint;
@@ -6827,232 +7111,6 @@ begin
 end;
 
 function TFLREDFA.WorkQueueToCachedState(const WorkQueue:TFLREDFAWorkQueue;Flags:longword):PFLREDFAState;
- procedure Sort(List:PFLREIntegerArray;const CountItems:longint);
-  function IntLog2(x:longword):longword; {$ifdef cpu386}assembler; register;
-  asm
-   test eax,eax
-   jz @Done
-   bsr eax,eax
-   @Done:
-  end;
- {$else}
-  begin
-   x:=x or (x shr 1);
-   x:=x or (x shr 2);
-   x:=x or (x shr 4);
-   x:=x or (x shr 8);
-   x:=x or (x shr 16);
-   x:=x shr 1;
-   x:=x-((x shr 1) and $55555555);
-   x:=((x shr 2) and $33333333)+(x and $33333333);
-   x:=((x shr 4)+x) and $0f0f0f0f;
-   x:=x+(x shr 8);
-   x:=x+(x shr 16);
-   result:=x and $3f;
-  end;
- {$endif}
-  procedure IntroSort(Left,Right,Depth:longint);
-   procedure SiftDown(Current,MaxIndex:longint);
-   var SiftLeft,SiftRight,Largest:longint;
-       v:longint;
-   begin
-    SiftLeft:=Left+(2*(Current-Left))+1;
-    SiftRight:=Left+(2*(Current-Left))+2;
-    Largest:=Current;
-    if (SiftLeft<=MaxIndex) and (List^[SiftLeft]>List^[Largest]) then begin
-     Largest:=SiftLeft;
-    end;
-    if (SiftRight<=MaxIndex) and (List^[SiftRight]>List^[Largest]) then begin
-     Largest:=SiftRight;
-    end;
-    if Largest<>Current then begin
-     v:=List^[Current];
-     List^[Current]:=List^[Largest];
-     List^[Largest]:=v;
-     SiftDown(Largest,MaxIndex);
-    end;
-   end;
-   procedure InsertionSort;
-   var i,j:longint;
-       t:longint;
-   begin
-    i:=Left+1;
-    while i<=Right do begin
-     t:=List^[i];
-     j:=i-1;
-     while (j>=Left) and (t<List^[j]) do begin
-      List^[j+1]:=List^[j];
-      dec(j);
-     end;
-     List^[j+1]:=t;
-     inc(i);
-    end;
-   end;
-   procedure HeapSort;
-   var i:longint;
-       v:longint;
-   begin
-    i:=((Left+Right+1) div 2)-1;
-    while i>=Left do begin
-     SiftDown(i,Right);
-     dec(i);
-    end;
-    i:=Right;
-    while i>=Left+1 do begin
-     v:=List^[i];
-     List^[i]:=List^[Left];
-     List^[Left]:=v;
-     SiftDown(Left,i-1);
-     dec(i);
-    end;
-   end;
-   procedure QuickSortWidthMedianOfThreeOptimization;
-   var Middle,i,j:longint;
-       Pivot,v:longint;
-   begin
-    Middle:=(Left+Right) div 2;
-    if (Right-Left)>3 then begin
-     if List^[Left]>List^[Middle] then begin
-      v:=List^[Left];
-      List^[Left]:=List^[Middle];
-      List^[Middle]:=v;
-     end;
-     if List^[Left]>List^[Right] then begin
-      v:=List^[Left];
-      List^[Left]:=List^[Right];
-      List^[Right]:=v;
-     end;
-     if List^[Middle]>List^[Right] then begin
-      v:=List^[Middle];
-      List^[Middle]:=List^[Right];
-      List^[Right]:=v;
-     end;
-    end;
-    Pivot:=List^[Middle];
-    i:=Left;
-    j:=Right;
-    while true do begin
-     while (i<j) and (List^[i]<Pivot) do begin
-      inc(i);
-     end;
-     while (j>i) and (List^[j]>Pivot) do begin
-      dec(j);
-     end;
-     if i>j then begin
-      break;
-     end;
-     v:=List^[i];
-     List^[i]:=List^[j];
-     List^[j]:=v;
-     inc(i);
-     dec(j);
-    end;
-    IntroSort(Left,j,Depth-1);
-    IntroSort(i,Right,Depth-1);
-   end;
-  begin
-   if Left<Right then begin
-    if (Right-Left)<16 then begin
-     InsertionSort;
-    end else if Depth=0 then begin
-     HeapSort;
-    end else begin
-     QuickSortWidthMedianOfThreeOptimization;
-    end;
-   end;
-  end;
-  procedure QuickSort(L,R:longint);
-  var Pivot,vL,vR:longint;
-      v:longint;
-  begin
-   if (R-L)<=1 then begin
-    if (L<R) and (List[R]<List[L]) then begin
-     v:=List^[L];
-     List^[L]:=List^[R];
-     List^[R]:=v;
-    end;
-   end else begin
-    vL:=L;
-    vR:=R;
-    Pivot:=L+Random(R-L);
-    while vL<vR do begin
-     while (vL<Pivot) and (List^[vL]<=List^[Pivot]) do begin
-      inc(vL);
-     end;
-     while (vR>Pivot) and (List^[vR]>List^[Pivot]) do begin
-      dec(vR);
-     end;
-     v:=List^[vL];
-     List^[vL]:=List^[vR];
-     List^[vR]:=v;
-     if Pivot=vL then begin
-      Pivot:=vR;
-     end else if Pivot=vR then begin
-      Pivot:=vL;
-     end;
-    end;
-    if (Pivot-1)>=L then begin
-     QuickSort(L,Pivot-1);
-    end;
-    if (Pivot+1)<=R then begin
-     QuickSort(Pivot+1,R);
-    end;
-   end;
-  end;
-  procedure QuickSortEx(Left,Right:longint);
-  var Pivot,i,j:longint;
-      v:longint;
-  begin
-   i:=Left;
-   j:=Right;
-   Pivot:=List^[(i+j) div 2];
-   while i<=j do begin
-    while List^[i]<Pivot do begin
-     inc(i);
-    end;
-    while List^[j]>Pivot do begin
-     dec(j);
-    end;
-    if i<=j then begin
-     v:=List^[i];
-     List^[i]:=List^[i];
-     List^[j]:=v;
-     inc(i);
-     dec(j);
-    end;
-   end;
-   if Left<j then begin
-    QuickSortEx(Left,j);
-   end;
-   if i<Right then begin
-    QuickSortEx(i,Right);
-   end;
-  end;
-  procedure BeRoSort;
-  var i:longint;
-      v:longint;
-  begin
-   i:=0;
-   while i<(CountItems-1) do begin
-    if List^[i]>List^[i+1] then begin
-     v:=List^[i];
-     List^[i]:=List^[i+1];
-     List^[i+1]:=v;
-     if i>0 then begin
-      dec(i);
-     end else begin
-      inc(i);
-     end;
-    end else begin
-     inc(i);
-    end;
-   end;
-  end;
- begin
-  if CountItems>0 then begin
-   IntroSort(0,CountItems-1,IntLog2(CountItems)*2);
-  end;
- end;
 var Index,n,Count:Longint;
     NeedFlags:longword;
     SawMatch,SawMark,First:boolean;
@@ -7131,7 +7189,7 @@ begin
     inc(MarkItem);
     inc(Count);
    end;
-   //Sort(pointer(CurrentItem),Count);
+   IndirectIntroSort(pointer(CurrentItem),0,Count-1,CompareInstruction);
    if PtrUInt(pointer(MarkItem))<PtrUInt(pointer(EndItem)) then begin
     inc(MarkItem);
    end;
