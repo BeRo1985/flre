@@ -7459,8 +7459,6 @@ begin
   BeforeFlags:=BeforeFlags or sfEmptyWordBoundary;
  end;
 
- writeln(chr(CurrentChar),' ',(BeforeFlags and sfEmptyWordBoundary)<>0,' ',(AfterFlags and sfEmptyWordBoundary)<>0);
-
  // Process zero-width-string step
  if ((BeforeFlags and not OldBeforeFlags) and NeedFlags)<>0 then begin
   ProcessWorkQueueOnZeroWidthString(Queues[0],Queues[1],BeforeFlags);
@@ -12794,9 +12792,9 @@ begin
        result:=true;
        exit;
       end else begin
-       // Otherwise if we have group captures or if we do need verify the found, set the new stat position *NFA algorithms
+       // Otherwise if we have group captures or if we do need verify the found, set the new start position *NFA algorithms
        StartPosition:=MatchBegin;
-       UnanchoredStart:=true;
+       UnanchoredStart:=false;
       end;
      end;
     end;
