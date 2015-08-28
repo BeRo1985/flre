@@ -596,8 +596,9 @@ type EFLRE=class(Exception);
        Input:pansichar;
        InputLength:longint;
 
-       SearchLongest:longbool;
        ManyMatch:longbool;
+
+       SearchLongest:longbool;
 
        ParallelNFA:TFLREParallelNFA;
 
@@ -6510,7 +6511,6 @@ begin
 
 end;
 
-
 procedure TFLREDFA.FastAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
 var StackPointer:longint;
     Stack:PPFLREInstructionsStatic;
@@ -7015,8 +7015,9 @@ begin
  Input:=nil;
  InputLength:=0;
 
- SearchLongest:=rfLONGEST in Instance.Flags;
  ManyMatch:=false;
+
+ SearchLongest:=ManyMatch or (rfLONGEST in Instance.Flags);
 
  ParallelNFA:=TFLREParallelNFA.Create(self);
 
@@ -11939,7 +11940,7 @@ function TFLRE.SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageIns
 var MatchBegin,MatchEnd:longint;
 begin
  result:=false;
-(*)
+(**)
  if DFAFast then begin
   case ThreadLocalStorageInstance.DFA.SearchMatchFast(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
    DFAMatch:begin
