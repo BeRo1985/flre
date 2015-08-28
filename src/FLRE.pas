@@ -7361,13 +7361,11 @@ var Position,Start,PreviousPosition,LocalInputLength:longint;
     StartState:PPFLREDFAState;
     StartInstruction:PFLREInstruction;
     LocalInput:pansichar;
-    LocalByteMap:PFLREByteMap;
     Flags,PreviousChar,CurrentChar:longword;
 begin
  result:=DFAFail;
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalInputLength:=ThreadLocalStorageInstance.InputLength;
- LocalByteMap:=@Instance.ByteMap;
  begin
   if (StartPosition>=0) and (StartPosition<=ThreadLocalStorageInstance.InputLength) then begin
    if rfUTF8 in Instance.Flags then begin
@@ -7457,20 +7455,72 @@ begin
 end;
 
 function TFLREDFA.SearchMatchFullReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-var Position:longint;
+var Position,Start,PreviousPosition,LocalInputLength:longint;
     State,LastState:PFLREDFAState;
+    StartState:PPFLREDFAState;
+    StartInstruction:PFLREInstruction;
     LocalInput:pansichar;
-    LocalByteMap:PFLREByteMap;
+    Flags,PreviousChar,CurrentChar:longword;
 begin
  result:=DFAFail;
  LocalInput:=ThreadLocalStorageInstance.Input;
- LocalByteMap:=@Instance.ByteMap;
- exit;
- for Position:=StartPosition downto UntilIncludingPosition do begin
+ LocalInputLength:=ThreadLocalStorageInstance.InputLength;
+ begin
+  if StartPosition=(ThreadLocalStorageInstance.InputLength-1) then begin
+   Start:=sskBeginText;
+   Flags:=sfEmptyBeginText or sfEmptyBeginLine;
+  end else begin
+   if (rfUTF8 in Instance.Flags) and ((byte(ansichar(LocalInput[StartPosition])) and $80)<>0) then begin
+    PreviousPosition:=StartPosition;
+    while (PreviousPosition>0) and ((byte(ansichar(LocalInput[PreviousPosition])) and $80)<>0) do begin
+     dec(PreviousPosition);
+    end;
+    if (PreviousPosition>=0) and (PreviousPosition<=ThreadLocalStorageInstance.InputLength) then begin
+     PreviousChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
+    end else begin
+     PreviousChar:=$ffffffff;
+    end;
+   end else begin
+    PreviousChar:=byte(ansichar(LocalInput[StartPosition]));
+   end;
+   case PreviousChar of
+    $0a,$0d,$85,$2028,$2029:begin
+     Start:=sskBeginLine;
+     Flags:=sfEmptyBeginLine;
+    end;
+    else begin
+     if Instance.IsWordChar(PreviousChar) then begin
+      Start:=sskAfterWordChar;
+      Flags:=sfDFALastWord;
+     end else begin
+      Start:=sskAfterNonWordChar;
+      Flags:=0;
+     end;
+    end;
+   end;
+  end;
+ end;
+ StartInstruction:=Instance.ReversedStartInstruction;
+ inc(Start,sskReversed);
+ StartState:=@StartStates[Start];
+ if assigned(StartState^) then begin
+  State:=StartState^;
+ end else begin
+  WorkQueues[0].Clear;
+  AddToWorkQueue(WorkQueues[0],StartInstruction,Flags);
+  State:=WorkQueueToCachedState(WorkQueues[0],Flags);
+  StartState^:=State;
+ end;
+ for Position:=StartPosition downto UntilIncludingPosition-1 do begin
   LastState:=State;
-  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+  if Position>=0 then begin
+   CurrentChar:=byte(ansichar(LocalInput[Position]));
+  end else begin
+   CurrentChar:=256;
+  end;
+  State:=State^.NextStates[LocalByteMap[CurrentChar]];
   if not assigned(State) then begin
-   State:=RunStateOnByte(LastState,Position,byte(ansichar(LocalInput[Position])),true);
+   State:=RunStateOnByte(LastState,Position,CurrentChar,true);
    if not assigned(State) then begin
     result:=DFAError;
     exit;
@@ -7484,7 +7534,7 @@ begin
     exit;
    end;
    if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchBegin:=Position;
+    MatchBegin:=Position+1;
     result:=DFAMatch;
    end;
   end;
