@@ -507,6 +507,45 @@ type EFLRE=class(Exception);
        function SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):longint;
      end;
 
+     TFLREDFA=class
+      public
+       Instance:TFLRE;
+       ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+       SearchLongest:longbool;
+       Generation:int64;
+       InstructionGenerations:TFLREInstructionGenerations;
+       StackInstructions:TPFLREInstructions;
+       StateCache:TFLREDFAStateHashMap;
+       DefaultStates:array[0..6*3{skMax}] of PFLREDFAState;
+       TemporaryState:TFLREDFAState;
+       NewState:TFLREDFAState;
+       CountStatesCached:longint;
+       NextStatesSize:TFLREPtrInt;
+       StateSize:TFLREPtrInt;
+       StatePoolUsed:PFLREDFAStatePool;
+       StatePoolFree:PFLREDFAStatePool;
+       StatePoolSize:TFLREPtrUInt;
+       StatePoolSizePowerOfTwo:TFLREPtrUInt;
+       constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
+       destructor Destroy; override;
+       function CacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
+       procedure FastAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
+       procedure FullAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction;const Flags:longword);
+       function FastProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
+       function FullProcessNextState(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
+       procedure DestroyStatePool(var StatePool:PFLREDFAStatePool);
+       procedure FreeUsedStatePool;
+       function AllocateNewStatePool:PFLREDFAStatePool;
+       function GetState:PFLREDFAState;
+       function TakeOverState(TakeOverFrom:PFLREDFAState):PFLREDFAState;
+       procedure FreeState(State:PFLREDFAState);
+       procedure Reset;
+       function SearchMatchFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+       function SearchMatchFastReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
+       function SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+       function SearchMatchFullReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
+     end;
+
      TFLREThreadLocalStorageInstance=class
       private
        AllNext:TFLREThreadLocalStorageInstance;
@@ -527,51 +566,15 @@ type EFLRE=class(Exception);
 
        BitStateNFA:TFLREBitStateNFA;
 
-       DFAGeneration:int64;
-       DFAInstructionGenerations:TFLREInstructionGenerations;
-
-       DFAStackInstructions:TPFLREInstructions;
-       DFAStateCache:TFLREDFAStateHashMap;
-       DFAStates:array[0..6*3{skMax}] of PFLREDFAState;
-       DFATemporaryState:TFLREDFAState;
-       DFANewState:TFLREDFAState;
-       DFACountStatesCached:longint;
-       DFANextStatesSize:TFLREPtrInt;
-       DFAStateSize:TFLREPtrInt;
-       DFAStatePoolUsed:PFLREDFAStatePool;
-       DFAStatePoolFree:PFLREDFAStatePool;
-       DFAStatePoolSize:TFLREPtrUInt;
-       DFAStatePoolSizePowerOfTwo:TFLREPtrUInt;
+       DFA:TFLREDFA;
+       ReversedDFA:TFLREDFA;
 
        constructor Create(AInstance:TFLRE);
        destructor Destroy; override;
-
        function GetSatisfyFlags(const Position:longint):longword;
-
        function GetDFAStartFlags(const Position:longint):longword;
-
        function LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
-
        function BackReferenceAssertion(const CaptureStart,CaptureEnd,BackReferenceStart,BackReferenceEnd:longint;const IgnoreCase:boolean):boolean;
-
-       function DFACacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
-       procedure DFAFastAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
-       procedure DFAFullAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction;const Flags:longword);
-       function DFAFastProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
-       function DFAFullProcessNextState(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
-       procedure DFADestroyStatePool(var StatePool:PFLREDFAStatePool);
-       procedure DFAFreeUsedStatePool;
-       function DFAAllocateNewStatePool:PFLREDFAStatePool;
-       function DFAGetState:PFLREDFAState;
-       function DFATakeOverState(TakeOverFrom:PFLREDFAState):PFLREDFAState;
-       procedure DFAFreeState(State:PFLREDFAState);
-       procedure DFAReset;
-
-       function SearchMatchDFAFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-       function SearchMatchReversedDFAFast(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-       function SearchMatchDFAFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-       function SearchMatchReversedDFAFull(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-
      end;
 
      TFLRE=class
@@ -6102,10 +6105,756 @@ begin
 
 end;
 
-constructor TFLREThreadLocalStorageInstance.Create(AInstance:TFLRE);
+constructor TFLREDFA.Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
 var Index,SubIndex:longint;
     FLREDFAStateCreateTempDFAState:TFLREDFAState;
     DFAState:PFLREDFAState;
+begin
+ inherited Create;
+
+ ThreadLocalStorageInstance:=AThreadLocalStorageInstance;
+
+ Instance:=ThreadLocalStorageInstance.Instance;
+
+ SearchLongest:=ThreadLocalStorageInstance.SearchLongest;
+
+ StackInstructions:=nil;
+ StateCache:=TFLREDFAStateHashMap.Create;
+ NextStatesSize:=0;
+ StateSize:=0;
+ StatePoolUsed:=nil;
+ StatePoolFree:=nil;
+ StatePoolSize:=0;
+ StatePoolSizePowerOfTwo:=0;
+ FillChar(DefaultStates,SizeOf(DefaultStates),AnsiChar(#0));
+
+ begin
+  CountStatesCached:=0;
+
+  StackInstructions:=nil;
+  SetLength(StackInstructions,Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions) shl 1);
+
+  StatePoolUsed:=nil;
+  StatePoolFree:=nil;
+
+  NextStatesSize:=Instance.ByteMapCount*sizeof(PFLREDFAState);
+  StateSize:=ptrint(ptruint(pointer(@FLREDFAStateCreateTempDFAState.NextStates))-ptruint(pointer(@FLREDFAStateCreateTempDFAState)))+NextStatesSize;
+
+  StatePoolSize:=(65536 div StateSize)*StateSize;
+  if StatePoolSize=0 then begin
+   StatePoolSize:=StateSize*64;
+  end;
+
+  StatePoolSizePowerOfTwo:=RoundUpToPowerOfTwo(StatePoolSize);
+
+  AllocateNewStatePool;
+
+  FillChar(TemporaryState,SizeOf(TFLREDFAState),AnsiChar(#0));
+  FillChar(NewState,SizeOf(TFLREDFAState),AnsiChar(#0));
+
+  InstructionGenerations:=nil;
+  SetLength(InstructionGenerations,Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions));
+  for Index:=0 to length(InstructionGenerations)-1 do begin
+   InstructionGenerations[Index]:=-1;
+  end;
+
+  if Instance.DFAFast then begin
+
+   inc(Generation);
+   GetMem(DFAState,StateSize);
+   FillChar(DFAState^,StateSize,AnsiChar(#0));
+   FastAddInstructionThread(DFAState,Instance.AnchoredStartInstruction);
+   DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
+   StateCache.Add(DFAState);
+   inc(CountStatesCached);
+   DefaultStates[skFast+skAnchored]:=DFAState;
+
+   inc(Generation);
+   GetMem(DFAState,StateSize);
+   FillChar(DFAState^,StateSize,AnsiChar(#0));
+   FastAddInstructionThread(DFAState,Instance.UnanchoredStartInstruction);
+   DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
+   StateCache.Add(DFAState);
+   inc(CountStatesCached);
+   DefaultStates[skFast+skUnanchored]:=DFAState;
+
+   inc(Generation);
+   GetMem(DFAState,StateSize);
+   FillChar(DFAState^,StateSize,AnsiChar(#0));
+   FastAddInstructionThread(DFAState,Instance.ReversedStartInstruction);
+   DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
+   StateCache.Add(DFAState);
+   inc(CountStatesCached);
+   DefaultStates[skFast+skReversed]:=DFAState;
+
+  end;
+
+  inc(Generation);
+  GetMem(DFAState,StateSize);
+  FillChar(DFAState^,StateSize,AnsiChar(#0));
+  FastAddInstructionThread(DFAState,Instance.AnchoredStartInstruction);
+  DFAState^.Flags:=DFAState^.Flags or sfDFADead;
+  StateCache.Add(DFAState);
+  inc(CountStatesCached);
+  DefaultStates[skDead]:=DFAState;
+
+ end;
+
+end;
+
+destructor TFLREDFA.Destroy;
+var Index:longint;
+begin
+ DestroyStatePool(StatePoolUsed);
+ DestroyStatePool(StatePoolFree);
+ StatePoolUsed:=nil;
+ StatePoolFree:=nil;
+ FreeState(@TemporaryState);
+ FreeState(@NewState);
+ for Index:=0 to length(DefaultStates)-1 do begin
+  if assigned(DefaultStates[Index]) then begin
+   FreeState(DefaultStates[Index]);
+   FreeMem(DefaultStates[Index]);
+  end;
+ end;
+ FreeAndNil(StateCache);
+ SetLength(StackInstructions,0);
+ SetLength(InstructionGenerations,0);
+ inherited Destroy;
+end;
+
+function TFLREDFA.CacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
+begin
+
+ // Is it already cached?
+ result:=StateCache[State];
+ if not assigned(result) then begin
+  // No, it is not already cached yet
+
+  // Do we need reset the states?
+  if CountStatesCached>=MaxDFAStates then begin
+   // Yes, so do it
+   Reset;
+  end;
+
+  // Move state in an own new memory instance
+  result:=TakeOverState(State);
+
+  // Add state to state cache hash map
+  StateCache.Add(result);
+  inc(CountStatesCached);
+
+ end;
+
+end;
+
+procedure TFLREDFA.FastAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
+var StackPointer:longint;
+    Stack:PPFLREInstructionsStatic;
+begin
+ Stack:=@StackInstructions[0];
+ StackPointer:=0;
+ Stack^[StackPointer]:=Instruction;
+ inc(StackPointer);
+ while StackPointer>0 do begin
+  dec(StackPointer);
+  Instruction:=Stack[StackPointer];
+  while assigned(Instruction) and (InstructionGenerations[Instruction^.IDandOpcode shr 8]<>Generation) do begin
+   InstructionGenerations[Instruction^.IDandOpcode shr 8]:=Generation;
+   case Instruction^.IDandOpcode and $ff of
+    opJMP,
+    opSAVE,
+    opZEROWIDTH,
+    opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,
+    opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+     // No-ops at DFA
+     Instruction:=Instruction^.Next;
+    end;
+    opSPLIT:begin
+     Stack^[StackPointer]:=Instruction^.OtherNext;
+     inc(StackPointer);
+     Instruction:=Instruction^.Next;
+    end;
+    else begin
+     if State.CountInstructions>=length(State.Instructions) then begin
+      SetLength(State.Instructions,(State.CountInstructions+1)*2);
+     end;
+     State.Instructions[State.CountInstructions]:=Instruction;
+     inc(State.CountInstructions);
+     case Instruction^.IDandOpcode and $ff of
+      opMATCH:begin
+       State.Flags:=State.Flags or sfDFAMatchWins;
+      end;
+     end;
+     break;
+    end;
+   end;
+  end;
+ end;
+end;
+
+procedure TFLREDFA.FullAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction;const Flags:longword);
+var StackPointer:longint;
+    Stack:PPFLREInstructionsStatic;
+begin
+ Stack:=@StackInstructions[0];
+ StackPointer:=0;
+ Stack^[StackPointer]:=Instruction;
+ inc(StackPointer);
+ while StackPointer>0 do begin
+  dec(StackPointer);
+  Instruction:=Stack[StackPointer];
+  while assigned(Instruction) and (InstructionGenerations[Instruction^.IDandOpcode shr 8]<>Generation) do begin
+   InstructionGenerations[Instruction^.IDandOpcode shr 8]:=Generation;
+   case Instruction^.IDandOpcode and $ff of
+    opJMP:begin
+     Instruction:=Instruction^.Next;
+    end;
+    opSAVE:begin
+{    if Instruction^.Value=0 then begin
+      State.Flags:=State.Flags or sfDFAMatchBegins;
+     end;{}
+     Instruction:=Instruction^.Next;
+    end;
+    opSPLIT:begin
+     Stack^[StackPointer]:=Instruction^.OtherNext;
+     inc(StackPointer);
+     Instruction:=Instruction^.Next;
+    end;
+    opZEROWIDTH:begin
+     if ((Flags and sfEmptyAllFlags) and not Instruction^.Value)=0 then begin
+      Instruction:=Instruction^.Next;
+     end;
+    end;
+    opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+     // No-ops at DFA
+     Instruction:=Instruction^.Next;
+    end;
+    else begin
+     if State.CountInstructions>=length(State.Instructions) then begin
+      SetLength(State.Instructions,(State.CountInstructions+1)*2);
+     end;
+     State.Instructions[State.CountInstructions]:=Instruction;
+     inc(State.CountInstructions);
+{    case Instruction^.IDandOpcode and $ff of
+      opMATCH:begin
+       State.Flags:=State.Flags or sfDFAMatchWins;
+      end;
+     end;{}
+     break;
+    end;
+   end;
+  end;
+ end;
+end;
+
+function TFLREDFA.FastProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
+var Counter:longint;
+    Instruction:PFLREInstruction;
+begin
+
+ // Process state instructions
+ inc(Generation);
+ NewState.CountInstructions:=0;
+ NewState.Flags:=(State^.Flags and sfDFAStart) shl sfDFANeedShift;
+ for Counter:=0 To State^.CountInstructions-1 do begin
+  Instruction:=State^.Instructions[Counter];
+  case Instruction^.IDandOpcode and $ff of
+   opSINGLECHAR:begin
+    if byte(ansichar(CurrentChar))=Instruction^.Value then begin
+     FastAddInstructionThread(@NewState,Instruction^.Next);
+    end;
+   end;
+   opCHAR:begin
+    if CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^ then begin
+     FastAddInstructionThread(@NewState,Instruction^.Next);
+    end;
+   end;
+   opANY:begin
+    FastAddInstructionThread(@NewState,Instruction^.Next);
+   end;
+   opMATCH:begin
+    if not (SearchLongest or Reversed) then begin
+     // We can stop processing the instruction list queue here since we found a match (for the PCRE leftmost first valid match behaviour)
+     break;
+    end;
+   end;
+   else begin
+    // Oops?! Invalid byte code instruction for the DFA processing context! So abort and fallback to NFA...
+    result:=nil;
+    exit;
+   end;
+  end;
+ end;
+
+ // Dead state? If yes, ...
+ if NewState.CountInstructions=0 then begin
+  // ... drop it and take the dead state as the next state
+  result:=DefaultStates[skDead];
+ end else begin
+  // .. otherwise try caching it
+  result:=CacheState(@NewState);
+ end;
+
+ // Connect the last state to the new state with the current char
+ State.NextStates[Instance.ByteMap[byte(ansichar(CurrentChar))]]:=result;
+
+end;
+
+function TFLREDFA.FullProcessNextState(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
+var Counter:longint;
+    Instruction:PFLREInstruction;
+    NeedFlags,BeforeFlags,OldBeforeFlags,AfterFlags,Flags,UnicodeChar:longword;
+    BaseState:PFLREDFAState;
+    IsMatch,IsWordChar:boolean;
+begin
+
+ // Fetch flags
+ NeedFlags:=State.Flags shr sfDFANeedShift;
+ BeforeFlags:=State.Flags and sfEmptyAllFlags;
+ OldBeforeFlags:=BeforeFlags;
+ AfterFlags:=0;
+
+ // Calculate flags
+ if CurrentChar<>$ffffffff then begin
+  if (rfUTF8 in Instance.Flags) and (CurrentChar>=$80) then begin
+   UnicodeChar:=UTF8PtrCodeUnitGetCharFallback(ThreadLocalStorageInstance.Input,ThreadLocalStorageInstance.InputLength,Position);
+   case UnicodeChar of
+    $2028,$2029:begin
+     BeforeFlags:=BeforeFlags or sfEmptyEndLine;
+     AfterFlags:=AfterFlags or sfEmptyBeginLine;
+    end;
+   end;
+   IsWordChar:=Instance.IsWordChar(UnicodeChar);
+  end else begin
+   case CurrentChar of
+    $0a,$0d,$85:begin
+     BeforeFlags:=BeforeFlags or sfEmptyEndLine;
+     AfterFlags:=AfterFlags or sfEmptyBeginLine;
+    end;
+   end;
+   IsWordChar:=Instance.IsWordChar(CurrentChar);
+  end;
+ end else begin
+  IsWordChar:=false;
+  BeforeFlags:=BeforeFlags or (sfEmptyEndLine or sfEmptyEndText);
+  AfterFlags:=AfterFlags or (sfEmptyBeginLine or sfEmptyBeginText);
+ end;
+ if ((State.Flags and sfDFALastWord)<>0)=IsWordChar then begin
+  BeforeFlags:=BeforeFlags or sfEmptyNonWordBoundary;
+ end else begin                  
+  BeforeFlags:=BeforeFlags or sfEmptyWordBoundary;
+ end;{}
+
+ writeln(chr(CurrentChar),' ',(BeforeFlags and sfEmptyWordBoundary)<>0,' ',(AfterFlags and sfEmptyWordBoundary)<>0);
+
+ // Process empty-string step
+ if ((BeforeFlags and not OldBeforeFlags) and NeedFlags)<>0 then begin
+  inc(Generation);
+  TemporaryState.CountInstructions:=0;
+  TemporaryState.Flags:=0;
+  for Counter:=0 to State.CountInstructions-1 do begin
+   FullAddInstructionThread(@TemporaryState,State.Instructions[Counter],BeforeFlags);
+  end;
+  BaseState:=@TemporaryState;
+ end else{} begin
+  BaseState:=State;
+ end;
+
+ // Process state instructions
+ inc(Generation);
+ IsMatch:=false;
+ Flags:=AfterFlags;
+ NewState.CountInstructions:=0;
+ NewState.Flags:=0;
+ for Counter:=0 To State^.CountInstructions-1 do begin
+  Instruction:=State^.Instructions[Counter];
+// writeln(Instruction^.IDandOpcode shr 8:4,' ',Instruction^.IDandOpcode and $ff);
+  case Instruction^.IDandOpcode and $ff of
+   opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    continue;                        
+   end;
+   opSINGLECHAR:begin
+    if CurrentChar=longword(Instruction^.Value) then begin
+     FullAddInstructionThread(@NewState,Instruction^.Next,Flags);
+    end;
+   end;
+   opCHAR:begin
+    if (CurrentChar<>$ffffffff) and (ansichar(byte(CurrentChar)) in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
+     FullAddInstructionThread(@NewState,Instruction^.Next,Flags);
+    end;
+   end;
+   opANY:begin
+    FullAddInstructionThread(@NewState,Instruction^.Next,Flags);
+   end;
+   opMATCH:begin
+    IsMatch:=true;
+    if not (SearchLongest or Reversed) then begin
+     // We can stop processing the instruction list queue here since we found a match (for the PCRE leftmost first valid match behaviour)
+     break;
+    end;
+   end;
+   else begin
+    // Oops?! Invalid byte code instruction for the DFA processing context! So abort and fallback to NFA...
+    result:=nil;
+    exit;
+   end;
+  end;
+ end;                 
+
+ // Add missed flags
+ if IsMatch then begin              
+  Flags:=Flags or sfDFAMatchWins;
+ end;
+ if IsWordChar then begin
+  Flags:=Flags or sfDFALastWord;
+ end;
+
+ // Search needed flags for this next state
+ NeedFlags:=0;
+ for Counter:=0 To NewState.CountInstructions-1 do begin
+  Instruction:=NewState.Instructions[Counter];
+  case Instruction^.IDandOpcode and $ff of
+   opZEROWIDTH:begin
+    NeedFlags:=NeedFlags or longword(Instruction^.Value);
+   end;
+  end;
+ end;
+
+ // Drop flags if no empty-string instructions are there, to save unneeded cached states
+ if NeedFlags=0 then begin
+  Flags:=Flags and sfDFAMatchWins;
+ end;
+
+ // Store flags in the new state
+ NewState.Flags:=Flags or ((NeedFlags or (State.Flags and sfDFAStart)) shl sfDFANeedShift);
+
+ // Dead state? If yes, ...
+ if NewState.CountInstructions=0 then begin
+  // ... drop it and take the dead state as the next state
+  result:=DefaultStates[skDead];
+ end else begin
+  // .. otherwise try caching it
+  result:=CacheState(@NewState);
+ end;
+
+ // Connect the last state to the new state with the current char
+ State.NextStates[Instance.ByteMap[byte(ansichar(CurrentChar))]]:=result;
+
+end;
+
+procedure TFLREDFA.DestroyStatePool(var StatePool:PFLREDFAStatePool);
+var Pool,NextPool:PFLREDFAStatePool;
+    State:PFLREDFAState;
+begin
+ Pool:=StatePool;
+ StatePool:=nil;
+ while assigned(Pool) do begin
+  NextPool:=Pool^.Next;
+  State:=Pool^.States;
+  while assigned(State) and (State<>Pool^.EndState) do begin
+   FreeState(State);
+   inc(ptruint(State),StateSize);
+  end;
+  FreeMem(Pool^.States);
+  FreeMem(Pool);
+  Pool:=NextPool;
+ end;
+end;
+
+procedure TFLREDFA.FreeUsedStatePool;
+var Pool,NextPool:PFLREDFAStatePool;
+    State:PFLREDFAState;
+begin
+ Pool:=StatePoolUsed;
+ StatePoolUsed:=nil;
+ while assigned(Pool) do begin
+  NextPool:=Pool^.Next;
+  State:=Pool^.States;
+  while assigned(State) and (State<>Pool^.EndState) do begin
+   FreeState(State);
+   inc(ptruint(State),StateSize);
+  end;
+  FillChar(Pool^.States^,StatePoolSize,AnsiChar(#0));
+  Pool^.Next:=StatePoolFree;
+  StatePoolFree:=Pool;
+  Pool:=NextPool;
+ end;
+end;
+
+function TFLREDFA.AllocateNewStatePool:PFLREDFAStatePool;
+begin
+ if assigned(StatePoolFree) then begin
+  result:=StatePoolFree;
+  StatePoolFree:=result^.Next;
+ end else begin
+  GetMem(result,SizeOf(TFLREDFAStatePool));
+  FillChar(result^,SizeOf(TFLREDFAStatePool),AnsiChar(#0));
+  GetMem(result^.States,StatePoolSizePowerOfTwo);
+  FillChar(result^.States^,StatePoolSize,AnsiChar(#0));
+  result^.EndState:=pointer(ptruint(ptruint(result^.States)+ptruint(StatePoolSize)));
+ end;
+ result^.Next:=StatePoolUsed;
+ StatePoolUsed:=result;
+ result^.NextState:=result^.States;
+end;
+
+function TFLREDFA.GetState:PFLREDFAState;
+begin
+ if StatePoolUsed^.NextState=StatePoolUsed^.EndState then begin
+  AllocateNewStatePool;
+ end;
+ result:=StatePoolUsed^.NextState;
+ inc(ptruint(StatePoolUsed^.NextState),StateSize);
+end;
+
+function TFLREDFA.TakeOverState(TakeOverFrom:PFLREDFAState):PFLREDFAState;
+begin
+ result:=GetState;
+ result^.Instructions:=TakeOverFrom^.Instructions;
+ result^.CountInstructions:=TakeOverFrom^.CountInstructions;
+ result^.Flags:=TakeOverFrom^.Flags;
+ TakeOverFrom^.Instructions:=nil;
+ TakeOverFrom^.CountInstructions:=0;
+ TakeOverFrom^.Flags:=0;
+end;
+
+procedure TFLREDFA.FreeState(State:PFLREDFAState);
+begin
+ if assigned(State) then begin
+  SetLength(State^.Instructions,0);
+  if assigned(StatePoolUsed) and
+     ((ptruint(ptruint(State)-ptruint(StatePoolUsed^.States))<StatePoolSize) and
+      (pointer(ptruint(ptruint(StatePoolUsed^.NextState)-ptruint(StateSize)))=State)) then begin
+   FillChar(State^,StateSize,AnsiChar(#0));
+   dec(ptruint(StatePoolUsed^.NextState),StateSize);
+  end;
+ end;
+end;
+
+procedure TFLREDFA.Reset;
+var Index:longint;
+    State:PFLREDFAState;
+begin
+
+ // Reset state pools
+ FreeUsedStatePool;
+ AllocateNewStatePool;
+
+ // Reset state cache
+ StateCache.Clear;
+ CountStatesCached:=0;
+
+ // Reset and recaching start states
+ for Index:=0 to length(DefaultStates)-1 do begin
+  State:=DefaultStates[Index];
+  if assigned(State) then begin
+   FillChar(State^.NextStates,NextStatesSize,AnsiChar(#0));
+   StateCache.Add(State);
+   inc(CountStatesCached);
+  end;
+ end;
+
+end;
+
+function TFLREDFA.SearchMatchFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+var Position:longint;
+    State,LastState:PFLREDFAState;
+    LocalInput:pansichar;
+    LocalByteMap:PFLREByteMap;
+begin
+ result:=DFAFail;
+ LocalInput:=ThreadLocalStorageInstance.Input;
+ LocalByteMap:=@Instance.ByteMap;
+ if UnanchoredStart then begin
+  State:=DefaultStates[skFast+skUnanchored];
+ end else begin
+  State:=DefaultStates[skFast+skAnchored];
+ end;
+ for Position:=StartPosition to UntilExcludingPosition-1 do begin
+  LastState:=State;
+  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+  if not assigned(State) then begin
+   State:=FastProcessNextState(LastState,LocalInput[Position],false);
+   if not assigned(State) then begin
+    result:=DFAError;
+    exit;
+   end;
+  end;
+  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
+   if (State^.Flags and sfDFADead)<>0 then begin
+    if result<>DFAMatch then begin
+     result:=DFAFail;
+    end;
+    exit;
+   end;
+   if (State^.Flags and sfDFAMatchWins)<>0 then begin
+    MatchEnd:=Position;
+    result:=DFAMatch;
+   end;
+  end;
+ end;
+end;
+
+function TFLREDFA.SearchMatchFastReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
+var Position:longint;
+    State,LastState:PFLREDFAState;
+    LocalInput:pansichar;
+    LocalByteMap:PFLREByteMap;
+begin
+ result:=DFAFail;
+ LocalInput:=ThreadLocalStorageInstance.Input;
+ LocalByteMap:=@Instance.ByteMap;
+ State:=DefaultStates[skFast+skReversed];
+ for Position:=StartPosition downto UntilIncludingPosition do begin
+  LastState:=State;
+  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+  if not assigned(State) then begin
+   State:=FastProcessNextState(LastState,LocalInput[Position],true);
+   if not assigned(State) then begin
+    result:=DFAError;
+    exit;
+   end;
+  end;
+  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
+   if (State^.Flags and sfDFADead)<>0 then begin
+    if result<>DFAMatch then begin
+     result:=DFAFail;
+    end;
+    exit;
+   end;
+   if (State^.Flags and sfDFAMatchWins)<>0 then begin
+    MatchBegin:=Position;
+    result:=DFAMatch;
+   end;
+  end;
+ end;
+end;
+
+function TFLREDFA.SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+var Position,Start,PreviousPosition:longint;
+    State,LastState:PFLREDFAState;
+    StartState:PPFLREDFAState;
+    StartInstruction:PFLREInstruction;
+    LocalInput:pansichar;
+    LocalByteMap:PFLREByteMap;
+    Flags,PreviousChar:longword;
+begin
+ result:=DFAFail;
+ LocalInput:=ThreadLocalStorageInstance.Input;
+ LocalByteMap:=@Instance.ByteMap;
+ if StartPosition<=0 then begin
+  Start:=skBeginText;
+  Flags:=sfEmptyBeginText or sfEmptyBeginLine;
+ end else begin
+  if rfUTF8 in Instance.Flags then begin
+   PreviousPosition:=StartPosition;
+   UTF8PtrDec(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
+   if (PreviousPosition>=0) and (PreviousPosition<=ThreadLocalStorageInstance.InputLength) then begin
+    PreviousChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
+   end else begin
+    PreviousChar:=$ffffffff;
+   end;
+  end else begin
+   PreviousChar:=byte(ansichar(LocalInput[StartPosition-1]));
+  end;
+  case PreviousChar of
+   $0a,$0d,$85,$2028,$2029:begin
+    Start:=skBeginLine;
+    Flags:=sfEmptyBeginLine;
+   end;
+   else begin
+    if Instance.IsWordChar(PreviousChar) then begin
+     Start:=skAfterWordChar;
+     Flags:=sfDFALastWord;
+    end else begin
+     Start:=skAfterNonWordChar;
+     Flags:=0;
+    end;
+   end;
+  end;
+ end;
+ if UnanchoredStart then begin
+  StartInstruction:=Instance.UnanchoredStartInstruction;
+  inc(Start,skUnanchored);
+ end else begin
+  StartInstruction:=Instance.AnchoredStartInstruction;
+  inc(Start,skAnchored);
+ end;
+ StartState:=@DefaultStates[Start];
+ if assigned(StartState^) then begin
+  State:=StartState^;
+ end else begin
+  inc(Generation);
+  GetMem(State,StateSize);
+  FillChar(State^,StateSize,AnsiChar(#0));
+  FullAddInstructionThread(State,StartInstruction,ThreadLocalStorageInstance.GetSatisfyFlags(StartPosition));
+  State^.Flags:=Flags or sfDFAStart;
+  StateCache.Add(State);
+  inc(CountStatesCached);
+  StartState^:=State;
+ end;
+ for Position:=StartPosition to UntilExcludingPosition-1 do begin
+  LastState:=State;
+  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+  if not assigned(State) then begin
+   State:=FullProcessNextState(LastState,Position,byte(ansichar(LocalInput[Position])),false);
+   if not assigned(State) then begin
+    result:=DFAError;
+    exit;
+   end;
+  end;
+  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
+   if (State^.Flags and sfDFADead)<>0 then begin
+    if result<>DFAMatch then begin
+     result:=DFAFail;
+    end;
+    exit;
+   end;
+   if (State^.Flags and sfDFAMatchWins)<>0 then begin
+    MatchEnd:=Position;
+    result:=DFAMatch;
+   end;
+  end;
+ end;
+end;
+
+function TFLREDFA.SearchMatchFullReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
+var Position:longint;
+    State,LastState:PFLREDFAState;
+    LocalInput:pansichar;
+    LocalByteMap:PFLREByteMap;
+begin
+ result:=DFAFail;
+ LocalInput:=ThreadLocalStorageInstance.Input;
+ LocalByteMap:=@Instance.ByteMap;
+ exit;
+ for Position:=StartPosition downto UntilIncludingPosition do begin
+  LastState:=State;
+  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+  if not assigned(State) then begin
+   State:=FullProcessNextState(LastState,Position,byte(ansichar(LocalInput[Position])),true);
+   if not assigned(State) then begin
+    result:=DFAError;
+    exit;
+   end;
+  end;
+  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
+   if (State^.Flags and sfDFADead)<>0 then begin
+    if result<>DFAMatch then begin
+     result:=DFAFail;
+    end;
+    exit;
+   end;
+   if (State^.Flags and sfDFAMatchWins)<>0 then begin
+    MatchBegin:=Position;
+    result:=DFAMatch;
+   end;
+  end;
+ end;
+end;
+
+constructor TFLREThreadLocalStorageInstance.Create(AInstance:TFLRE);
 begin
  inherited Create;
 
@@ -6134,92 +6883,12 @@ begin
   BitStateNFA:=nil;
  end;
 
- DFAStackInstructions:=nil;
- DFAStateCache:=TFLREDFAStateHashMap.Create;
- DFANextStatesSize:=0;
- DFAStateSize:=0;
- DFAStatePoolUsed:=nil;
- DFAStatePoolFree:=nil;
- DFAStatePoolSize:=0;
- DFAStatePoolSizePowerOfTwo:=0;
- FillChar(DFAStates,SizeOf(DFAStates),AnsiChar(#0));
-
- begin
-  DFACountStatesCached:=0;
-
-  DFAStackInstructions:=nil;
-  SetLength(DFAStackInstructions,Max(AInstance.CountForwardInstructions,AInstance.CountBackwardInstructions) shl 1);
-
-  DFAStatePoolUsed:=nil;
-  DFAStatePoolFree:=nil;
-
-  DFANextStatesSize:=AInstance.ByteMapCount*sizeof(PFLREDFAState);
-  DFAStateSize:=ptrint(ptruint(pointer(@FLREDFAStateCreateTempDFAState.NextStates))-ptruint(pointer(@FLREDFAStateCreateTempDFAState)))+DFANextStatesSize;
-
-  DFAStatePoolSize:=(65536 div DFAStateSize)*DFAStateSize;
-  if DFAStatePoolSize=0 then begin
-   DFAStatePoolSize:=DFAStateSize*64;
-  end;
-
-  DFAStatePoolSizePowerOfTwo:=RoundUpToPowerOfTwo(DFAStatePoolSize);
-
-  DFAAllocateNewStatePool;
-
-  FillChar(DFATemporaryState,SizeOf(TFLREDFAState),AnsiChar(#0));
-  FillChar(DFANewState,SizeOf(TFLREDFAState),AnsiChar(#0));
-
-  DFAInstructionGenerations:=nil;
-  SetLength(DFAInstructionGenerations,Max(AInstance.CountForwardInstructions,AInstance.CountBackwardInstructions));
-  for Index:=0 to length(DFAInstructionGenerations)-1 do begin
-   DFAInstructionGenerations[Index]:=-1;
-  end;
-
-  if Instance.DFAFast then begin
-
-   inc(DFAGeneration);
-   GetMem(DFAState,DFAStateSize);
-   FillChar(DFAState^,DFAStateSize,AnsiChar(#0));
-   DFAFastAddInstructionThread(DFAState,Instance.AnchoredStartInstruction);
-   DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
-   DFAStateCache.Add(DFAState);
-   inc(DFACountStatesCached);
-   DFAStates[skFast+skAnchored]:=DFAState;
-
-   inc(DFAGeneration);
-   GetMem(DFAState,DFAStateSize);
-   FillChar(DFAState^,DFAStateSize,AnsiChar(#0));
-   DFAFastAddInstructionThread(DFAState,Instance.UnanchoredStartInstruction);
-   DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
-   DFAStateCache.Add(DFAState);
-   inc(DFACountStatesCached);
-   DFAStates[skFast+skUnanchored]:=DFAState;
-
-   inc(DFAGeneration);
-   GetMem(DFAState,DFAStateSize);
-   FillChar(DFAState^,DFAStateSize,AnsiChar(#0));
-   DFAFastAddInstructionThread(DFAState,Instance.ReversedStartInstruction);
-   DFAState^.Flags:=DFAState^.Flags or sfDFAStart;
-   DFAStateCache.Add(DFAState);
-   inc(DFACountStatesCached);
-   DFAStates[skFast+skReversed]:=DFAState;
-
-  end;
-
-  inc(DFAGeneration);
-  GetMem(DFAState,DFAStateSize);
-  FillChar(DFAState^,DFAStateSize,AnsiChar(#0));
-  DFAFastAddInstructionThread(DFAState,Instance.AnchoredStartInstruction);
-  DFAState^.Flags:=DFAState^.Flags or sfDFADead;
-  DFAStateCache.Add(DFAState);
-  inc(DFACountStatesCached);
-  DFAStates[skDead]:=DFAState;
-
- end;
+ DFA:=TFLREDFA.Create(self);
+ ReversedDFA:=TFLREDFA.Create(self);
 
 end;
 
 destructor TFLREThreadLocalStorageInstance.Destroy;
-var Index,SubIndex:longint;
 begin
 
  ParallelNFA.Free;
@@ -6228,21 +6897,8 @@ begin
 
  BitStateNFA.Free;
 
- DFADestroyStatePool(DFAStatePoolUsed);
- DFADestroyStatePool(DFAStatePoolFree);
- DFAStatePoolUsed:=nil;
- DFAStatePoolFree:=nil;
- DFAFreeState(@DFATemporaryState);
- DFAFreeState(@DFANewState);
- for Index:=0 to length(DFAStates)-1 do begin
-  if assigned(DFAStates[Index]) then begin
-   DFAFreeState(DFAStates[Index]);
-   FreeMem(DFAStates[Index]);
-  end;
- end;
- FreeAndNil(DFAStateCache);
- SetLength(DFAStackInstructions,0);
- SetLength(DFAInstructionGenerations,0);
+ DFA.Free;
+ ReversedDFA.Free;
 
  inherited Destroy;
 end;
@@ -6402,637 +7058,6 @@ begin
      inc(CapturePosition);
      inc(BackReferencePosition);
     end;
-   end;
-  end;
- end;
-end;
-
-function TFLREThreadLocalStorageInstance.DFACacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
-begin
-
- // Is it already cached?
- result:=DFAStateCache[State];
- if not assigned(result) then begin
-  // No, it is not already cached yet
-
-  // Do we need reset the states?
-  if DFACountStatesCached>=MaxDFAStates then begin
-   // Yes, so do it
-   DFAReset;
-  end;
-
-  // Move state in an own new memory instance
-  result:=DFATakeOverState(State);
-
-  // Add state to state cache hash map
-  DFAStateCache.Add(result);
-  inc(DFACountStatesCached);
-
- end;
-
-end;
-
-procedure TFLREThreadLocalStorageInstance.DFAFastAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
-var StackPointer:longint;
-    Stack:PPFLREInstructionsStatic;
-begin
- Stack:=@DFAStackInstructions[0];
- StackPointer:=0;
- Stack^[StackPointer]:=Instruction;
- inc(StackPointer);
- while StackPointer>0 do begin
-  dec(StackPointer);
-  Instruction:=Stack[StackPointer];
-  while assigned(Instruction) and (DFAInstructionGenerations[Instruction^.IDandOpcode shr 8]<>DFAGeneration) do begin
-   DFAInstructionGenerations[Instruction^.IDandOpcode shr 8]:=DFAGeneration;
-   case Instruction^.IDandOpcode and $ff of
-    opJMP,
-    opSAVE,
-    opZEROWIDTH,
-    opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,
-    opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
-     // No-ops at DFA
-     Instruction:=Instruction^.Next;
-    end;
-    opSPLIT:begin
-     Stack^[StackPointer]:=Instruction^.OtherNext;
-     inc(StackPointer);
-     Instruction:=Instruction^.Next;
-    end;
-    else begin
-     if State.CountInstructions>=length(State.Instructions) then begin
-      SetLength(State.Instructions,(State.CountInstructions+1)*2);
-     end;
-     State.Instructions[State.CountInstructions]:=Instruction;
-     inc(State.CountInstructions);
-     case Instruction^.IDandOpcode and $ff of
-      opMATCH:begin
-       State.Flags:=State.Flags or sfDFAMatchWins;
-      end;
-     end;
-     break;
-    end;
-   end;
-  end;
- end;
-end;
-
-procedure TFLREThreadLocalStorageInstance.DFAFullAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction;const Flags:longword);
-var StackPointer:longint;
-    Stack:PPFLREInstructionsStatic;
-begin
- Stack:=@DFAStackInstructions[0];
- StackPointer:=0;
- Stack^[StackPointer]:=Instruction;
- inc(StackPointer);
- while StackPointer>0 do begin
-  dec(StackPointer);
-  Instruction:=Stack[StackPointer];
-  while assigned(Instruction) and (DFAInstructionGenerations[Instruction^.IDandOpcode shr 8]<>DFAGeneration) do begin
-   DFAInstructionGenerations[Instruction^.IDandOpcode shr 8]:=DFAGeneration;
-   case Instruction^.IDandOpcode and $ff of
-    opJMP:begin
-     Instruction:=Instruction^.Next;
-    end;
-    opSAVE:begin
-{    if Instruction^.Value=0 then begin
-      State.Flags:=State.Flags or sfDFAMatchBegins;
-     end;{}
-     Instruction:=Instruction^.Next;
-    end;
-    opSPLIT:begin
-     Stack^[StackPointer]:=Instruction^.OtherNext;
-     inc(StackPointer);
-     Instruction:=Instruction^.Next;
-    end;
-    opZEROWIDTH:begin
-     if ((Flags and sfEmptyAllFlags) and not Instruction^.Value)=0 then begin
-      Instruction:=Instruction^.Next;
-     end;
-    end;
-    opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
-     // No-ops at DFA
-     Instruction:=Instruction^.Next;
-    end;
-    else begin
-     if State.CountInstructions>=length(State.Instructions) then begin
-      SetLength(State.Instructions,(State.CountInstructions+1)*2);
-     end;
-     State.Instructions[State.CountInstructions]:=Instruction;
-     inc(State.CountInstructions);
-{    case Instruction^.IDandOpcode and $ff of
-      opMATCH:begin
-       State.Flags:=State.Flags or sfDFAMatchWins;
-      end;
-     end;{}
-     break;
-    end;
-   end;
-  end;
- end;
-end;
-
-function TFLREThreadLocalStorageInstance.DFAFastProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
-var Counter:longint;
-    Instruction:PFLREInstruction;
-begin
-
- // Process state instructions
- inc(DFAGeneration);
- DFANewState.CountInstructions:=0;
- DFANewState.Flags:=(State^.Flags and sfDFAStart) shl sfDFANeedShift;
- for Counter:=0 To State^.CountInstructions-1 do begin
-  Instruction:=State^.Instructions[Counter];
-  case Instruction^.IDandOpcode and $ff of
-   opSINGLECHAR:begin
-    if byte(ansichar(CurrentChar))=Instruction^.Value then begin
-     DFAFastAddInstructionThread(@DFANewState,Instruction^.Next);
-    end;
-   end;
-   opCHAR:begin
-    if CurrentChar in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^ then begin
-     DFAFastAddInstructionThread(@DFANewState,Instruction^.Next);
-    end;
-   end;
-   opANY:begin
-    DFAFastAddInstructionThread(@DFANewState,Instruction^.Next);
-   end;
-   opMATCH:begin
-    if not (SearchLongest or Reversed) then begin
-     // We can stop processing the instruction list queue here since we found a match (for the PCRE leftmost first valid match behaviour)
-     break;
-    end;
-   end;
-   else begin
-    // Oops?! Invalid byte code instruction for the DFA processing context! So abort and fallback to NFA...
-    result:=nil;
-    exit;
-   end;
-  end;
- end;
-
- // Dead state? If yes, ...
- if DFANewState.CountInstructions=0 then begin
-  // ... drop it and take the dead state as the next state
-  result:=DFAStates[skDead];
- end else begin
-  // .. otherwise try caching it
-  result:=DFACacheState(@DFANewState);
- end;
-
- // Connect the last state to the new state with the current char
- State.NextStates[Instance.ByteMap[byte(ansichar(CurrentChar))]]:=result;
-
-end;
-
-function TFLREThreadLocalStorageInstance.DFAFullProcessNextState(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
-var Counter:longint;
-    Instruction:PFLREInstruction;
-    NeedFlags,BeforeFlags,OldBeforeFlags,AfterFlags,Flags,UnicodeChar:longword;
-    BaseState:PFLREDFAState;
-    IsMatch,IsWordChar:boolean;
-begin
-
- // Fetch flags
- NeedFlags:=State.Flags shr sfDFANeedShift;
- BeforeFlags:=State.Flags and sfEmptyAllFlags;
- OldBeforeFlags:=BeforeFlags;
- AfterFlags:=0;
-
- // Calculate flags
- if CurrentChar<>$ffffffff then begin
-  if (rfUTF8 in Instance.Flags) and (CurrentChar>=$80) then begin
-   UnicodeChar:=UTF8PtrCodeUnitGetCharFallback(Input,InputLength,Position);
-   case UnicodeChar of
-    $2028,$2029:begin
-     BeforeFlags:=BeforeFlags or sfEmptyEndLine;
-     AfterFlags:=AfterFlags or sfEmptyBeginLine;
-    end;
-   end;
-   IsWordChar:=Instance.IsWordChar(UnicodeChar);
-  end else begin
-   case CurrentChar of
-    $0a,$0d,$85:begin
-     BeforeFlags:=BeforeFlags or sfEmptyEndLine;
-     AfterFlags:=AfterFlags or sfEmptyBeginLine;
-    end;
-   end;
-   IsWordChar:=Instance.IsWordChar(CurrentChar);
-  end;
- end else begin
-  IsWordChar:=false;
-  BeforeFlags:=BeforeFlags or (sfEmptyEndLine or sfEmptyEndText);
-  AfterFlags:=AfterFlags or (sfEmptyBeginLine or sfEmptyBeginText);
- end;
- if ((State.Flags and sfDFALastWord)<>0)=IsWordChar then begin
-  BeforeFlags:=BeforeFlags or sfEmptyNonWordBoundary;
- end else begin                  
-  BeforeFlags:=BeforeFlags or sfEmptyWordBoundary;
- end;{}
-
- writeln(chr(CurrentChar),' ',(BeforeFlags and sfEmptyWordBoundary)<>0,' ',(AfterFlags and sfEmptyWordBoundary)<>0);
-
- // Process empty-string step
- if ((BeforeFlags and not OldBeforeFlags) and NeedFlags)<>0 then begin
-  inc(DFAGeneration);
-  DFATemporaryState.CountInstructions:=0;
-  DFATemporaryState.Flags:=0;
-  for Counter:=0 to State.CountInstructions-1 do begin
-   DFAFullAddInstructionThread(@DFATemporaryState,State.Instructions[Counter],BeforeFlags);
-  end;
-  BaseState:=@DFATemporaryState;
- end else{} begin
-  BaseState:=State;
- end;
-
- // Process state instructions
- inc(DFAGeneration);
- IsMatch:=false;
- Flags:=AfterFlags;
- DFANewState.CountInstructions:=0;
- DFANewState.Flags:=0;
- for Counter:=0 To State^.CountInstructions-1 do begin
-  Instruction:=State^.Instructions[Counter];
-// writeln(Instruction^.IDandOpcode shr 8:4,' ',Instruction^.IDandOpcode and $ff);
-  case Instruction^.IDandOpcode and $ff of
-   opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
-    continue;                        
-   end;
-   opSINGLECHAR:begin
-    if CurrentChar=longword(Instruction^.Value) then begin
-     DFAFullAddInstructionThread(@DFANewState,Instruction^.Next,Flags);
-    end;
-   end;
-   opCHAR:begin
-    if (CurrentChar<>$ffffffff) and (ansichar(byte(CurrentChar)) in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
-     DFAFullAddInstructionThread(@DFANewState,Instruction^.Next,Flags);
-    end;
-   end;
-   opANY:begin
-    DFAFullAddInstructionThread(@DFANewState,Instruction^.Next,Flags);
-   end;
-   opMATCH:begin
-    IsMatch:=true;
-    if not (SearchLongest or Reversed) then begin
-     // We can stop processing the instruction list queue here since we found a match (for the PCRE leftmost first valid match behaviour)
-     break;
-    end;
-   end;
-   else begin
-    // Oops?! Invalid byte code instruction for the DFA processing context! So abort and fallback to NFA...
-    result:=nil;
-    exit;
-   end;
-  end;
- end;                 
-
- // Add missed flags
- if IsMatch then begin              
-  Flags:=Flags or sfDFAMatchWins;
- end;
- if IsWordChar then begin
-  Flags:=Flags or sfDFALastWord;
- end;
-
- // Search needed flags for this next state
- NeedFlags:=0;
- for Counter:=0 To DFANewState.CountInstructions-1 do begin
-  Instruction:=DFANewState.Instructions[Counter];
-  case Instruction^.IDandOpcode and $ff of
-   opZEROWIDTH:begin
-    NeedFlags:=NeedFlags or longword(Instruction^.Value);
-   end;
-  end;
- end;
-
- // Drop flags if no empty-string instructions are there, to save unneeded cached states
- if NeedFlags=0 then begin
-  Flags:=Flags and sfDFAMatchWins;
- end;
-
- // Store flags in the new state
- DFANewState.Flags:=Flags or ((NeedFlags or (State.Flags and sfDFAStart)) shl sfDFANeedShift);
-
- // Dead state? If yes, ...
- if DFANewState.CountInstructions=0 then begin
-  // ... drop it and take the dead state as the next state
-  result:=DFAStates[skDead];
- end else begin
-  // .. otherwise try caching it
-  result:=DFACacheState(@DFANewState);
- end;
-
- // Connect the last state to the new state with the current char
- State.NextStates[Instance.ByteMap[byte(ansichar(CurrentChar))]]:=result;
-
-end;
-
-procedure TFLREThreadLocalStorageInstance.DFADestroyStatePool(var StatePool:PFLREDFAStatePool);
-var Pool,NextPool:PFLREDFAStatePool;
-    State:PFLREDFAState;
-begin
- Pool:=StatePool;
- StatePool:=nil;
- while assigned(Pool) do begin
-  NextPool:=Pool^.Next;
-  State:=Pool^.States;
-  while assigned(State) and (State<>Pool^.EndState) do begin
-   DFAFreeState(State);
-   inc(ptruint(State),DFAStateSize);
-  end;
-  FreeMem(Pool^.States);
-  FreeMem(Pool);
-  Pool:=NextPool;
- end;
-end;
-
-procedure TFLREThreadLocalStorageInstance.DFAFreeUsedStatePool;
-var Pool,NextPool:PFLREDFAStatePool;
-    State:PFLREDFAState;
-begin
- Pool:=DFAStatePoolUsed;
- DFAStatePoolUsed:=nil;
- while assigned(Pool) do begin
-  NextPool:=Pool^.Next;
-  State:=Pool^.States;
-  while assigned(State) and (State<>Pool^.EndState) do begin
-   DFAFreeState(State);
-   inc(ptruint(State),DFAStateSize);
-  end;
-  FillChar(Pool^.States^,DFAStatePoolSize,AnsiChar(#0));
-  Pool^.Next:=DFAStatePoolFree;
-  DFAStatePoolFree:=Pool;
-  Pool:=NextPool;
- end;
-end;
-
-function TFLREThreadLocalStorageInstance.DFAAllocateNewStatePool:PFLREDFAStatePool;
-begin
- if assigned(DFAStatePoolFree) then begin
-  result:=DFAStatePoolFree;
-  DFAStatePoolFree:=result^.Next;
- end else begin
-  GetMem(result,SizeOf(TFLREDFAStatePool));
-  FillChar(result^,SizeOf(TFLREDFAStatePool),AnsiChar(#0));
-  GetMem(result^.States,DFAStatePoolSizePowerOfTwo);
-  FillChar(result^.States^,DFAStatePoolSize,AnsiChar(#0));
-  result^.EndState:=pointer(ptruint(ptruint(result^.States)+ptruint(DFAStatePoolSize)));
- end;
- result^.Next:=DFAStatePoolUsed;
- DFAStatePoolUsed:=result;
- result^.NextState:=result^.States;
-end;
-
-function TFLREThreadLocalStorageInstance.DFAGetState:PFLREDFAState;
-begin
- if DFAStatePoolUsed^.NextState=DFAStatePoolUsed^.EndState then begin
-  DFAAllocateNewStatePool;
- end;
- result:=DFAStatePoolUsed^.NextState;
- inc(ptruint(DFAStatePoolUsed^.NextState),DFAStateSize);
-end;
-
-function TFLREThreadLocalStorageInstance.DFATakeOverState(TakeOverFrom:PFLREDFAState):PFLREDFAState;
-begin
- result:=DFAGetState;
- result^.Instructions:=TakeOverFrom^.Instructions;
- result^.CountInstructions:=TakeOverFrom^.CountInstructions;
- result^.Flags:=TakeOverFrom^.Flags;
- TakeOverFrom^.Instructions:=nil;
- TakeOverFrom^.CountInstructions:=0;
- TakeOverFrom^.Flags:=0;
-end;
-
-procedure TFLREThreadLocalStorageInstance.DFAFreeState(State:PFLREDFAState);
-begin
- if assigned(State) then begin
-  SetLength(State^.Instructions,0);
-  if assigned(DFAStatePoolUsed) and
-     ((ptruint(ptruint(State)-ptruint(DFAStatePoolUsed^.States))<DFAStatePoolSize) and
-      (pointer(ptruint(ptruint(DFAStatePoolUsed^.NextState)-ptruint(DFAStateSize)))=State)) then begin
-   FillChar(State^,DFAStateSize,AnsiChar(#0));
-   dec(ptruint(DFAStatePoolUsed^.NextState),DFAStateSize);
-  end;
- end;
-end;
-
-procedure TFLREThreadLocalStorageInstance.DFAReset;
-var Index:longint;
-    State:PFLREDFAState;
-begin
-
- // Reset state pools
- DFAFreeUsedStatePool;
- DFAAllocateNewStatePool;
-
- // Reset state cache
- DFAStateCache.Clear;
- DFACountStatesCached:=0;
-
- // Reset and recaching start states
- for Index:=0 to length(DFAStates)-1 do begin
-  State:=DFAStates[Index];
-  if assigned(State) then begin
-   FillChar(State^.NextStates,DFANextStatesSize,AnsiChar(#0));
-   DFAStateCache.Add(State);
-   inc(DFACountStatesCached);
-  end;
- end;
-
-end;
-
-function TFLREThreadLocalStorageInstance.SearchMatchDFAFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-var Position:longint;
-    State,LastState:PFLREDFAState;
-    LocalInput:pansichar;
-    LocalByteMap:PFLREByteMap;
-begin
- result:=DFAFail;
- LocalInput:=Input;
- LocalByteMap:=@Instance.ByteMap;
- if UnanchoredStart then begin
-  State:=DFAStates[skFast+skUnanchored];
- end else begin
-  State:=DFAStates[skFast+skAnchored];
- end;
- for Position:=StartPosition to UntilExcludingPosition-1 do begin
-  LastState:=State;
-  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
-  if not assigned(State) then begin
-   State:=DFAFastProcessNextState(LastState,LocalInput[Position],false);
-   if not assigned(State) then begin
-    result:=DFAError;
-    exit;
-   end;
-  end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
-   if (State^.Flags and sfDFADead)<>0 then begin
-    if result<>DFAMatch then begin
-     result:=DFAFail;
-    end;
-    exit;
-   end;
-   if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchEnd:=Position;
-    result:=DFAMatch;
-   end;
-  end;
- end;
-end;
-
-function TFLREThreadLocalStorageInstance.SearchMatchReversedDFAFast(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-var Position:longint;
-    State,LastState:PFLREDFAState;
-    LocalInput:pansichar;
-    LocalByteMap:PFLREByteMap;
-begin
- result:=DFAFail;
- LocalInput:=Input;
- LocalByteMap:=@Instance.ByteMap;
- State:=DFAStates[skFast+skReversed];
- for Position:=StartPosition downto UntilIncludingPosition do begin
-  LastState:=State;
-  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
-  if not assigned(State) then begin
-   State:=DFAFastProcessNextState(LastState,LocalInput[Position],true);
-   if not assigned(State) then begin
-    result:=DFAError;
-    exit;
-   end;
-  end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
-   if (State^.Flags and sfDFADead)<>0 then begin
-    if result<>DFAMatch then begin
-     result:=DFAFail;
-    end;
-    exit;
-   end;
-   if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchBegin:=Position;
-    result:=DFAMatch;
-   end;
-  end;
- end;
-end;
-
-function TFLREThreadLocalStorageInstance.SearchMatchDFAFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-var Position,Start,PreviousPosition:longint;
-    State,LastState:PFLREDFAState;
-    StartState:PPFLREDFAState;
-    StartInstruction:PFLREInstruction;
-    LocalInput:pansichar;
-    LocalByteMap:PFLREByteMap;
-    Flags,PreviousChar:longword;
-begin
- result:=DFAFail;
- LocalInput:=Input;
- LocalByteMap:=@Instance.ByteMap;
- if StartPosition<=0 then begin
-  Start:=skBeginText;
-  Flags:=sfEmptyBeginText or sfEmptyBeginLine;
- end else begin
-  if rfUTF8 in Instance.Flags then begin
-   PreviousPosition:=StartPosition;
-   UTF8PtrDec(Input,InputLength,PreviousPosition);
-   if (PreviousPosition>=0) and (PreviousPosition<=InputLength) then begin
-    PreviousChar:=UTF8PtrCodeUnitGetCharFallback(Input,InputLength,PreviousPosition);
-   end else begin
-    PreviousChar:=$ffffffff;
-   end;
-  end else begin
-   PreviousChar:=byte(ansichar(Input[StartPosition-1]));
-  end;
-  case PreviousChar of
-   $0a,$0d,$85,$2028,$2029:begin
-    Start:=skBeginLine;
-    Flags:=sfEmptyBeginLine;
-   end;
-   else begin
-    if Instance.IsWordChar(PreviousChar) then begin
-     Start:=skAfterWordChar;
-     Flags:=sfDFALastWord;
-    end else begin
-     Start:=skAfterNonWordChar;
-     Flags:=0;
-    end;
-   end;
-  end;
- end;
- if UnanchoredStart then begin
-  StartInstruction:=Instance.UnanchoredStartInstruction;
-  inc(Start,skUnanchored);
- end else begin
-  StartInstruction:=Instance.AnchoredStartInstruction;
-  inc(Start,skAnchored);
- end;
- StartState:=@DFAStates[Start];
- if assigned(StartState^) then begin
-  State:=StartState^;
- end else begin
-  inc(DFAGeneration);
-  GetMem(State,DFAStateSize);
-  FillChar(State^,DFAStateSize,AnsiChar(#0));
-  DFAFullAddInstructionThread(State,StartInstruction,GetSatisfyFlags(StartPosition));
-  State^.Flags:=Flags or sfDFAStart;
-  DFAStateCache.Add(State);
-  inc(DFACountStatesCached);
-  StartState^:=State;
- end;
- for Position:=StartPosition to UntilExcludingPosition-1 do begin
-  LastState:=State;
-  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
-  if not assigned(State) then begin
-   State:=DFAFullProcessNextState(LastState,Position,byte(ansichar(LocalInput[Position])),false);
-   if not assigned(State) then begin
-    result:=DFAError;
-    exit;
-   end;
-  end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
-   if (State^.Flags and sfDFADead)<>0 then begin
-    if result<>DFAMatch then begin
-     result:=DFAFail;
-    end;
-    exit;
-   end;
-   if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchEnd:=Position;
-    result:=DFAMatch;
-   end;
-  end;
- end;
-end;
-
-function TFLREThreadLocalStorageInstance.SearchMatchReversedDFAFull(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-var Position:longint;
-    State,LastState:PFLREDFAState;
-    LocalInput:pansichar;
-    LocalByteMap:PFLREByteMap;
-begin
- result:=DFAFail;
- LocalInput:=Input;
- LocalByteMap:=@Instance.ByteMap;
- exit;
- for Position:=StartPosition downto UntilIncludingPosition do begin
-  LastState:=State;
-  State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
-  if not assigned(State) then begin
-   State:=DFAFullProcessNextState(LastState,Position,byte(ansichar(LocalInput[Position])),true);
-   if not assigned(State) then begin
-    result:=DFAError;
-    exit;
-   end;
-  end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
-   if (State^.Flags and sfDFADead)<>0 then begin
-    if result<>DFAMatch then begin
-     result:=DFAFail;
-    end;
-    exit;
-   end;
-   if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchBegin:=Position;
-    result:=DFAMatch;
    end;
   end;
  end;
@@ -11767,11 +11792,11 @@ begin
  result:=false;
 (*)
  if DFAFast then begin
-  case ThreadLocalStorageInstance.SearchMatchDFAFast(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
+  case ThreadLocalStorageInstance.DFA.SearchMatchFast(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
    DFAMatch:begin
     if UnanchoredStart then begin
      // For unanchored searchs, we must do also a "backward" DFA search
-     case ThreadLocalStorageInstance.SearchMatchReversedDFAFast(MatchEnd,StartPosition,MatchBegin) of
+     case ThreadLocalStorageInstance.ReversedDFA.SearchMatchFastReversed(MatchEnd,StartPosition,MatchBegin) of
       DFAMatch:begin
        if MatchBegin<StartPosition then begin
         MatchBegin:=StartPosition;
@@ -11818,11 +11843,11 @@ begin
    end;
   end;
  end else begin
-  case ThreadLocalStorageInstance.SearchMatchDFAFull(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
+  case ThreadLocalStorageInstance.DFA.SearchMatchFull(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
    DFAMatch:begin
     if UnanchoredStart then begin
      // For unanchored searchs, we must do also a "backward" DFA search
-     case ThreadLocalStorageInstance.SearchMatchReversedDFAFull(MatchEnd,StartPosition,MatchBegin) of
+     case ThreadLocalStorageInstance.ReversedDFA.SearchMatchFullReversed(MatchEnd,StartPosition,MatchBegin) of
       DFAMatch:begin
        if MatchBegin<StartPosition then begin
         MatchBegin:=StartPosition;
