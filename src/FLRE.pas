@@ -12773,11 +12773,10 @@ function TFLRE.SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageIns
 var MatchBegin,MatchEnd:longint;
 begin
  result:=false;
-(**)
  ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
  case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
   DFAMatch:begin
-   if true or UnanchoredStart then begin
+   if UnanchoredStart then begin
     // For unanchored searchs, we must do also a "backward" DFA search
     case ThreadLocalStorageInstance.ReversedDFA.SearchMatch(MatchEnd,StartPosition,MatchBegin,false) of
      DFAMatch:begin
@@ -12824,7 +12823,7 @@ begin
    Assert(false,'Internal error in DFA code');
 {$endif}
   end;
- end;(**)
+ end;
  if false and OnePassNFAReady and not UnanchoredStart then begin
   result:=ThreadLocalStorageInstance.OnePassNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition);
  end else begin
