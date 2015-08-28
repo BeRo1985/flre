@@ -7364,8 +7364,10 @@ var Position,Start,PreviousPosition,LocalInputLength:longint;
     Flags,PreviousChar,CurrentChar:longword;
 begin
  result:=DFAFail;
+
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalInputLength:=ThreadLocalStorageInstance.InputLength;
+
  begin
   if (StartPosition>=0) and (StartPosition<=ThreadLocalStorageInstance.InputLength) then begin
    if rfUTF8 in Instance.Flags then begin
@@ -7383,7 +7385,7 @@ begin
    if rfUTF8 in Instance.Flags then begin
     PreviousPosition:=StartPosition;
     UTF8PtrDec(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
-    if (PreviousPosition>=0) and (PreviousPosition<=ThreadLocalStorageInstance.InputLength) then begin
+    if (PreviousPosition>=0) and (PreviousPosition<ThreadLocalStorageInstance.InputLength) then begin
      PreviousChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
     end else begin
      PreviousChar:=$ffffffff;
@@ -7408,6 +7410,7 @@ begin
    end;
   end;
  end;
+
  if UnanchoredStart then begin
   StartInstruction:=Instance.UnanchoredStartInstruction;
   inc(Start,sskUnanchored);
@@ -7415,6 +7418,7 @@ begin
   StartInstruction:=Instance.AnchoredStartInstruction;
   inc(Start,sskAnchored);
  end;
+
  StartState:=@StartStates[Start];
  if assigned(StartState^) then begin
   State:=StartState^;
@@ -7424,6 +7428,7 @@ begin
   State:=WorkQueueToCachedState(WorkQueues[0],Flags);
   StartState^:=State;
  end;
+
  for Position:=StartPosition to UntilExcludingPosition{-1} do begin // No -1 because match can be delayed of one byte
   LastState:=State;
   if Position<LocalInputLength then begin
@@ -7452,44 +7457,44 @@ begin
    end;
   end;
  end;
+
 end;
 
 function TFLREDFA.SearchMatchFullReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
-var Position,Start,PreviousPosition,LocalInputLength:longint;
+var Position,Start,NextPosition,LocalInputLength:longint;
     State,LastState:PFLREDFAState;
     StartState:PPFLREDFAState;
     StartInstruction:PFLREInstruction;
     LocalInput:pansichar;
-    Flags,PreviousChar,CurrentChar:longword;
+    Flags,NextChar,CurrentChar:longword;
 begin
  result:=DFAFail;
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalInputLength:=ThreadLocalStorageInstance.InputLength;
+
  begin
   if StartPosition=(ThreadLocalStorageInstance.InputLength-1) then begin
    Start:=sskBeginText;
    Flags:=sfEmptyBeginText or sfEmptyBeginLine;
   end else begin
    if (rfUTF8 in Instance.Flags) and ((byte(ansichar(LocalInput[StartPosition])) and $80)<>0) then begin
-    PreviousPosition:=StartPosition+1;
-    while (PreviousPosition>0) and ((byte(ansichar(LocalInput[PreviousPosition])) and $80)<>0) do begin
-     dec(PreviousPosition);
-    end;
-    if (PreviousPosition>=0) and (PreviousPosition<=ThreadLocalStorageInstance.InputLength) then begin
-     PreviousChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,PreviousPosition);
+    NextPosition:=StartPosition;
+    UTF8PtrSafeInc(LocalInput,LocalInputLength,NextPosition);
+    if (NextPosition>=0) and (NextPosition<ThreadLocalStorageInstance.InputLength) then begin
+     NextChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,NextPosition);
     end else begin
-     PreviousChar:=$ffffffff;
+     NextChar:=$ffffffff;
     end;
    end else begin
-    PreviousChar:=byte(ansichar(LocalInput[StartPosition+1]));
+    NextChar:=byte(ansichar(LocalInput[StartPosition+1]));
    end;
-   case PreviousChar of
+   case NextChar of
     $0a,$0d,$85,$2028,$2029:begin
      Start:=sskBeginLine;
      Flags:=sfEmptyBeginLine;
     end;
     else begin
-     if Instance.IsWordChar(PreviousChar) then begin
+     if Instance.IsWordChar(NextChar) then begin
       Start:=sskAfterWordChar;
       Flags:=sfDFALastWord;
      end else begin
@@ -7500,8 +7505,10 @@ begin
    end;
   end;
  end;
+
  StartInstruction:=Instance.ReversedStartInstruction;
  inc(Start,sskReversed);
+
  StartState:=@StartStates[Start];
  if assigned(StartState^) then begin
   State:=StartState^;
@@ -7511,7 +7518,8 @@ begin
   State:=WorkQueueToCachedState(WorkQueues[0],Flags);
   StartState^:=State;
  end;
- for Position:=StartPosition downto UntilIncludingPosition-1 do begin
+
+ for Position:=StartPosition downto UntilIncludingPosition-1 do begin //-1 because match can be delayed of one byte
   LastState:=State;
   if Position>=0 then begin
    CurrentChar:=byte(ansichar(LocalInput[Position]));
@@ -7539,6 +7547,7 @@ begin
    end;
   end;
  end;
+ 
 end;
 
 constructor TFLREThreadLocalStorageInstance.Create(AInstance:TFLRE);
