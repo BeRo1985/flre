@@ -11221,6 +11221,9 @@ procedure TFLRE.Compile;
        i0:=NewInstruction(opMULTIMATCH);
        Instructions[i0].Value:=Node^.Value;
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+       i0:=NewInstruction(opMATCH);
+       Instructions[i0].Value:=Node^.Value;
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
       end;
      end;
      ntZEROWIDTH:begin
