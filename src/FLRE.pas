@@ -533,6 +533,7 @@ type EFLRE=class(Exception);
        Jobs:TFLREBitStateNFAJobs;
        CountJobs:longint;
        MaxJob:longint;
+       ManySubMatches:TFLREOnePassNFASubMatches;
        WorkSubMatches:TFLREBitStateNFASubMatches;
        MatchSubMatches:TFLREBitStateNFASubMatches;
        constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
@@ -635,6 +636,8 @@ type EFLRE=class(Exception);
        CountInternalCaptures:longint;
 
        CountSubMatches:longint;
+
+       CountManySubMatches:longint;
 
        CapturesToSubMatchesMap:TFLRECapturesToSubMatchesMap;
 
@@ -6018,9 +6021,12 @@ begin
  Jobs:=nil;
  CountJobs:=0;
  MaxJob:=0;
+
+ ManySubMatches:=nil;
  WorkSubMatches:=nil;
  MatchSubMatches:=nil;
 
+ SetLength(ManySubMatches,Instance.CountManySubMatches);
  SetLength(WorkSubMatches,Instance.CountSubMatches);
  SetLength(MatchSubMatches,Instance.CountSubMatches);
 
@@ -6029,6 +6035,7 @@ end;
 destructor TFLREBitStateNFA.Destroy;
 begin
  SetLength(Jobs,0);
+ SetLength(ManySubMatches,0);
  SetLength(WorkSubMatches,0);
  SetLength(MatchSubMatches,0);
  inherited Destroy;
@@ -6170,16 +6177,17 @@ var LocalInputLength,BasePosition,Len:longint;
      opMANY:begin
       case Argument of
        0:begin
-        // TODO
-        Push(Instruction,WorkSubMatches[Instruction^.Value],1);
-        WorkSubMatches[Instruction^.Value]:=Position;
+        Push(Instruction,ManySubMatches[Instruction^.Value],1);
+        ManySubMatches[Instruction^.Value]:=Position;
         Instruction:=Instruction^.Next;
         if ShouldVisit(Instruction,Position) then begin
          continue;
         end;
        end;
        1:begin
-        WorkSubMatches[Instruction^.Value]:=Position;
+        if ManySubMatches[Instruction^.Value]<Position then begin
+         ManySubMatches[Instruction^.Value]:=Position;
+        end;
        end;
       end;
      end;
@@ -6253,6 +6261,10 @@ begin
   StartInstruction:=Instance.AnchoredStartInstruction;
  end;
 
+ for Counter:=0 to Instance.CountManySubMatches-1 do begin
+  ManySubMatches[Counter]:=-1;
+ end;
+ 
  if TrySearch(StartInstruction,Position) then begin
   SetLength(Captures,Instance.CountCaptures);
   for Counter:=0 to Instance.CountCaptures-1 do begin
@@ -7415,6 +7427,8 @@ begin
 
  PrefilterRootNode:=nil;
  HasPrefilter:=false;
+
+ CountManySubMatches:=0;
 
  try
 
