@@ -497,6 +497,7 @@ type EFLRE=class(Exception);
        Instance:TFLRE;
        ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
        SearchLongest:longbool;
+       MultiMatch:longbool;
        ParallelNFAThreadLists:TFLREParallelNFAThreadLists;
        ParallelNFAStack:TFLREParallelNFAStack;
        Generation:int64;
@@ -5437,6 +5438,8 @@ begin
 
  SearchLongest:=ThreadLocalStorageInstance.SearchLongest;
 
+ MultiMatch:=Instance.CountMultiSubMatches>0;
+
  Generation:=0;
 
  InstructionGenerations:=nil;
@@ -5773,7 +5776,7 @@ begin
    CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
    Instruction:=CurrentThread^.Instruction;
    State:=CurrentThread^.State;
-   if SearchLongest and
+   if (SearchLongest and not MultiMatch) and
       assigned(BestState) and
       (((BestState^.SubMatchesBitmap and State^.SubMatchesBitmap) and 1)<>0) and
       (BestState^.SubMatches[0]<State^.SubMatches[0]) then begin
