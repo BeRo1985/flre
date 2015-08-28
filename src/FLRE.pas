@@ -7369,7 +7369,7 @@ begin
  LocalInputLength:=ThreadLocalStorageInstance.InputLength;
 
  begin
-  if (StartPosition>=0) and (StartPosition<=ThreadLocalStorageInstance.InputLength) then begin
+  if (StartPosition>=0) and (StartPosition<ThreadLocalStorageInstance.InputLength) then begin
    if rfUTF8 in Instance.Flags then begin
     CurrentChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,StartPosition);
    end else begin
@@ -7617,7 +7617,7 @@ begin
  if rfUTF8 in Instance.Flags then begin
   PreviousPosition:=Position;
   UTF8PtrDec(Input,InputLength,PreviousPosition);
-  if (PreviousPosition>=0) and (PreviousPosition<=InputLength) then begin
+  if (PreviousPosition>=0) and (PreviousPosition<InputLength) then begin
    PreviousChar:=UTF8PtrCodeUnitGetCharFallback(Input,InputLength,PreviousPosition);
   end else begin
    PreviousChar:=0;
@@ -7629,7 +7629,7 @@ begin
   end;
  end else begin
   PreviousPosition:=Position-1;
-  if (PreviousPosition>=0) and (PreviousPosition<=InputLength) then begin
+  if (PreviousPosition>=0) and (PreviousPosition<InputLength) then begin
    PreviousChar:=byte(ansichar(Input[PreviousPosition]));
   end else begin
    PreviousChar:=0;
