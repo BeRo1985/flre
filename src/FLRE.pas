@@ -6182,7 +6182,9 @@ var LocalInputLength,BasePosition,Len:longint;
       case Argument of
        0:begin
         Push(Instruction,ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value],1);
-        ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]:=Position;
+        if ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]<Position then begin
+         ThreadLocalStorageInstance.ManySubMatches[Instruction^.Value]:=Position;
+        end;
         Instruction:=Instruction^.Next;
         if ShouldVisit(Instruction,Position) then begin
          continue;
