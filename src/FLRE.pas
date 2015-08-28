@@ -7042,6 +7042,14 @@ var Counter:longint;
     Instruction:PFLREInstruction;
 begin
 
+ // Reset generation ID on overflow
+ if Generation>MaxGeneration then begin
+  Generation:=0;
+  for Counter:=0 to length(InstructionGenerations)-1 do begin
+   InstructionGenerations[Counter]:=-1;
+  end;
+ end;
+
  // Process state instructions
  inc(Generation);
  NewState.CountInstructions:=0;
