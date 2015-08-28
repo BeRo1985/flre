@@ -5679,17 +5679,18 @@ begin
 {$endif}
   dec(State^.ReferenceCounter);
  end;
-{$ifdef cpu386}
- result^.SubMatchesBitmap:=result^.SubMatchesBitmap or ((longword(1) shl Index) or longword(-longword(longword(-(Index-30)) shr 31)));
-{$else}
  if (result^.SubMatchesBitmap and longword($80000000))=0 then begin
   if Index>30 then begin
+   for Counter:=0 to 30 do begin
+    if (result^.SubMatchesBitmap and (longword(1) shl Counter))=0 then begin
+     result^.SubMatches[Counter]:=0;
+    end;
+   end;
    result^.SubMatchesBitmap:=$ffffffff;
   end else begin
    result^.SubMatchesBitmap:=result^.SubMatchesBitmap or (longword(1) shl Index);
   end;
  end;
-{$endif}
  result^.SubMatches[Index]:=Position;
 end;
 
@@ -6321,49 +6322,57 @@ begin
    CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
    Instruction:=CurrentThread^.Instruction;
    State:=CurrentThread^.State;
-   case Instruction^.IDandOpcode and $ff of
-    opSINGLECHAR:begin
-     if CurrentChar=Instruction^.Value then begin
-      ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
-     end else begin
-      ParallelNFAStateRelease(State);
-     end;
-    end;
-    opCHAR:begin
-     if (CurrentChar>=0) and (ansichar(byte(CurrentChar)) in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
-      ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
-     end else begin
-      ParallelNFAStateRelease(State);
-     end;
-    end;
-    opANY:begin
-     if CurrentChar<0 then begin
-      ParallelNFAStateRelease(State);
-     end else begin
-      ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
-     end;
-    end;
-    opMATCH:begin
-     if SearchLongest then begin
-      if not assigned(BestState) then begin
-       BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap);
+   if SearchLongest and
+      assigned(BestState) and
+      (((BestState^.SubMatchesBitmap and State^.SubMatchesBitmap) and 1)<>0) and
+      (BestState^.SubMatches[0]<State^.SubMatches[0]) then begin
+    // Skip any threads started after our current best match, when we are searching the longest match       
+    ParallelNFAStateRelease(State);
+   end else begin
+    case Instruction^.IDandOpcode and $ff of
+     opSINGLECHAR:begin
+      if CurrentChar=Instruction^.Value then begin
+       ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
+      end else begin
+       ParallelNFAStateRelease(State);
       end;
-      if State^.SubMatchesBitmap<>0 then begin
-       if LastPosition<CurrentPosition then begin
-        LastPosition:=CurrentPosition;
-        BestState^.SubMatchesBitmap:=State^.SubMatchesBitmap;
-        Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
+     end;
+     opCHAR:begin
+      if (CurrentChar>=0) and (ansichar(byte(CurrentChar)) in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
+       ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
+      end else begin
+       ParallelNFAStateRelease(State);
+      end;
+     end;
+     opANY:begin
+      if CurrentChar<0 then begin
+       ParallelNFAStateRelease(State);
+      end else begin
+       ParallelNFAAddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
+      end;
+     end;
+     opMATCH:begin
+      if SearchLongest then begin
+       if not assigned(BestState) then begin
+        BestState:=ParallelNFAStateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap);
        end;
+       if State^.SubMatchesBitmap<>0 then begin
+        if LastPosition<CurrentPosition then begin
+         LastPosition:=CurrentPosition;
+         BestState^.SubMatchesBitmap:=State^.SubMatchesBitmap;
+         Move(State^.SubMatches[0],BestState^.SubMatches[0],State^.Count*SizeOf(TFLREParallelNFAStateItem));
+        end;
+       end;
+      end else begin
+       if assigned(Matched) then begin
+        ParallelNFAStateRelease(Matched);
+       end;
+       Matched:=State;
+       for Counter:=ThreadIndex+1 to CurrentThreadList^.CountThreads-1 do begin
+        ParallelNFAStateRelease(CurrentThreadList^.Threads[Counter].State);
+       end;
+       break;
       end;
-     end else begin
-      if assigned(Matched) then begin
-       ParallelNFAStateRelease(Matched);
-      end;
-      Matched:=State;
-      for Counter:=ThreadIndex+1 to CurrentThreadList^.CountThreads-1 do begin
-       ParallelNFAStateRelease(CurrentThreadList^.Threads[Counter].State);
-      end;
-      break;
      end;
     end;
    end;
