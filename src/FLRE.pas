@@ -169,6 +169,12 @@ type EFLRE=class(Exception);
                 rfSAFE,
                 rfFAST);
 
+     PFLREMatchMode=^TFLREMatchMode;
+     TFLREMatchMode=(mmFirstMatch,
+                     mmLongestMatch,
+                     mmFullMatch,
+                     mmMultiMatch);
+
      TFLREFlags=set of TFLREFlag;
 
      PFLRECharClass=^TFLRECharClass;
@@ -296,10 +302,14 @@ type EFLRE=class(Exception);
      PPFLREDFANextStatesByteBlock=^TPFLREDFANextStatesByteBlock;
      TPFLREDFANextStatesByteBlock=array[byte] of PFLREDFAState;
 
+     TFLREIndirectInstructions=array of longint;
+
      TFLREDFAState=record
       Flags:longword;
       Instructions:TPFLREInstructions;
       CountInstructions:longint;
+      IndirectInstructions:TFLREIndirectInstructions;
+      CountIndirectInstructions:longint;
       NextStates:TPFLREDFANextStatesByteBlock;
      end;
 
@@ -368,6 +378,7 @@ type EFLRE=class(Exception);
        destructor Destroy; override;
        procedure Clear; reintroduce;
        procedure Mark;
+       function IsMark(const Value:longint):boolean;
        procedure AddNew(const ID:longint); reintroduce;
        procedure Add(const ID:longint); reintroduce;
      end;
@@ -496,8 +507,7 @@ type EFLRE=class(Exception);
       public
        Instance:TFLRE;
        ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
-       SearchLongest:longbool;
-       MultiMatch:longbool;
+       MatchMode:TFLREMatchMode;
        ParallelNFAThreadLists:TFLREParallelNFAThreadLists;
        ParallelNFAStack:TFLREParallelNFAStack;
        Generation:int64;
@@ -520,7 +530,7 @@ type EFLRE=class(Exception);
       public
        Instance:TFLRE;
        ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
-       SearchLongest:longbool;
+       MatchMode:TFLREMatchMode;
        WorkSubMatches:TFLREOnePassNFASubMatches;
        MatchSubMatches:TFLREOnePassNFASubMatches;
        constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
@@ -532,7 +542,7 @@ type EFLRE=class(Exception);
       public
        Instance:TFLRE;
        ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
-       SearchLongest:longbool;
+       MatchMode:TFLREMatchMode;
        Visited:TFLREBitStateNFAVisited;
        CountVisited:longint;
        Jobs:TFLREBitStateNFAJobs;
@@ -549,7 +559,8 @@ type EFLRE=class(Exception);
       public
        Instance:TFLRE;
        ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
-       SearchLongest:longbool;
+       MatchMode:TFLREMatchMode;
+       Reversed:longbool;
        Generation:int64;
        InstructionGenerations:TFLREInstructionGenerations;
        StackInstructions:TPFLREInstructions;
@@ -565,11 +576,12 @@ type EFLRE=class(Exception);
        StatePoolSize:TFLREPtrUInt;
        StatePoolSizePowerOfTwo:TFLREPtrUInt;
        WorkQueues:TFLREDFAWorkQueues;
-       constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
+       QueueInstructionArray:TFLREIndirectInstructions;
+
+       constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean);
        destructor Destroy; override;
 
        function CacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
-
        procedure DestroyStatePool(var StatePool:PFLREDFAStatePool);
        procedure FreeUsedStatePool;
        function AllocateNewStatePool:PFLREDFAStatePool;
@@ -582,6 +594,9 @@ type EFLRE=class(Exception);
        function FastProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
        function SearchMatchFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
        function SearchMatchFastReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint):longint;
+
+       function WorkQueueToCachedState(const WorkQueue:TFLREDFAWorkQueue;Flags:longword):PFLREDFAState;
+       procedure StateToWorkQueue(const DFAState:PFLREDFAState;const WorkQueue:TFLREDFAWorkQueue);
 
        procedure FullAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction;const Flags:longword);
        function FullProcessNextState(State:PFLREDFAState;const Position:longint;const CurrentChar:longword;const Reversed:boolean):PFLREDFAState;
@@ -601,7 +616,7 @@ type EFLRE=class(Exception);
        Input:pansichar;
        InputLength:longint;
 
-       SearchLongest:longbool;
+       MatchMode:TFLREMatchMode;
 
        MultiSubMatches:TFLREMultiSubMatches;
 
@@ -694,6 +709,7 @@ type EFLRE=class(Exception);
        BeginningSplit:longbool;
        BeginningWildCard:longbool;
        BeginningAnchor:longbool;
+       EndingAnchor:longbool;
        BeginningWildcardLoop:longbool;
 
        DoUnanchoredStart:longbool;
@@ -812,6 +828,8 @@ const MaxDFAStates=4096;
 
       MaxGeneration=int64($4000000000000000);
 
+      Mark=-1;
+
       // State flags
       sfEmptyBeginLine=1 shl 0;
       sfEmptyEndLine=1 shl 1;
@@ -879,15 +897,16 @@ const MaxDFAStates=4096;
       opMATCH=3;
       opJMP=4;
       opSPLIT=5;
-      opSAVE=6;
-      opMULTIMATCH=7;
-      opZEROWIDTH=8;
-      opLOOKBEHINDNEGATIVE=9;
-      opLOOKBEHINDPOSITIVE=10;
-      opLOOKAHEADNEGATIVE=11;
-      opLOOKAHEADPOSITIVE=12;
-      opBACKREFERENCE=13;
-      opBACKREFERENCEIGNORECASE=14;
+      opSPLITMATCH=6;
+      opSAVE=7;
+      opMULTIMATCH=8;
+      opZEROWIDTH=9;
+      opLOOKBEHINDNEGATIVE=10;
+      opLOOKBEHINDPOSITIVE=11;
+      opLOOKAHEADNEGATIVE=12;
+      opLOOKAHEADPOSITIVE=13;
+      opBACKREFERENCE=14;
+      opBACKREFERENCEIGNORECASE=15;
 
       // Split kind
       skALT=0;
@@ -3307,7 +3326,11 @@ end;
 function HashDFAState(const Key:PFLREDFAState):longword;
 begin
  if assigned(Key) and (Key.CountInstructions>0) then begin
-  result:=((HashData(@Key.Instructions[0],Key.CountInstructions*sizeof(PFLREInstruction))) xor ((longword(Key.CountInstructions) shr 16) or (longword(Key.CountInstructions) shl 16))) xor ((Key.Flags shl 19) or (Key.Flags shr 13));
+  result:=HashData(@Key.Instructions[0],Key.CountInstructions*sizeof(PFLREInstruction));
+  result:=result xor ((longword(Key.CountInstructions) shr 16) or (longword(Key.CountInstructions) shl 16));
+  result:=result xor HashData(@Key.IndirectInstructions[0],Key.CountIndirectInstructions*sizeof(longint));
+  result:=result xor ((longword(Key.CountIndirectInstructions) shr 16) or (longword(Key.CountIndirectInstructions) shl 16));
+  result:=result xor ((Key.Flags shl 19) or (Key.Flags shr 13));
   if result=0 then begin
    result:=$ffffffff;
   end;
@@ -3321,7 +3344,8 @@ var i:longint;
 begin
  result:=a=b;
  if not result then begin
-  if (assigned(a) and assigned(b)) and ((a.CountInstructions=b.CountInstructions) and (a.Flags=b.Flags)) then begin
+  if (assigned(a) and assigned(b)) and
+     ((a.CountInstructions=b.CountInstructions) and (a.CountIndirectInstructions=b.CountIndirectInstructions) and (a.Flags=b.Flags)) then begin
    result:=true;
    for i:=0 to a.CountInstructions-1 do begin
     if a.Instructions[i]<>b.Instructions[i] then begin
@@ -3329,8 +3353,19 @@ begin
      exit;
     end;
    end;
+   for i:=0 to a.CountIndirectInstructions-1 do begin
+    if a.IndirectInstructions[i]<>b.IndirectInstructions[i] then begin
+     result:=false;
+     exit;
+    end;
+   end;
   end;
  end;
+end;
+
+function IsInstructionGreedy(Instruction:PFLREInstruction):boolean;
+begin
+ result:=assigned(Instruction^.Next) and ((Instruction^.Next^.IDandOpcode and $ff) in [opSINGLECHAR,opCHAR,opANY]);
 end;
 
 constructor TFLREDFAStateHashMap.Create;
@@ -3567,6 +3602,11 @@ begin
   inherited AddNew(NextMark);
   inc(NextMark);
  end;
+end;
+
+function TFLREDFAWorkQueue.IsMark(const Value:longint):boolean;
+begin
+ result:=Value>=QueueSize;
 end;
 
 procedure TFLREDFAWorkQueue.AddNew(const ID:longint);
@@ -5436,9 +5476,7 @@ begin
 
  Instance:=ThreadLocalStorageInstance.Instance;
 
- SearchLongest:=ThreadLocalStorageInstance.SearchLongest;
-
- MultiMatch:=Instance.CountMultiSubMatches>0;
+ MatchMode:=ThreadLocalStorageInstance.MatchMode;
 
  Generation:=0;
 
@@ -5647,7 +5685,7 @@ begin
       Instruction:=Instruction^.Next;
       continue;
      end;
-     opSPLIT:begin
+     opSPLIT,opSPLITMATCH:begin
       StackItem:=@ParallelNFAStack[StackSize];
       StackItem^.Instruction:=Instruction^.OtherNext;
       StackItem^.State:=State;
@@ -5776,7 +5814,7 @@ begin
    CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
    Instruction:=CurrentThread^.Instruction;
    State:=CurrentThread^.State;
-   if (SearchLongest and not MultiMatch) and
+   if (MatchMode=mmLongestMatch) and
       assigned(BestState) and
       (((BestState^.SubMatchesBitmap and State^.SubMatchesBitmap) and 1)<>0) and
       (BestState^.SubMatches[0]<State^.SubMatches[0]) then begin
@@ -5806,7 +5844,7 @@ begin
       end;
      end;
      opMATCH:begin
-      if SearchLongest then begin
+      if MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch] then begin
        if not assigned(BestState) then begin
         BestState:=StateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap);
        end;
@@ -5894,7 +5932,7 @@ begin
 
  Instance:=ThreadLocalStorageInstance.Instance;
 
- SearchLongest:=ThreadLocalStorageInstance.SearchLongest;
+ MatchMode:=ThreadLocalStorageInstance.MatchMode;
 
  WorkSubMatches:=nil;
  MatchSubMatches:=nil;
@@ -5967,7 +6005,7 @@ begin
     end;
    end;
    result:=true;
-   if ((Condition and sfMatchWins)<>0) and not SearchLongest then begin
+   if ((Condition and sfMatchWins)<>0) and not (MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch]) then begin
     Done:=true;
     break;
    end;
@@ -6027,7 +6065,7 @@ begin
 
  Instance:=ThreadLocalStorageInstance.Instance;
 
- SearchLongest:=ThreadLocalStorageInstance.SearchLongest;
+ MatchMode:=ThreadLocalStorageInstance.MatchMode;
 
  CountVisited:=0;
  Jobs:=nil;
@@ -6101,7 +6139,7 @@ var LocalInputLength,BasePosition,Len:longint;
    repeat
 
     case Instruction^.IDandOpcode and $ff of
-     opSPLIT:begin
+     opSPLIT,opSPLITMATCH:begin
       case Argument of
        0:begin
         Push(Instruction,Position,1);
@@ -6148,7 +6186,7 @@ var LocalInputLength,BasePosition,Len:longint;
      end;
      opMATCH:begin
       result:=true;
-      if SearchLongest then begin
+      if MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch] then begin
        if LastPosition<Position then begin
         LastPosition:=Position;
         for i:=0 to Instance.CountSubMatches-1 do begin
@@ -6290,7 +6328,7 @@ begin
 
 end;
 
-constructor TFLREDFA.Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
+constructor TFLREDFA.Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean);
 var Index,SubIndex:longint;
     FLREDFAStateCreateTempDFAState:TFLREDFAState;
     DFAState:PFLREDFAState;
@@ -6301,7 +6339,13 @@ begin
 
  Instance:=ThreadLocalStorageInstance.Instance;
 
- SearchLongest:=ThreadLocalStorageInstance.SearchLongest;
+ if AReversed then begin
+  MatchMode:=mmLongestMatch;
+ end else begin
+  MatchMode:=ThreadLocalStorageInstance.MatchMode;
+ end;
+
+ Reversed:=AReversed;
 
  StackInstructions:=nil;
  StateCache:=TFLREDFAStateHashMap.Create;
@@ -6393,11 +6437,15 @@ begin
   WorkQueues[1]:=TFLREDFAWorkQueue.Create(Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions),Max(Instance.CountForwardInstructions,Instance.CountBackwardInstructions));
  end;
 
+ QueueInstructionArray:=nil;
+ SetLength(QueueInstructionArray,WorkQueues[0].Size);
+
 end;
 
 destructor TFLREDFA.Destroy;
 var Index:longint;
 begin
+ SetLength(QueueInstructionArray,0);
  DestroyStatePool(StatePoolUsed);
  DestroyStatePool(StatePoolFree);
  StatePoolUsed:=nil;
@@ -6513,9 +6561,13 @@ begin
  result:=GetState;
  result^.Instructions:=TakeOverFrom^.Instructions;
  result^.CountInstructions:=TakeOverFrom^.CountInstructions;
+ result^.IndirectInstructions:=TakeOverFrom^.IndirectInstructions;
+ result^.CountIndirectInstructions:=TakeOverFrom^.CountIndirectInstructions;
  result^.Flags:=TakeOverFrom^.Flags;
  TakeOverFrom^.Instructions:=nil;
  TakeOverFrom^.CountInstructions:=0;
+ TakeOverFrom^.IndirectInstructions:=nil;
+ TakeOverFrom^.CountIndirectInstructions:=0;
  TakeOverFrom^.Flags:=0;
 end;
 
@@ -6580,7 +6632,7 @@ begin
      // No-ops at DFA
      Instruction:=Instruction^.Next;
     end;
-    opSPLIT:begin
+    opSPLIT,opSPLITMATCH:begin
      Stack^[StackPointer]:=Instruction^.OtherNext;
      inc(StackPointer);
      Instruction:=Instruction^.Next;
@@ -6629,7 +6681,7 @@ begin
     FastAddInstructionThread(@NewState,Instruction^.Next);
    end;
    opMATCH:begin
-    if not (SearchLongest or Reversed) then begin
+    if not ((MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch]) or Reversed) then begin
      // We can stop processing the instruction list queue here since we found a match (for the PCRE leftmost first valid match behaviour)
      break;
     end;
@@ -6730,6 +6782,345 @@ begin
  end;
 end;
 
+function TFLREDFA.WorkQueueToCachedState(const WorkQueue:TFLREDFAWorkQueue;Flags:longword):PFLREDFAState;
+ procedure Sort(List:PFLREIntegerArray;const CountItems:longint);
+  function IntLog2(x:longword):longword; {$ifdef cpu386}assembler; register;
+  asm
+   test eax,eax
+   jz @Done
+   bsr eax,eax
+   @Done:
+  end;
+ {$else}
+  begin
+   x:=x or (x shr 1);
+   x:=x or (x shr 2);
+   x:=x or (x shr 4);
+   x:=x or (x shr 8);
+   x:=x or (x shr 16);
+   x:=x shr 1;
+   x:=x-((x shr 1) and $55555555);
+   x:=((x shr 2) and $33333333)+(x and $33333333);
+   x:=((x shr 4)+x) and $0f0f0f0f;
+   x:=x+(x shr 8);
+   x:=x+(x shr 16);
+   result:=x and $3f;
+  end;
+ {$endif}
+  procedure IntroSort(Left,Right,Depth:longint);
+   procedure SiftDown(Current,MaxIndex:longint);
+   var SiftLeft,SiftRight,Largest:longint;
+       v:longint;
+   begin
+    SiftLeft:=Left+(2*(Current-Left))+1;
+    SiftRight:=Left+(2*(Current-Left))+2;
+    Largest:=Current;
+    if (SiftLeft<=MaxIndex) and (List^[SiftLeft]>List^[Largest]) then begin
+     Largest:=SiftLeft;
+    end;
+    if (SiftRight<=MaxIndex) and (List^[SiftRight]>List^[Largest]) then begin
+     Largest:=SiftRight;
+    end;
+    if Largest<>Current then begin
+     v:=List^[Current];
+     List^[Current]:=List^[Largest];
+     List^[Largest]:=v;
+     SiftDown(Largest,MaxIndex);
+    end;
+   end;
+   procedure InsertionSort;
+   var i,j:longint;
+       t:longint;
+   begin
+    i:=Left+1;
+    while i<=Right do begin
+     t:=List^[i];
+     j:=i-1;
+     while (j>=Left) and (t<List^[j]) do begin
+      List^[j+1]:=List^[j];
+      dec(j);
+     end;
+     List^[j+1]:=t;
+     inc(i);
+    end;
+   end;
+   procedure HeapSort;
+   var i:longint;
+       v:longint;
+   begin
+    i:=((Left+Right+1) div 2)-1;
+    while i>=Left do begin
+     SiftDown(i,Right);
+     dec(i);
+    end;
+    i:=Right;
+    while i>=Left+1 do begin
+     v:=List^[i];
+     List^[i]:=List^[Left];
+     List^[Left]:=v;
+     SiftDown(Left,i-1);
+     dec(i);
+    end;
+   end;
+   procedure QuickSortWidthMedianOfThreeOptimization;
+   var Middle,i,j:longint;
+       Pivot,v:longint;
+   begin
+    Middle:=(Left+Right) div 2;
+    if (Right-Left)>3 then begin
+     if List^[Left]>List^[Middle] then begin
+      v:=List^[Left];
+      List^[Left]:=List^[Middle];
+      List^[Middle]:=v;
+     end;
+     if List^[Left]>List^[Right] then begin
+      v:=List^[Left];
+      List^[Left]:=List^[Right];
+      List^[Right]:=v;
+     end;
+     if List^[Middle]>List^[Right] then begin
+      v:=List^[Middle];
+      List^[Middle]:=List^[Right];
+      List^[Right]:=v;
+     end;
+    end;
+    Pivot:=List^[Middle];
+    i:=Left;
+    j:=Right;
+    while true do begin
+     while (i<j) and (List^[i]<Pivot) do begin
+      inc(i);
+     end;
+     while (j>i) and (List^[j]>Pivot) do begin
+      dec(j);
+     end;
+     if i>j then begin
+      break;
+     end;
+     v:=List^[i];
+     List^[i]:=List^[j];
+     List^[j]:=v;
+     inc(i);
+     dec(j);
+    end;
+    IntroSort(Left,j,Depth-1);
+    IntroSort(i,Right,Depth-1);
+   end;
+  begin
+   if Left<Right then begin
+    if (Right-Left)<16 then begin
+     InsertionSort;
+    end else if Depth=0 then begin
+     HeapSort;
+    end else begin
+     QuickSortWidthMedianOfThreeOptimization;
+    end;
+   end;
+  end;
+  procedure QuickSort(L,R:longint);
+  var Pivot,vL,vR:longint;
+      v:longint;
+  begin
+   if (R-L)<=1 then begin
+    if (L<R) and (List[R]<List[L]) then begin
+     v:=List^[L];
+     List^[L]:=List^[R];
+     List^[R]:=v;
+    end;
+   end else begin
+    vL:=L;
+    vR:=R;
+    Pivot:=L+Random(R-L);
+    while vL<vR do begin
+     while (vL<Pivot) and (List^[vL]<=List^[Pivot]) do begin
+      inc(vL);
+     end;
+     while (vR>Pivot) and (List^[vR]>List^[Pivot]) do begin
+      dec(vR);
+     end;
+     v:=List^[vL];
+     List^[vL]:=List^[vR];
+     List^[vR]:=v;
+     if Pivot=vL then begin
+      Pivot:=vR;
+     end else if Pivot=vR then begin
+      Pivot:=vL;
+     end;
+    end;
+    if (Pivot-1)>=L then begin
+     QuickSort(L,Pivot-1);
+    end;
+    if (Pivot+1)<=R then begin
+     QuickSort(Pivot+1,R);
+    end;
+   end;
+  end;
+  procedure QuickSortEx(Left,Right:longint);
+  var Pivot,i,j:longint;
+      v:longint;
+  begin
+   i:=Left;
+   j:=Right;
+   Pivot:=List^[(i+j) div 2];
+   while i<=j do begin
+    while List^[i]<Pivot do begin
+     inc(i);
+    end;
+    while List^[j]>Pivot do begin
+     dec(j);
+    end;
+    if i<=j then begin
+     v:=List^[i];
+     List^[i]:=List^[i];
+     List^[j]:=v;
+     inc(i);
+     dec(j);
+    end;
+   end;
+   if Left<j then begin
+    QuickSortEx(Left,j);
+   end;
+   if i<Right then begin
+    QuickSortEx(i,Right);
+   end;
+  end;
+  procedure BeRoSort;
+  var i:longint;
+      v:longint;
+  begin
+   i:=0;
+   while i<(CountItems-1) do begin
+    if List^[i]>List^[i+1] then begin
+     v:=List^[i];
+     List^[i]:=List^[i+1];
+     List^[i+1]:=v;
+     if i>0 then begin
+      dec(i);
+     end else begin
+      inc(i);
+     end;
+    end else begin
+     inc(i);
+    end;
+   end;
+  end;
+ begin
+  if CountItems>0 then begin
+   IntroSort(0,CountItems-1,IntLog2(CountItems)*2);
+  end;
+ end;
+var Index,ID,n,Count:Longint;
+    NeedFlags:longword;
+    SawMatch,SawMark,First:boolean;
+    Instruction:PFLREInstruction;
+    CurrentItem,EndItem,MarkItem:PLongint;
+begin
+
+ n:=0;
+ NeedFlags:=0;
+ SawMatch:=false;
+ SawMark:=false;
+
+ if WorkQueue.Size>length(QueueInstructionArray) then begin
+  SetLength(QueueInstructionArray,WorkQueue.Size);
+ end;
+
+ for Index:=0 to WorkQueue.Size-1 do begin
+  ID:=WorkQueue.Dense[Index];
+  if SawMatch and ((MatchMode=mmFirstMatch) or WorkQueue.IsMark(ID)) then begin
+   break;
+  end;
+  if WorkQueue.IsMark(ID) then begin
+   if (n>0) and (QueueInstructionArray[n-1]<>ID) then begin
+    SawMark:=true;
+    QueueInstructionArray[n]:=Mark;
+    inc(n);
+   end;
+   continue;
+  end;
+  if Reversed then begin
+   Instruction:=@Instance.BackwardInstructions[ID];
+  end else begin
+   Instruction:=@Instance.ForwardInstructions[ID];
+  end;
+  case Instruction^.IDandOpcode and $ff of
+   opSINGLECHAR,opCHAR,opANY,opMATCH,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
+    if (Instruction^.IDandOpcode and $ff)=opSPLITMATCH then begin
+     if (MatchMode<>mmMultiMatch) and
+        ((MatchMode<>mmFirstMatch) or ((Index=0) and IsInstructionGreedy(Instruction))) and
+        ((MatchMode<>mmLongestMatch) or not SawMark) and
+        ((Flags and sfDFAMatchWins)<>0) then begin
+      // ToDo: Full match state optimization
+     end;
+    end;
+    QueueInstructionArray[n]:=ID;
+    inc(n);
+    if (Instruction^.IDandOpcode and $ff)=opZEROWIDTH then begin
+     NeedFlags:=NeedFlags or longword(Instruction^.Value);
+    end;
+    if ((Instruction^.IDandOpcode and $ff)=opMATCH) and not Instance.EndingAnchor then begin
+     SawMatch:=true;
+    end;
+   end;
+  end;
+ end;
+
+ if (n>0) and (QueueInstructionArray[n-1]=Mark) then begin
+  dec(n);
+ end;
+
+ // Drop flags if no zero-width instructions are there, to save unneeded cached states
+ if NeedFlags=0 then begin
+  Flags:=Flags and sfDFAMatchWins;
+ end;
+
+ // Dead state? If yes, ...
+ if (n=0) and (Flags=0) then begin
+  // ... drop it and take the dead state as the next state
+  result:=DefaultStates[skDead];
+  exit;
+ end;
+
+ if MatchMode=mmLongestMatch then begin
+  CurrentItem:=@QueueInstructionArray[0];
+  EndItem:=CurrentItem;
+  inc(EndItem,n);
+  while PtrUInt(pointer(CurrentItem))<PtrUInt(pointer(EndItem)) do begin
+   MarkItem:=CurrentItem;
+   Count:=0;
+   while (PtrUInt(pointer(MarkItem))<PtrUInt(pointer(EndItem))) and (MarkItem^<>Mark) do begin
+    inc(MarkItem);
+    inc(Count);
+   end;
+   Sort(pointer(CurrentItem),Count);
+   if PtrUInt(pointer(MarkItem))<PtrUInt(pointer(EndItem)) then begin
+    inc(MarkItem);
+   end;
+   CurrentItem:=MarkItem;
+  end;
+ end;
+
+ NewState.Flags:=Flags or (NeedFlags shl sfDFANeedShift);
+ NewState.IndirectInstructions:=copy(QueueInstructionArray,0,n);
+ NewState.CountIndirectInstructions:=n;
+
+ result:=CacheState(@NewState);
+
+end;
+
+procedure TFLREDFA.StateToWorkQueue(const DFAState:PFLREDFAState;const WorkQueue:TFLREDFAWorkQueue);
+var Index:longint;
+begin
+ WorkQueue.Clear;
+ for Index:=0 to DFAState^.CountIndirectInstructions-1 do begin
+  if DFAState^.IndirectInstructions[Index]=Mark then begin
+   WorkQueue.Mark;
+  end else begin
+   WorkQueue.AddNew(DFAState^.IndirectInstructions[Index]);
+  end;
+ end;
+end;
+
 procedure TFLREDFA.FullAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction;const Flags:longword);
 var StackPointer:longint;
     Stack:PPFLREInstructionsStatic;
@@ -6753,7 +7144,7 @@ begin
      end;{}
      Instruction:=Instruction^.Next;
     end;
-    opSPLIT:begin
+    opSPLIT,opSPLITMATCH:begin
      Stack^[StackPointer]:=Instruction^.OtherNext;
      inc(StackPointer);
      Instruction:=Instruction^.Next;
@@ -6826,7 +7217,7 @@ begin
  end;
  if ((State.Flags and sfDFALastWord)<>0)=IsWordChar then begin
   BeforeFlags:=BeforeFlags or sfEmptyNonWordBoundary;
- end else begin                  
+ end else begin
   BeforeFlags:=BeforeFlags or sfEmptyWordBoundary;
  end;{}
 
@@ -6873,7 +7264,7 @@ begin
    end;
    opMATCH:begin
     IsMatch:=true;
-    if not (SearchLongest or Reversed) then begin
+    if not ((MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch]) or Reversed) then begin
      // We can stop processing the instruction list queue here since we found a match (for the PCRE leftmost first valid match behaviour)
      break;
     end;
@@ -7062,7 +7453,13 @@ begin
  Input:=nil;
  InputLength:=0;
 
- SearchLongest:=(Instance.CountMultiSubMatches>0) or (rfLONGEST in Instance.Flags);
+ if rfMULTIMATCH in Instance.Flags then begin
+  MatchMode:=mmMultiMatch;
+ end else if rfLONGEST in Instance.Flags then begin
+  MatchMode:=mmLongestMatch;
+ end else begin
+  MatchMode:=mmFirstMatch;
+ end;
 
  MultiSubMatches:=nil;
  SetLength(MultiSubMatches,Instance.CountMultiSubMatches);
@@ -7081,8 +7478,8 @@ begin
   BitStateNFA:=nil;
  end;
 
- DFA:=TFLREDFA.Create(self);
- ReversedDFA:=TFLREDFA.Create(self);
+ DFA:=TFLREDFA.Create(self,false);
+ ReversedDFA:=TFLREDFA.Create(self,true);
 
 end;
 
@@ -7422,6 +7819,7 @@ begin
  BeginningSplit:=false;
  BeginningWildCard:=false;
  BeginningAnchor:=false;
+ EndingAnchor:=false;
 
  NamedGroupStringList:=TStringList.Create;
  NamedGroupStringIntegerPairHashMap:=TFLREStringIntegerPairHashMap.Create;
@@ -10168,6 +10566,7 @@ begin
   end;
   DFANeedVerification:=false;
   BeginningAnchor:=false;
+  EndingAnchor:=false;
   for Counter:=0 to Nodes.Count-1 do begin
    Node:=Nodes[Counter];
    case Node^.NodeType of
@@ -10179,6 +10578,9 @@ begin
      DFAFast:=false;
      if (Node^.Value and sfEmptyBeginText)<>0 then begin
       BeginningAnchor:=true;
+     end;
+     if (Node^.Value and sfEmptyEndText)<>0 then begin
+      EndingAnchor:=true;
      end;
     end;
     ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE:begin
@@ -10235,7 +10637,7 @@ procedure TFLRE.Compile;
   begin
    while assigned(Node) and (NodeStack.IndexOf(Node)<0) do begin
     case Node^.NodeType of
-     ntALT:begin
+     ntALT:begin                
       i0:=NewInstruction(opSPLIT);
       Instructions[i0].Value:=skALT;
       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
@@ -10661,7 +11063,7 @@ var LowRangeString,HighRangeString:ansistring;
  begin
   while assigned(Instruction) do begin
    case Instruction^.IDandOpcode and $ff of
-    opSPLIT:begin
+    opSPLIT,opSPLITMATCH:begin
      if Instruction^.Value in [skALT,skQUEST] then begin
       ThreadPass(Instruction^.OtherNext,Index);
       Instruction:=Instruction^.Next;
@@ -11054,7 +11456,7 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.Next;
       continue;
      end;
-     opSPLIT:begin
+     opSPLIT,opSPLITMATCH:begin
       if CurrentPosition=0 then begin
        BeginningSplit:=true;
       end;
@@ -11473,7 +11875,7 @@ begin
             end;
            end;
           end;
-          opSPLIT:begin
+          opSPLIT,opSPLITMATCH:begin
            if (WorkQueue.IndexOf(Instruction^.Next)>=0) or
               (WorkQueue.IndexOf(Instruction^.OtherNext)>=0) then begin
             OnePassNFAReady:=false;
