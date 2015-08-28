@@ -856,13 +856,14 @@ const MaxDFAStates=4096;
       ntSTAR=6;
       ntPLUS=7;
       ntEXACT=8;
-      ntZEROWIDTH=9;
-      ntLOOKBEHINDNEGATIVE=10;
-      ntLOOKBEHINDPOSITIVE=11;
-      ntLOOKAHEADNEGATIVE=12;
-      ntLOOKAHEADPOSITIVE=13;
-      ntBACKREFERENCE=14;
-      ntBACKREFERENCEIGNORECASE=15;
+      ntMANY=9;
+      ntZEROWIDTH=10;
+      ntLOOKBEHINDNEGATIVE=11;
+      ntLOOKBEHINDPOSITIVE=12;
+      ntLOOKAHEADNEGATIVE=13;
+      ntLOOKAHEADPOSITIVE=14;
+      ntBACKREFERENCE=15;
+      ntBACKREFERENCEIGNORECASE=16;
 
       // Opcodes
       opSINGLECHAR=0;
@@ -872,13 +873,14 @@ const MaxDFAStates=4096;
       opJMP=4;
       opSPLIT=5;
       opSAVE=6;
-      opZEROWIDTH=7;
-      opLOOKBEHINDNEGATIVE=8;
-      opLOOKBEHINDPOSITIVE=9;
-      opLOOKAHEADNEGATIVE=10;
-      opLOOKAHEADPOSITIVE=11;
-      opBACKREFERENCE=12;
-      opBACKREFERENCEIGNORECASE=13;
+      opMANY=7;
+      opZEROWIDTH=8;
+      opLOOKBEHINDNEGATIVE=9;
+      opLOOKBEHINDPOSITIVE=10;
+      opLOOKAHEADNEGATIVE=11;
+      opLOOKAHEADPOSITIVE=12;
+      opBACKREFERENCE=13;
+      opBACKREFERENCEIGNORECASE=14;
 
       // Split kind
       skALT=0;
@@ -5650,6 +5652,11 @@ begin
       Instruction:=Instruction^.Next;
       continue;
      end;
+     opMANY:begin
+      // TODO
+      Instruction:=Instruction^.Next;
+      continue;
+     end;
      opZEROWIDTH:begin
       if CurrentSatisfyFlags=$ffffffff then begin
        CurrentSatisfyFlags:=ThreadLocalStorageInstance.GetSatisfyFlags(Position);
@@ -6160,6 +6167,22 @@ var LocalInputLength,BasePosition,Len:longint;
        end;
       end;
      end;
+     opMANY:begin
+      case Argument of
+       0:begin
+        // TODO
+        Push(Instruction,WorkSubMatches[Instruction^.Value],1);
+        WorkSubMatches[Instruction^.Value]:=Position;
+        Instruction:=Instruction^.Next;
+        if ShouldVisit(Instruction,Position) then begin
+         continue;
+        end;
+       end;
+       1:begin
+        WorkSubMatches[Instruction^.Value]:=Position;
+       end;
+      end;
+     end;
      opZEROWIDTH:begin
       if ((longword(Instruction^.Value) and sfEmptyAllFlags) and not ThreadLocalStorageInstance.GetSatisfyFlags(Position))=0 then begin
        Instruction:=Instruction^.Next;
@@ -6527,6 +6550,7 @@ begin
    case Instruction^.IDandOpcode and $ff of
     opJMP,
     opSAVE,
+    opMANY,
     opZEROWIDTH,
     opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,
     opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
@@ -6697,7 +6721,7 @@ begin
   while assigned(Instruction) and (InstructionGenerations[Instruction^.IDandOpcode shr 8]<>Generation) do begin
    InstructionGenerations[Instruction^.IDandOpcode shr 8]:=Generation;
    case Instruction^.IDandOpcode and $ff of
-    opJMP:begin
+    opJMP,opMANY:begin
      Instruction:=Instruction^.Next;
     end;
     opSAVE:begin
@@ -10086,6 +10110,9 @@ begin
   for Counter:=0 to Nodes.Count-1 do begin
    Node:=Nodes[Counter];
    case Node^.NodeType of
+    ntMANY:begin
+     DFANeedVerification:=true;
+    end;
     ntZEROWIDTH:begin
      DFANeedVerification:=true;
      DFAFast:=false;
@@ -10382,6 +10409,15 @@ procedure TFLRE.Compile;
        end;
       end;
      end;
+     ntMANY:begin
+      Emit(Node^.Left);
+      if not assigned(BackreferenceParentNode) then begin
+       Emit(Node^.Left);
+       i0:=NewInstruction(opMANY);
+       Instructions[i0].Value:=Node^.Value;
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+      end;
+     end;
      ntZEROWIDTH:begin
       if Reversed then begin
        Flags:=Node^.Value and (sfEmptyWordBoundary or sfEmptyNonWordBoundary);
@@ -10602,7 +10638,7 @@ var LowRangeString,HighRangeString:ansistring;
      inc(Index);
      Instruction:=Instruction^.Next;
     end;
-    opJMP,opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    opJMP,opSAVE,opMANY,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
      Instruction:=Instruction^.Next;
     end;
     opMATCH:begin
@@ -10726,7 +10762,7 @@ begin
    Argument:=Stack[StackPointer].Argument;
    while assigned(Node) do begin
     case Node^.NodeType of
-     ntPAREN:begin
+     ntPAREN,ntMANY:begin
       case Argument of
        1:begin
         if assigned(Node^.Left) then begin
@@ -10965,7 +11001,7 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.OtherNext;
       continue;
      end;
-     opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+     opSAVE,opMANY,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
       Instruction:=Instruction^.Next;
       continue;
      end;
@@ -11418,7 +11454,7 @@ begin
            Stack[StackPointer].Condition:=Condition;
            inc(StackPointer);
           end;
-          opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+          opMANY,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
            OnePassNFAReady:=false;
            break;
           end;
@@ -11625,7 +11661,7 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
       result:=Right;
      end;
     end;
-    ntPAREN:begin
+    ntPAREN,ntMANY:begin
      result:=Process(Node^.Left);
     end;
     ntCHAR:begin
@@ -12586,7 +12622,7 @@ function TFLRE.DumpRegularExpression:ansistring;
     ntANY:begin
      result:=result+'.';
     end;
-    ntPAREN:begin
+    ntPAREN,ntMANY:begin
      result:='('+ProcessNode(Node^.Left)+')';
     end;
     ntQUEST:begin
