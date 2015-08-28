@@ -6117,7 +6117,7 @@ begin
   Instruction:=DFANewState.Instructions[Counter];
   case Instruction^.IDandOpcode and $ff of
    opZEROWIDTH:begin
-    NeedFlags:=NeedFlags or Instruction^.Value;
+    NeedFlags:=NeedFlags or longword(Instruction^.Value);
    end;
   end;
  end;
@@ -7283,12 +7283,18 @@ function TFLRE.Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
 var NodeTemp:PFLRENode;
 begin                                                    
  if assigned(NodeLeft) and assigned(NodeRight) then begin
-  if ((NodeLeft^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (NodeRight^.NodeType=ntPLUS)) and AreNodesEqualSafe(NodeLeft^.Left,NodeRight^.Left) and (NodeLeft^.Value=0) and (NodeRight^.Value=0) then begin
+  if (NodeLeft^.NodeType=ntZEROWIDTH) and (NodeRight^.NodeType=ntZEROWIDTH) then begin
+   NodeLeft^.Value:=NodeLeft^.Value or NodeRight^.Value;
+   result:=NodeLeft;
+  end else if ((NodeLeft^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (NodeRight^.NodeType=ntPLUS)) and AreNodesEqualSafe(NodeLeft^.Left,NodeRight^.Left) and (NodeLeft^.Value=0) and (NodeRight^.Value=0) then begin
    result:=NodeRight;
   end else if ((NodeLeft^.NodeType in [ntSTAR,ntPLUS]) and (NodeRight^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(NodeLeft^.Left,NodeRight^.Left) and (NodeLeft^.Value=0) and (NodeRight^.Value=0) then begin
    result:=NodeLeft;
   end else if (NodeLeft^.NodeType=ntCAT) and assigned(NodeLeft^.Left) and assigned(NodeLeft^.Right) then begin
-   if ((NodeLeft^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (NodeRight^.NodeType=ntPLUS)) and AreNodesEqualSafe(NodeLeft^.Right^.Left,NodeRight^.Left) and (NodeLeft^.Right^.Value=0) and (NodeRight^.Value=0) then begin
+   if (NodeLeft^.Right^.NodeType=ntZEROWIDTH) and (NodeRight^.NodeType=ntZEROWIDTH) then begin
+    NodeLeft^.Right^.NodeType:=NodeLeft^.Right^.NodeType or NodeRight^.Value;
+    result:=NodeLeft;
+   end else if ((NodeLeft^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (NodeRight^.NodeType=ntPLUS)) and AreNodesEqualSafe(NodeLeft^.Right^.Left,NodeRight^.Left) and (NodeLeft^.Right^.Value=0) and (NodeRight^.Value=0) then begin
     NodeLeft^.Right:=NodeRight;
     result:=NodeLeft;
    end else if ((NodeLeft^.Right^.NodeType in [ntSTAR,ntPLUS]) and (NodeRight^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(NodeLeft^.Right^.Left,NodeRight^.Left) and (NodeLeft^.Right^.Value=0) and (NodeRight^.Value=0) then begin
@@ -7307,9 +7313,17 @@ begin
   end else begin
    result:=nil;
   end;
- end;
+ end;              
  while (assigned(result) and (result^.NodeType=ntCAT)) and (assigned(result^.Left) and assigned(result^.Right)) do begin
-  if (result^.Left^.NodeType=ntCAT) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and assigned(result^.Left^.Right) and (result^.Right^.Value=0) then begin
+  if (result^.Left^.NodeType=ntCAT) and (result^.Right^.NodeType=ntZEROWIDTH) and assigned(result^.Left^.Right) and (result^.Left^.Right^.NodeType=ntZEROWIDTH) then begin
+   result^.Left^.Right^.Value:=result^.Left^.Right^.Value or result^.Right^.Value;
+   result:=result^.Left;
+   continue;
+  end else if (result^.Left^.NodeType=ntZEROWIDTH) and (result^.Right^.NodeType=ntCAT) and assigned(result^.Right^.Left) and (result^.Right^.Left^.NodeType=ntZEROWIDTH) then begin
+   result^.Right^.Left^.Value:=result^.Right^.Left^.Value or result^.Left^.Value;
+   result:=result^.Right;
+   continue;
+  end else if (result^.Left^.NodeType=ntCAT) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and assigned(result^.Left^.Right) and (result^.Right^.Value=0) then begin
    if ((result^.Left^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Right^.Left,result^.Right^.Left) then begin
     result^.Left^.Right:=result^.Right;
     result:=result^.Left;
@@ -7601,7 +7615,12 @@ begin
     end;
     ntCAT:begin
      if assigned(Node^.Left) and assigned(Node^.Right) then begin
-      if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (Node^.Right^.NodeType=ntPLUS)) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
+      if (Node^.Left^.NodeType=ntZEROWIDTH) and (Node^.Right^.NodeType=ntZEROWIDTH) then begin
+       Node^.Left^.Value:=Node^.Left^.Value or Node^.Right^.Value;
+       NodeEx^:=Node^.Left;
+       DoContinue:=true;
+       result:=true;
+      end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (Node^.Right^.NodeType=ntPLUS)) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
        NodeEx^:=Node^.Right;
        DoContinue:=true;
        result:=true;
@@ -7621,7 +7640,15 @@ begin
          while NodeIndex>0 do begin
           l:=PFLRENode(NodeList[NodeIndex]);
           r:=PFLRENode(NodeList[NodeIndex-1]);
-          if ((l^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (r^.NodeType=ntPLUS)) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+          if (l^.NodeType=ntZEROWIDTH) and (r^.NodeType=ntZEROWIDTH) then begin
+           l^.Value:=l^.Value or r^.Value;
+           NodeList.Delete(NodeIndex-1);
+           if NodeIndex>=NodeList.Count then begin
+            NodeIndex:=NodeList.Count-1;
+           end;
+           DoContinue:=true;
+           Optimized:=true;
+          end else if ((l^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (r^.NodeType=ntPLUS)) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
            NodeList.Delete(NodeIndex);
            if NodeIndex>=NodeList.Count then begin
             NodeIndex:=NodeList.Count-1;
@@ -11109,7 +11136,7 @@ begin
            inc(StackPointer);
           end;
           opZEROWIDTH:begin
-           Condition:=Condition or Instruction^.Value;
+           Condition:=Condition or longword(Instruction^.Value);
            if WorkQueue.IndexOf(Instruction^.Next)>=0 then begin
             OnePassNFAReady:=false;
             break;
