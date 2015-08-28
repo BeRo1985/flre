@@ -598,8 +598,6 @@ type EFLRE=class(Exception);
        Input:pansichar;
        InputLength:longint;
 
-       ManyMatch:longbool;
-
        SearchLongest:longbool;
 
        ManySubMatches:TFLREManySubMatches;
@@ -7057,9 +7055,7 @@ begin
  Input:=nil;
  InputLength:=0;
 
- ManyMatch:=false;
-
- SearchLongest:=ManyMatch or (rfLONGEST in Instance.Flags);
+ SearchLongest:=(Instance.CountManySubMatches>0) or (rfLONGEST in Instance.Flags);
 
  ManySubMatches:=nil;
  SetLength(ManySubMatches,Instance.CountManySubMatches);
