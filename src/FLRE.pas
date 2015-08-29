@@ -810,7 +810,8 @@ type EFLRE=class(Exception);
 
       public
 
-       constructor Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[rfDELIMITERS]);
+       constructor Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[rfDELIMITERS]); overload;
+       constructor Create(const ARegularExpressions:array of ansistring;const AFlags:TFLREFlags=[]); overload;
        destructor Destroy; override;
 
        function PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
@@ -8242,6 +8243,20 @@ begin
 
 end;
 
+constructor TFLRE.Create(const ARegularExpressions:array of ansistring;const AFlags:TFLREFlags=[]);
+var Index:longint;
+    RegularExpressions:ansistring;
+begin
+ RegularExpressions:='';
+ for Index:=0 to length(ARegularExpressions)-1 do begin
+  if Index>0 then begin
+   RegularExpressions:=RegularExpressions+#0;
+  end;
+  RegularExpressions:=RegularExpressions+ARegularExpressions[Index];
+ end;
+ Create(RegularExpressions,(AFlags+[rfMULTIMATCH])-[rfDELIMITERS]);
+end;
+
 destructor TFLRE.Destroy;
 var Index:longint;
     NextCharClassAction:PFLREOnePassNFAStateCharClassAction;
@@ -9953,55 +9968,63 @@ var SourcePosition,SourceLength:longint;
  function NewNumberedGroup:PFLRENode;
  var Value:longint;
  begin
-  Value:=CountInternalCaptures;
-  inc(CountInternalCaptures);
-  if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
-   SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
-  end;
-  CapturesToSubMatchesMap[CountCaptures]:=Value;
-  inc(CountCaptures);
-  NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
-  if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
-   NamedGroupStringList.Add(IntToStr(Value));
+  if rfMULTIMATCH in Flags then begin
+   result:=ParseDisjunction;
   end else begin
-   raise EFLRE.Create('Duplicate named group');
-  end;
-  GroupIndexIntegerStack.Add(Value);
-  try
-   result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
-  finally
-   GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
+   Value:=CountInternalCaptures;
+   inc(CountInternalCaptures);
+   if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
+    SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
+   end;
+   CapturesToSubMatchesMap[CountCaptures]:=Value;
+   inc(CountCaptures);
+   NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
+   if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
+    NamedGroupStringList.Add(IntToStr(Value));
+   end else begin
+    raise EFLRE.Create('Duplicate named group');
+   end;
+   GroupIndexIntegerStack.Add(Value);
+   try
+    result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+   finally
+    GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
+   end;
   end;
  end;
  function NewNamedGroup(const Name:ansistring):PFLRENode;
  var Value:longint;
  begin
-  Value:=CountInternalCaptures;
-  inc(CountInternalCaptures);
-  if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
-   SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
-  end;
-  CapturesToSubMatchesMap[CountCaptures]:=Value;
-  inc(CountCaptures);
-  NamedGroupStringIntegerPairHashMap.Add(Name,Value);
-  if NamedGroupStringList.IndexOf(Name)<0 then begin
-   NamedGroupStringList.Add(Name);
+  if rfMULTIMATCH in Flags then begin
+   result:=ParseDisjunction;
   end else begin
-   raise EFLRE.Create('Duplicate named group');
-  end;
-  NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
-  if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
-   NamedGroupStringList.Add(IntToStr(Value));
-  end else begin
-   raise EFLRE.Create('Duplicate named group');
-  end;
-  GroupIndexIntegerStack.Add(Value);
-  GroupNameStringStack.Add(Name);
-  try
-   result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
-  finally
-   GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
-   GroupNameStringStack.Delete(GroupNameStringStack.Count-1);
+   Value:=CountInternalCaptures;
+   inc(CountInternalCaptures);
+   if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
+    SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
+   end;
+   CapturesToSubMatchesMap[CountCaptures]:=Value;
+   inc(CountCaptures);
+   NamedGroupStringIntegerPairHashMap.Add(Name,Value);
+   if NamedGroupStringList.IndexOf(Name)<0 then begin
+    NamedGroupStringList.Add(Name);
+   end else begin
+    raise EFLRE.Create('Duplicate named group');
+   end;
+   NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
+   if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
+    NamedGroupStringList.Add(IntToStr(Value));
+   end else begin
+    raise EFLRE.Create('Duplicate named group');
+   end;
+   GroupIndexIntegerStack.Add(Value);
+   GroupNameStringStack.Add(Name);
+   try
+    result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+   finally
+    GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
+    GroupNameStringStack.Delete(GroupNameStringStack.Count-1);
+   end;
   end;
  end;
  function NewBackReferencePerIndex(const Group:longint):PFLRENode;
@@ -10090,7 +10113,7 @@ var SourcePosition,SourceLength:longint;
     Done:=true;
     if SourcePosition<=SourceLength then begin
      case Source[SourcePosition] of
-      '*','+','?',')',']','{','}','|':begin
+      '*','+','?',')',']','{','}','|',#0:begin
        raise EFLRE.Create('Syntax error');
       end;
       '(':begin
@@ -10662,7 +10685,7 @@ var SourcePosition,SourceLength:longint;
     end else begin
      raise EFLRE.Create('Syntax error');
     end;
-    if Done or assigned(result) or ((SourcePosition<=SourceLength) and (Source[SourcePosition] in ['|',')'])) then begin
+    if Done or assigned(result) or ((SourcePosition<=SourceLength) and (Source[SourcePosition] in ['|',')',#0])) then begin
      break;
     end else begin
      SkipFreeSpacingWhiteSpace;
@@ -10815,7 +10838,7 @@ var SourcePosition,SourceLength:longint;
     end;
     if SourcePosition<=SourceLength then begin
      case Source[SourcePosition] of
-      '|',')':begin
+      '|',')',#0:begin
        break;
       end;
      end;
@@ -10844,13 +10867,9 @@ var SourcePosition,SourceLength:longint;
     if SourcePosition<=SourceLength then begin
      case Source[SourcePosition] of
       '|':begin
-       if (rfMULTIMATCH in Flags) and (((SourcePosition+1)<=SourceLength) and (Source[SourcePosition+1]='|')) then begin
-        break;
-       end else begin
-        inc(SourcePosition);
-       end;
+       inc(SourcePosition);
       end;
-      ')':begin
+      ')',#0:begin
        break;
       end;
      end;
@@ -10864,12 +10883,15 @@ var SourcePosition,SourceLength:longint;
  end;
  function ParseMultiMatch:PFLRENode;
  var Node:PFLRENode;
+     OldFlags:TFLREFlags;
  begin
   result:=nil;
   try
    SkipFreeSpacingWhiteSpace;
    while SourcePosition<=SourceLength do begin
+    OldFlags:=Flags;
     Node:=NewNode(ntMULTIMATCH,ParseDisjunction,nil,nil,CountMultiSubMatches);
+    Flags:=OldFlags;
     inc(CountMultiSubMatches);
     SkipFreeSpacingWhiteSpace;
     if assigned(result) then begin
@@ -10877,8 +10899,8 @@ var SourcePosition,SourceLength:longint;
     end else begin
      result:=Node;
     end;
-    if ((SourcePosition+1)<=SourceLength) and (Source[SourcePosition]='|') and (Source[SourcePosition+1]='|') then begin
-     inc(SourcePosition,2);
+    if (SourcePosition<=SourceLength) and (Source[SourcePosition]=#0) then begin
+     inc(SourcePosition);
     end else begin
      break;
     end;
