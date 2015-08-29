@@ -12795,13 +12795,10 @@ begin
 end;
 
 function TFLRE.SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
-var MatchBegin,MatchEnd,Index:longint;
+var MatchBegin,MatchEnd:longint;
 begin
  result:=false;
  ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
- for Index:=0 to CountMultiSubMatches-1 do begin
-  ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
- end;
  case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
   DFAMatch:begin
    if UnanchoredStart then begin
@@ -12875,12 +12872,29 @@ end;
 
 function TFLRE.PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
 var ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+    Index:longint;
 begin
  ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
  try
   ThreadLocalStorageInstance.Input:=Input;
   ThreadLocalStorageInstance.InputLength:=InputLength;
+  if rfMULTIMATCH in Flags then begin
+   for Index:=0 to CountMultiSubMatches-1 do begin
+    ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
+   end;
+  end;
   result:=SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,false);
+  if result and (rfMULTIMATCH in Flags) then begin
+   SetLength(Captures,CountMultiSubMatches+1);
+   for Index:=0 to CountMultiSubMatches-1 do begin
+    Captures[Index+1].Start:=Index;
+    if ThreadLocalStorageInstance.MultiSubMatches[Index]>=0 then begin
+     Captures[Index+1].Length:=1;
+    end else begin
+     Captures[Index+1].Length:=0;
+    end;
+   end;
+  end;
  finally
   ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
  end;
@@ -12943,13 +12957,30 @@ end;
 
 function TFLRE.PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
 var ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+    Index:longint;
 begin
  if (StartPosition>=0) and (StartPosition<InputLength) then begin
   ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
   try
    ThreadLocalStorageInstance.Input:=Input;
    ThreadLocalStorageInstance.InputLength:=InputLength;
+   if rfMULTIMATCH in Flags then begin
+    for Index:=0 to CountMultiSubMatches-1 do begin
+     ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
+    end;
+   end;
    result:=InternalPtrMatchNext(ThreadLocalStorageInstance,Input,InputLength,Captures,StartPosition);
+   if result and (rfMULTIMATCH in Flags) then begin
+    SetLength(Captures,CountMultiSubMatches+1);
+    for Index:=0 to CountMultiSubMatches-1 do begin
+     Captures[Index+1].Start:=Index;
+     if ThreadLocalStorageInstance.MultiSubMatches[Index]>=0 then begin
+      Captures[Index+1].Length:=1;
+     end else begin
+      Captures[Index+1].Length:=0;
+     end;
+    end;
+   end;
   finally
    ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
   end;
@@ -12964,6 +12995,9 @@ var CurrentPosition,CountMultiCaptures,Next:longint;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
  result:=false;
+ if rfMULTIMATCH in Flags then begin
+  raise EFLRE.Create('MatchAll unsupported in multi match mode');
+ end;
  MatchResult:=nil;
  CountMultiCaptures:=0;
  SetLength(MultiCaptures,0);
@@ -13008,6 +13042,9 @@ var CurrentPosition,Next,LastPosition,i,j,e:longint;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
  result:='';
+ if rfMULTIMATCH in Flags then begin
+  raise EFLRE.Create('ReplaceAll unsupported in multi match mode');
+ end;
  Captures:=nil;
  try
   SimpleReplacement:=(PtrPosChar('$',Replacement,ReplacementLength)<0) and (PtrPosChar('\',Replacement,ReplacementLength)<0);
