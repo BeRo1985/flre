@@ -12894,7 +12894,7 @@ begin
  if OnePassNFAReady and not UnanchoredStart then begin
   result:=ThreadLocalStorageInstance.OnePassNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition);
  end else begin
-  if false and BitStateNFAReady then begin
+  if BitStateNFAReady then begin
    case ThreadLocalStorageInstance.BitStateNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
     BitStateNFAFail:begin
      result:=false;
