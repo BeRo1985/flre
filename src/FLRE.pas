@@ -101,9 +101,9 @@ interface
 
 uses SysUtils,Classes,FLREUnicode;
 
-const FLREVersion=$00000001;
+const FLREVersion=$00000002;
 
-      FLREVersionString='1.00.2015.08.25.20.49.0000';
+      FLREVersionString='1.00.2015.08.29.05.05.0000';
 
       MaxPrefixCharClasses=32;
 
