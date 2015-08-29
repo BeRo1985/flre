@@ -6489,7 +6489,7 @@ var LocalInputLength,BasePosition,Len:longint;
    repeat
 
     case Instruction^.IDandOpcode and $ff of
-     opSPLIT:begin
+     opSPLIT,opSPLITMATCH:begin
       case Argument of
        0:begin
         Push(Instruction,Position,1);
@@ -6507,7 +6507,7 @@ var LocalInputLength,BasePosition,Len:longint;
        end;
       end;
      end;
-     opSPLITMATCH:begin
+{    opSPLITMATCH:begin
       if IsInstructionGreedy(Instruction) then begin
        // Greedy (Byte, match)
        Push(Instruction^.OtherNext,Position,0);
@@ -6524,7 +6524,7 @@ var LocalInputLength,BasePosition,Len:longint;
         continue;
        end;
       end;
-     end;
+     end;{}
      opSINGLECHAR:begin
       if (Position<LocalInputLength) and (byte(ansichar(LocalInput[Position]))=Instruction^.Value) then begin
        inc(Position);
@@ -7212,15 +7212,15 @@ begin
   end;
   case Instruction^.IDandOpcode and $ff of
    opSINGLECHAR,opCHAR,opANY,opMATCH,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
-    if (Instruction^.IDandOpcode and $ff)=opSPLITMATCH then begin
+{   if (Instruction^.IDandOpcode and $ff)=opSPLITMATCH then begin
      if (MatchMode<>mmMultiMatch) and
         ((MatchMode<>mmFirstMatch) or ((Index=0) and IsInstructionGreedy(Instruction))) and
         ((MatchMode<>mmLongestMatch) or not SawMark) and
         ((Flags and sfDFAMatchWins)<>0) then begin
-     {result:=DefaultStates[dskFullMatch];
-      exit;{}
+      result:=DefaultStates[dskFullMatch];
+      exit;
      end;
-    end;
+    end;{}
     if (n+1)>length(QueueInstructionArray) then begin
      SetLength(QueueInstructionArray,(n+1)*2);
     end;
@@ -7652,7 +7652,7 @@ begin
   if Reversed then begin
 
    if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
-    MatchEnd:=Position+1;
+    MatchEnd:=StartPosition+1;
     result:=DFAMatch;
    end;
 
@@ -7724,7 +7724,7 @@ begin
   end else begin
 
    if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
-    MatchEnd:=Position-1;
+    MatchEnd:=StartPosition-1;
     result:=DFAMatch;
    end;
 
