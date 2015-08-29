@@ -7386,17 +7386,17 @@ begin
      end;
     end;
     opCHAR:begin
-     if (CurrentChar<>$ffffffff) and (ansichar(byte(CurrentChar)) in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
+     if (CurrentChar<>256) and (ansichar(byte(CurrentChar)) in PFLRECharClass(pointer(ptruint(Instruction^.Value)))^) then begin
       AddToWorkQueue(NewWorkQueue,Instruction^.Next,Flags);
      end;
     end;
     opANY:begin
-     if CurrentChar<>$ffffffff then begin
+     if CurrentChar<>256 then begin
       AddToWorkQueue(NewWorkQueue,Instruction^.Next,Flags);
      end;
     end;
     opMATCH:begin
-     if not (Instance.EndingAnchor and (CurrentChar<>$ffffffff)) then begin
+     if not (Instance.EndingAnchor and (CurrentChar<>256)) then begin
       IsMatch:=true;
       if MatchMode=mmFirstMatch then begin
        exit;
@@ -7484,7 +7484,7 @@ begin
  IsMatch:=false;
  ProcessWorkQueueOnByte(Queues[0],Queues[1],CurrentChar,AfterFlags,IsMatch);
 
- if (CurrentChar<>$ffffffff) or (MatchMode<>mmMultiMatch) then begin
+ if (CurrentChar<>256) or (MatchMode<>mmMultiMatch) then begin
   Queues[2]:=Queues[0];
   Queues[0]:=Queues[1];
   Queues[1]:=Queues[2];
@@ -7651,6 +7651,11 @@ begin
 
   if Reversed then begin
 
+   if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
+    MatchEnd:=Position+1;
+    result:=DFAMatch;
+   end;
+
    for Position:=StartPosition downto UntilExcludingPosition do begin
     CurrentChar:=byte(ansichar(LocalInput[Position]));
     LastState:=State;
@@ -7718,6 +7723,11 @@ begin
 
   end else begin
 
+   if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
+    MatchEnd:=Position-1;
+    result:=DFAMatch;
+   end;
+
    for Position:=StartPosition to UntilExcludingPosition-1 do begin
     CurrentChar:=byte(ansichar(LocalInput[Position]));
     LastState:=State;
@@ -7780,8 +7790,8 @@ begin
     if (State^.Flags and sfDFAMatchWins)<>0 then begin
      MatchEnd:=Position-1;
      result:=DFAMatch;
-     if MatchMode=mmMultiMatch then begin
-      for Index:=0 to State^.CountInstructions do begin
+{    if MatchMode=mmMultiMatch then begin
+      for Index:=0 to State^.CountInstructions-1 do begin
        Instruction:=State^.Instructions[Index];
        if assigned(Instruction) and ((Instruction^.IDandOpcode and $ff)=opMATCH) then begin
         if (Instruction.Value>=0) and (Instruction.Value<Instance.CountMultiSubMatches) then begin
@@ -7789,7 +7799,7 @@ begin
         end;
        end;
       end;
-     end;
+     end;{}
     end;
    end;
 
@@ -12830,7 +12840,7 @@ var MatchBegin,MatchEnd:longint;
 begin
  result:=false;
  ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
-(*
+(**)
  case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
   DFAMatch:begin
    if UnanchoredStart then begin
