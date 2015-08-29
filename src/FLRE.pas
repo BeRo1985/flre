@@ -938,14 +938,13 @@ const MaxDFAStates=4096;
       opSPLIT=5;
       opSPLITMATCH=6;
       opSAVE=7;
-      opMULTIMATCH=8;
-      opZEROWIDTH=9;
-      opLOOKBEHINDNEGATIVE=10;
-      opLOOKBEHINDPOSITIVE=11;
-      opLOOKAHEADNEGATIVE=12;
-      opLOOKAHEADPOSITIVE=13;
-      opBACKREFERENCE=14;
-      opBACKREFERENCEIGNORECASE=15;
+      opZEROWIDTH=8;
+      opLOOKBEHINDNEGATIVE=9;
+      opLOOKBEHINDPOSITIVE=10;
+      opLOOKAHEADNEGATIVE=11;
+      opLOOKAHEADPOSITIVE=12;
+      opBACKREFERENCE=13;
+      opBACKREFERENCEIGNORECASE=14;
 
       // Split kind
       skALT=0;
@@ -6038,20 +6037,13 @@ begin
       StackItem:=@ParallelNFAStack[StackSize];
       StackItem^.Instruction:=Instruction^.OtherNext;
       StackItem^.State:=State;
-      inc(StackSize);        
+      inc(StackSize);
       Instruction:=Instruction^.Next;
       State:=StateAcquire(State);
-      continue;              
+      continue;
      end;
      opSAVE:begin
       State:=StateUpdate(State,Instruction^.Value,Position);
-      Instruction:=Instruction^.Next;
-      continue;
-     end;
-     opMULTIMATCH:begin
-      if ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<Position then begin
-       ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=Position;
-      end;
       Instruction:=Instruction^.Next;
       continue;
      end;
@@ -6127,10 +6119,6 @@ begin
  CurrentThreadList^.CountThreads:=0;
  NewThreadList^.CountThreads:=0;
 
- for Index:=0 to Instance.CountMultiSubMatches-1 do begin
-  ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
- end;
-
  State:=StateAllocate(Instance.CountSubMatches,0);
 
  CurrentSatisfyFlags:=$ffffffff;
@@ -6194,6 +6182,11 @@ begin
      end;
      opMATCH:begin
       if MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch] then begin
+       if (MatchMode=mmMultiMatch) and
+          (((Instruction^.Value>=0) and (Instruction^.Value<Instance.CountMultiSubMatches)) and
+           (ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<CurrentPosition)) then begin
+        ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=CurrentPosition;
+       end;
        if not assigned(BestState) then begin
         BestState:=StateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap);
        end;
@@ -6488,7 +6481,7 @@ var LocalInputLength,BasePosition,Len:longint;
    repeat
 
     case Instruction^.IDandOpcode and $ff of
-     opSPLIT,opSPLITMATCH:begin
+     opSPLIT:begin
       case Argument of
        0:begin
         Push(Instruction,Position,1);
@@ -6503,6 +6496,24 @@ var LocalInputLength,BasePosition,Len:longint;
         if ShouldVisit(Instruction,Position) then begin
          continue;
         end;
+       end;
+      end;
+     end;
+     opSPLITMATCH:begin
+      if IsInstructionGreedy(Instruction) then begin
+       // Greedy (Byte, match)
+       Push(Instruction^.OtherNext,Position,0);
+       Instruction:=Instruction^.OtherNext;
+       Position:=UntilExcludingPosition-1;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
+       end;
+      end else begin
+       // Non-greedy (Match, byte)
+       Push(Instruction^.Next,UntilExcludingPosition-1,0);
+       Instruction:=Instruction^.Next;
+       if ShouldVisit(Instruction,Position) then begin
+        continue;
        end;
       end;
      end;
@@ -6536,6 +6547,11 @@ var LocalInputLength,BasePosition,Len:longint;
      opMATCH:begin
       result:=true;
       if MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch] then begin
+       if (MatchMode=mmMultiMatch) and
+          (((Instruction^.Value>=0) and (Instruction^.Value<Instance.CountMultiSubMatches)) and
+           (ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<Position)) then begin
+        ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=Position;
+       end;
        if LastPosition<Position then begin
         LastPosition:=Position;
         for i:=0 to Instance.CountSubMatches-1 do begin
@@ -6567,25 +6583,6 @@ var LocalInputLength,BasePosition,Len:longint;
        end;
        1:begin
         WorkSubMatches[Instruction^.Value]:=Position;
-       end;
-      end;
-     end;
-     opMULTIMATCH:begin
-      case Argument of
-       0:begin
-        Push(Instruction,ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value],1);
-        if ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<Position then begin
-         ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=Position;
-        end;
-        Instruction:=Instruction^.Next;
-        if ShouldVisit(Instruction,Position) then begin
-         continue;
-        end;
-       end;
-       1:begin
-        if ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<Position then begin
-         ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=Position;
-        end;
        end;
       end;
      end;
@@ -6659,10 +6656,6 @@ begin
   StartInstruction:=Instance.AnchoredStartInstruction;
  end;
 
- for Counter:=0 to Instance.CountMultiSubMatches-1 do begin
-  ThreadLocalStorageInstance.MultiSubMatches[Counter]:=-1;
- end;
- 
  if TrySearch(StartInstruction,Position) then begin
   SetLength(Captures,Instance.CountCaptures);
   for Counter:=0 to Instance.CountCaptures-1 do begin
@@ -7009,7 +7002,6 @@ begin
    case Instruction^.IDandOpcode and $ff of
     opJMP,
     opSAVE,
-    opMULTIMATCH,
     opZEROWIDTH,
     opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,
     opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
@@ -7310,7 +7302,7 @@ begin
     opSINGLECHAR,opCHAR,opANY,opMATCH:begin
      // Just save onto the queue
     end;
-    opJMP,opSAVE,opMULTIMATCH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    opJMP,opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
      // No-ops at DFA
      if (StackPointer+1)>length(QueueStack) then begin
       SetLength(QueueStack,(StackPointer+1)*2);
@@ -7374,7 +7366,7 @@ begin
    NewWorkQueue.Mark;
   end else begin
    case Instruction^.IDandOpcode and $ff of
-    opJMP,opSAVE,opMULTIMATCH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
+    opJMP,opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
      // Already processed
     end;
     opSINGLECHAR:begin
@@ -7619,11 +7611,12 @@ begin
 end;
 
 function TFLREDFA.SearchMatch(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-var Position,LocalInputLength,Direction:longint;
+var Position,LocalInputLength,Index:longint;
     State,LastState:PFLREDFAState;
     LocalInput:pansichar;
     Flags,CurrentChar:longword;
     LocalByteMap:PFLREDFAByteMap;
+    Instruction:PFLREInstruction;
 begin
 
  if DoFastDFA then begin
@@ -7776,6 +7769,16 @@ begin
     if (State^.Flags and sfDFAMatchWins)<>0 then begin
      MatchEnd:=Position-1;
      result:=DFAMatch;
+     if MatchMode=mmMultiMatch then begin
+      for Index:=0 to State^.CountInstructions do begin
+       Instruction:=State^.Instructions[Index];
+       if assigned(Instruction) and ((Instruction^.IDandOpcode and $ff)=opMATCH) then begin
+        if (Instruction.Value>=0) and (Instruction.Value<Instance.CountMultiSubMatches) then begin
+         ThreadLocalStorageInstance.MultiSubMatches[Instruction.Value]:=Instruction.Value;
+        end;
+       end;
+      end;
+     end;
     end;
    end;
 
@@ -11219,9 +11222,6 @@ procedure TFLRE.Compile;
       Emit(Node^.Left);
       if not assigned(BackreferenceParentNode) then begin
        Emit(Node^.Left);
-       i0:=NewInstruction(opMULTIMATCH);
-       Instructions[i0].Value:=Node^.Value;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
        i0:=NewInstruction(opMATCH);
        Instructions[i0].Value:=Node^.Value;
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
@@ -11331,7 +11331,7 @@ procedure TFLRE.Compile;
     CountInstructions:=0;
     raise;
    end;
-   NewInstruction(opMATCH);
+   Instructions[NewInstruction(opMATCH)].Value:=-1;
   finally
    SetLength(Instructions,CountInstructions);
    for Counter:=0 to CountInstructions-1 do begin
@@ -11460,7 +11460,7 @@ var LowRangeString,HighRangeString:ansistring;
      inc(Index);
      Instruction:=Instruction^.Next;
     end;
-    opJMP,opSAVE,opMULTIMATCH,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    opJMP,opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
      Instruction:=Instruction^.Next;
     end;
     opMATCH:begin
@@ -11823,7 +11823,7 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.OtherNext;
       continue;
      end;
-     opSAVE,opMULTIMATCH,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+     opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
       Instruction:=Instruction^.Next;
       continue;
      end;
@@ -12200,7 +12200,7 @@ begin
            end;
           end;
           opMATCH:begin
-           if Matched then begin
+           if Matched or (Instruction^.Value>=0) then begin
             OnePassNFAReady:=false;
             break;
            end;
@@ -12276,7 +12276,7 @@ begin
            Stack[StackPointer].Condition:=Condition;
            inc(StackPointer);
           end;
-          opMULTIMATCH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+          opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
            OnePassNFAReady:=false;
            break;
           end;
@@ -12795,10 +12795,13 @@ begin
 end;
 
 function TFLRE.SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
-var MatchBegin,MatchEnd:longint;
+var MatchBegin,MatchEnd,Index:longint;
 begin
  result:=false;
  ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
+ for Index:=0 to CountMultiSubMatches-1 do begin
+  ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
+ end;
  case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
   DFAMatch:begin
    if UnanchoredStart then begin
