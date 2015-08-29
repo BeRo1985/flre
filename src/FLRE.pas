@@ -867,6 +867,8 @@ const MaxDFAStates=4096;
 
       Mark=nil;
 
+      AllCharClass:TFLRECharClass=[#0..#255];
+
       // State flags
       sfEmptyBeginLine=1 shl 0;
       sfEmptyEndLine=1 shl 1;
@@ -8815,7 +8817,6 @@ begin
 end;
 
 procedure TFLRE.Parse;
-const AllCharClass:TFLRECharClass=[#0..#255];
 var SourcePosition,SourceLength:longint;
     Source:ansistring;
     GroupIndexIntegerStack:TFLREIntegerList;
@@ -11344,6 +11345,19 @@ procedure TFLRE.Compile;
      Instruction^.OtherNext:=@Instructions[ptrint(Instruction^.OtherNext)];
     end else begin
      Instruction^.OtherNext:=nil;
+    end;
+   end;
+   for Counter:=0 to CountInstructions-1 do begin
+    Instruction:=@Instructions[Counter];
+    if (Instruction^.IDandOpcode and $ff)=opSPLIT then begin
+     if ((((Instruction^.Next^.IDandOpcode and $ff)=opANY) or
+          (((Instruction^.Next^.IDandOpcode and $ff)=opCHAR) and (PFLRECharClass(pointer(ptruint(Instruction^.Next^.Value)))^=AllCharClass))) and
+         ((Instruction^.OtherNext^.IDandOpcode and $ff)=opMATCH)) or
+        ((((Instruction^.OtherNext^.IDandOpcode and $ff)=opANY) or
+          (((Instruction^.OtherNext^.IDandOpcode and $ff)=opCHAR) and (PFLRECharClass(pointer(ptruint(Instruction^.OtherNext^.Value)))^=AllCharClass))) and
+         ((Instruction^.Next^.IDandOpcode and $ff)=opMATCH)) then begin
+      Instruction^.IDandOpcode:=(longword(Instruction^.IDandOpcode) and longword($ffffff00)) or opSPLITMATCH;
+     end;
     end;
    end;
    if Reversed then begin
