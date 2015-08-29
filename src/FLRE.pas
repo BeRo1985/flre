@@ -3214,10 +3214,13 @@ begin
  end;
 end;
 
-function PtrPosPattern(const PatternLength:longint;const Text:pansichar;TextLength:longint;const PatternBitMasks:TFLRECharPatternBitMasks;Position:longint=0):longint;
+function PtrPosPattern(PatternLength:longint;const Text:pansichar;TextLength:longint;const PatternBitMasks:TFLRECharPatternBitMasks;Position:longint=0):longint;
 var CheckPosition:longint;
     State:longword;
 begin
+ if PatternLength>TextLength then begin
+  PatternLength:=TextLength;
+ end;
  case PatternLength of
   0:begin
    // Nothing
@@ -6186,6 +6189,10 @@ begin
           (((Instruction^.Value>=0) and (Instruction^.Value<Instance.CountMultiSubMatches)) and
            (ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<CurrentPosition)) then begin
         ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=CurrentPosition;
+        State^.SubMatchesBitmap:=State^.SubMatchesBitmap or 2;
+        if State^.SubMatches[1]<CurrentPosition then begin
+         State^.SubMatches[1]:=CurrentPosition;
+        end;
        end;
        if not assigned(BestState) then begin
         BestState:=StateAllocate(Instance.CountSubMatches,State^.SubMatchesBitmap);
@@ -6551,6 +6558,9 @@ var LocalInputLength,BasePosition,Len:longint;
           (((Instruction^.Value>=0) and (Instruction^.Value<Instance.CountMultiSubMatches)) and
            (ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]<Position)) then begin
         ThreadLocalStorageInstance.MultiSubMatches[Instruction^.Value]:=Position;
+        if WorkSubMatches[1]<Position then begin
+         WorkSubMatches[1]:=Position;
+        end;
        end;
        if LastPosition<Position then begin
         LastPosition:=Position;
@@ -6701,7 +6711,7 @@ begin
 
  IsUnanchored:=false;
 
- DoFastDFA:=Instance.DFAFast;
+ DoFastDFA:=Instance.DFAFast and not (MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch]);
 
  StackInstructions:=nil;
  StateCache:=TFLREDFAStateHashMap.Create;
@@ -10863,7 +10873,7 @@ var SourcePosition,SourceLength:longint;
     inc(CountMultiSubMatches);
     SkipFreeSpacingWhiteSpace;
     if assigned(result) then begin
-     result:=NewAlt(Result,Node);
+     result:=NewAlt(result,Node);
     end else begin
      result:=Node;
     end;
@@ -11221,7 +11231,6 @@ procedure TFLRE.Compile;
      ntMULTIMATCH:begin
       Emit(Node^.Left);
       if not assigned(BackreferenceParentNode) then begin
-       Emit(Node^.Left);
        i0:=NewInstruction(opMATCH);
        Instructions[i0].Value:=Node^.Value;
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
@@ -12799,6 +12808,7 @@ var MatchBegin,MatchEnd:longint;
 begin
  result:=false;
  ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
+(*
  case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
   DFAMatch:begin
    if UnanchoredStart then begin
@@ -12848,8 +12858,8 @@ begin
    Assert(false,'Internal error in DFA code');
 {$endif}
   end;
- end;
- if false and OnePassNFAReady and not UnanchoredStart then begin
+ end;(**)
+ if OnePassNFAReady and not UnanchoredStart then begin
   result:=ThreadLocalStorageInstance.OnePassNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition);
  end else begin
   if false and BitStateNFAReady then begin
@@ -12990,14 +13000,11 @@ begin
 end;
 
 function TFLRE.PtrMatchAll(const Input:pointer;const InputLength:longint;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
-var CurrentPosition,CountMultiCaptures,Next:longint;
+var CurrentPosition,CountMultiCaptures,Next,Index:longint;
     MatchResult:TFLRECaptures;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
  result:=false;
- if rfMULTIMATCH in Flags then begin
-  raise EFLRE.Create('MatchAll unsupported in multi match mode');
- end;
  MatchResult:=nil;
  CountMultiCaptures:=0;
  SetLength(MultiCaptures,0);
@@ -13008,6 +13015,11 @@ begin
    try
     ThreadLocalStorageInstance.Input:=Input;
     ThreadLocalStorageInstance.InputLength:=InputLength;
+    if rfMULTIMATCH in Flags then begin
+     for Index:=0 to CountMultiSubMatches-1 do begin
+      ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
+     end;
+    end;
     while (CurrentPosition<InputLength) and (Limit<>0) and InternalPtrMatchNext(ThreadLocalStorageInstance,Input,InputLength,MatchResult,CurrentPosition) do begin
      Next:=CurrentPosition+1;
      CurrentPosition:=MatchResult[0].Start+MatchResult[0].Length;
@@ -13016,6 +13028,20 @@ begin
      end;
      if CountMultiCaptures>=length(MultiCaptures) then begin
       SetLength(MultiCaptures,(CountMultiCaptures+1)*2);
+     end;
+     if rfMULTIMATCH in Flags then begin
+      SetLength(MatchResult,CountMultiSubMatches+1);
+      for Index:=0 to CountMultiSubMatches-1 do begin
+       MatchResult[Index+1].Start:=Index;
+       if ThreadLocalStorageInstance.MultiSubMatches[Index]>=0 then begin
+        MatchResult[Index+1].Length:=1;
+       end else begin
+        MatchResult[Index+1].Length:=0;
+       end;
+      end;
+      for Index:=0 to CountMultiSubMatches-1 do begin
+       ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
+      end;
      end;
      MultiCaptures[CountMultiCaptures]:=copy(MatchResult);
      inc(CountMultiCaptures);
@@ -13273,6 +13299,9 @@ begin
   if Captures[Counter].Length>0 then begin
    inc(Captures[Counter].Start);
   end;
+  if (rfMULTIMATCH in Flags) and (Counter=0) then begin
+   break;
+  end;
  end;
 end;
 
@@ -13283,6 +13312,9 @@ begin
  for Counter:=0 to length(Captures)-1 do begin
   if Captures[Counter].Length>0 then begin
    inc(Captures[Counter].Start);
+  end;
+  if (rfMULTIMATCH in Flags) and (Counter=0) then begin
+   break;
   end;
  end;
 end;
@@ -13295,6 +13327,9 @@ begin
   for SubCounter:=0 to length(MultiCaptures[Counter])-1 do begin
    if MultiCaptures[Counter,SubCounter].Length>0 then begin
     inc(MultiCaptures[Counter,SubCounter].Start);
+   end;
+   if (rfMULTIMATCH in Flags) and (SubCounter=0) then begin
+    break;
    end;
   end;
  end;
