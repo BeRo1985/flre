@@ -8704,7 +8704,7 @@ begin
       result:=true;
      end else begin
       if IsStarNullable(Node^.Left) then begin
-       Node:=StarDenull(Node^.Left);
+       Node^.Left:=StarDenull(Node^.Left);
        result:=true;
       end;
       NodeEx:=@Node^.Left;
