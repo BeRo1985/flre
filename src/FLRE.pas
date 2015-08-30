@@ -119,8 +119,6 @@ const FLREVersion=$00000002;
       carfMULTIMATCH=1 shl 7;
       carfUTF8=1 shl 8;
       carfDELIMITERS=1 shl 9;
-      carfSAFE=1 shl 10;
-      carfFAST=1 shl 11;
 
 type EFLRE=class(Exception);
 
@@ -167,9 +165,7 @@ type EFLRE=class(Exception);
                 rfLONGEST,
                 rfMULTIMATCH,
                 rfUTF8,
-                rfDELIMITERS,
-                rfSAFE,
-                rfFAST);
+                rfDELIMITERS);
 
      PFLREMatchMode=^TFLREMatchMode;
      TFLREMatchMode=(mmFirstMatch,
@@ -8267,13 +8263,8 @@ begin
   BitStateNFAReady:=(CountForwardInstructions>0) and (CountForwardInstructions<512);
 
   BeginningWildcardLoop:=BeginningJump and BeginningSplit and BeginningWildcard;
-  if rfSAFE in Flags then begin
-   DoUnanchoredStart:=false;
-  end else if rfFAST in Flags then begin
-   DoUnanchoredStart:=not BeginningAnchor;
-  end else begin
-   DoUnanchoredStart:=(FixedStringLength=0) and (CountObviousPrefixCharClasses<CountPrefixCharClasses) and not BeginningAnchor;
-  end;
+
+  DoUnanchoredStart:=(FixedStringLength=0) and (CountPrefixCharClasses=0) and not BeginningAnchor;
 
  finally
  end;
@@ -13122,12 +13113,12 @@ begin
      end;
     end;
    end;
-   if SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,DoUnanchoredStart and (CountPrefixCharClasses=0)) then begin
+   if SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,DoUnanchoredStart) then begin
     result:=true;
     break;
    end;
    inc(CurrentPosition);
-  until (CurrentPosition>=InputLength) or (BeginningWildcardLoop or BeginningAnchor);
+  until (CurrentPosition>=InputLength) or (BeginningWildcardLoop or BeginningAnchor or DoUnanchoredStart);
  end;
 end;
 
@@ -13872,12 +13863,6 @@ begin
   end;
   if (Flags and carfDELIMITERS)<>0 then begin
    Include(RealFlags,rfDELIMITERS);
-  end;
-  if (Flags and carfSAFE)<>0 then begin
-   Include(RealFlags,rfSAFE);
-  end;
-  if (Flags and carfFAST)<>0 then begin
-   Include(RealFlags,rfFAST);
   end;
   try
    TFLRE(result):=TFLRE.Create(AnsiString(PtrCopy(RegularExpression,0,RegularExpressionLength)),RealFlags);
