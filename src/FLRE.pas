@@ -13122,7 +13122,7 @@ begin
      end;
     end;
    end;
-   if SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,DoUnanchoredStart) then begin
+   if SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,DoUnanchoredStart and (CountPrefixCharClasses=0)) then begin
     result:=true;
     break;
    end;
