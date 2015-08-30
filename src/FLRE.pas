@@ -8579,6 +8579,7 @@ begin
  end;
 end;
 
+// More infos to this see: Xing2004 "A Simple Way to Construct NFA with Fewer States and Transitions"
 function TFLRE.IsStarNullable(Node:PFLRENode):boolean;
 begin
  if assigned(Node) then begin
@@ -8601,6 +8602,7 @@ begin
  end;
 end;
 
+// More infos to this see: Xing2004 "A Simple Way to Construct NFA with Fewer States and Transitions"
 function TFLRE.StarDenull(Node:PFLRENode):PFLRENode;
 begin
  result:=Node;
