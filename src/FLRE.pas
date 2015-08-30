@@ -97,6 +97,8 @@ unit FLRE;
 {$longstrings on}
 {$openstrings on}
 
+{-$define UseOpcodeJMP}
+
 interface
 
 uses SysUtils,Classes,FLREUnicode;
@@ -940,7 +942,9 @@ const MaxDFAStates=4096;
       opCHAR=1;
       opANY=2;
       opMATCH=3;
+{$ifdef UseOpcodeJMP}
       opJMP=4;
+{$endif}
       opSPLIT=5;
       opSPLITMATCH=6;
       opSAVE=7;
@@ -6038,10 +6042,12 @@ begin
    end else begin
     InstructionGenerations[InstructionID]:=Generation;
     case Instruction^.IDandOpcode and $ff of
+{$ifdef UseOpcodeJMP}
      opJMP:begin
       Instruction:=Instruction^.Next;
       continue;
      end;
+{$endif}
      opSPLIT,opSPLITMATCH:begin
       StackItem:=@ParallelNFAStack[StackSize];
       StackItem^.Instruction:=Instruction^.OtherNext;
@@ -6581,12 +6587,14 @@ var LocalInputLength,BasePosition,Len:longint;
        exit;
       end;
      end;
+{$ifdef UseOpcodeJMP}
      opJMP:begin
       Instruction:=Instruction^.Next;
       if ShouldVisit(Instruction,Position) then begin
        continue;
       end;
      end;
+{$endif}
      opSAVE:begin
       case Argument of
        0:begin
@@ -7026,7 +7034,9 @@ begin
   while assigned(Instruction) and (InstructionGenerations[Instruction^.IDandOpcode shr 8]<>Generation) do begin
    InstructionGenerations[Instruction^.IDandOpcode shr 8]:=Generation;
    case Instruction^.IDandOpcode and $ff of
+{$ifdef UseOpcodeJMP}
     opJMP,
+{$endif}
     opSAVE,
     opZEROWIDTH,
     opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,
@@ -7328,7 +7338,7 @@ begin
     opSINGLECHAR,opCHAR,opANY,opMATCH:begin
      // Just save onto the queue
     end;
-    opJMP,opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
      // No-ops at DFA
      if (StackPointer+1)>length(QueueStack) then begin
       SetLength(QueueStack,(StackPointer+1)*2);
@@ -7392,7 +7402,7 @@ begin
    NewWorkQueue.Mark;
   end else begin
    case Instruction^.IDandOpcode and $ff of
-    opJMP,opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
+    {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
      // Already processed
     end;
     opSINGLECHAR:begin
@@ -11035,22 +11045,42 @@ procedure TFLRE.Compile;
    Instructions[result].OtherNext:=pointer(ptrint(-1));
   end;
   procedure Emit(Node:PFLRENode;const BackreferenceParentNode:PFLRENode=nil);
-  var i0,i1,i2,Counter,Count,Index,Flags:longint;
+  var i0,i1,i2,Counter,Count,Index{$ifndef UseOpcodeJMP},FromIndex,ToIndex,OutIndex{$endif},Flags:longint;
       Last:array of longint;
       CurrentChar,SingleChar:ansichar;
       DoIgnoreCase:boolean;
   begin
    while assigned(Node) and (NodeStack.IndexOf(Node)<0) do begin
     case Node^.NodeType of
-     ntALT:begin                
+     ntALT:begin
       i0:=NewInstruction(opSPLIT);
       Instructions[i0].Value:=skALT;
       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+      FromIndex:=CountInstructions;
+{$endif}
       Emit(Node^.Left);
+{$ifndef UseOpcodeJMP}
+      ToIndex:=CountInstructions-1;
+      OutIndex:=CountInstructions;
+{$endif}
+{$ifdef UseOpcodeJMP}
       i1:=NewInstruction(opJMP);
+{$endif}
       Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
       Emit(Node^.Right);
+{$ifdef UseOpcodeJMP}
       Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+{$else}
+      for Index:=FromIndex to ToIndex do begin
+       if ptrint(Instructions[Index].Next)=OutIndex then begin
+        Instructions[Index].Next:=pointer(ptrint(CountInstructions));
+       end;
+       if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
+        Instructions[Index].OtherNext:=pointer(ptrint(CountInstructions));
+       end;
+      end;
+{$endif}
      end;
      ntCAT:begin
       if Reversed then begin
@@ -11139,17 +11169,55 @@ procedure TFLRE.Compile;
       if Node^.Value<>0 then begin
        // Non-greedy
        Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+       FromIndex:=CountInstructions;
+{$endif}
        Emit(Node^.Left);
+{$ifndef UseOpcodeJMP}
+       ToIndex:=CountInstructions-1;
+       OutIndex:=CountInstructions;
+{$endif}
+{$ifdef UseOpcodeJMP}
        i1:=NewInstruction(opJMP);
        Instructions[i1].Next:=pointer(ptrint(i0));
+{$endif}
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+       for Index:=FromIndex to ToIndex do begin
+        if ptrint(Instructions[Index].Next)=OutIndex then begin
+         Instructions[Index].Next:=pointer(ptrint(i0));
+        end;
+        if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
+         Instructions[Index].OtherNext:=pointer(ptrint(i0));
+        end;
+       end;
+{$endif}
       end else begin
        // Greedy
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+       FromIndex:=CountInstructions;
+{$endif}
        Emit(Node^.Left);
+{$ifndef UseOpcodeJMP}
+       ToIndex:=CountInstructions-1;
+       OutIndex:=CountInstructions;
+{$endif}
+{$ifdef UseOpcodeJMP}
        i1:=NewInstruction(opJMP);
        Instructions[i1].Next:=pointer(ptrint(i0));
+{$endif}
        Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+       for Index:=FromIndex to ToIndex do begin
+        if ptrint(Instructions[Index].Next)=OutIndex then begin
+         Instructions[Index].Next:=pointer(ptrint(i0));
+        end;
+        if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
+         Instructions[Index].OtherNext:=pointer(ptrint(i0));
+        end;
+       end;
+{$endif}
       end;
      end;
      ntPLUS:begin
@@ -11210,17 +11278,55 @@ procedure TFLRE.Compile;
         if Node^.Value<>0 then begin
          // Non-greedy
          Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+         FromIndex:=CountInstructions;
+{$endif}
          Emit(Node^.Left);
+{$ifndef UseOpcodeJMP}
+         ToIndex:=CountInstructions-1;
+         OutIndex:=CountInstructions;
+{$endif}
+{$ifdef UseOpcodeJMP}
          i1:=NewInstruction(opJMP);
          Instructions[i1].Next:=pointer(ptrint(i0));
+{$endif}
          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+         for Index:=FromIndex to ToIndex do begin
+          if ptrint(Instructions[Index].Next)=OutIndex then begin
+           Instructions[Index].Next:=pointer(ptrint(i0));
+          end;
+          if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
+           Instructions[Index].OtherNext:=pointer(ptrint(i0));
+          end;
+         end;
+{$endif}
         end else begin
          // Greedy
          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+         FromIndex:=CountInstructions;
+{$endif}
          Emit(Node^.Left);
+{$ifndef UseOpcodeJMP}
+         ToIndex:=CountInstructions-1;
+         OutIndex:=CountInstructions;
+{$endif}
+{$ifdef UseOpcodeJMP}
          i1:=NewInstruction(opJMP);
          Instructions[i1].Next:=pointer(ptrint(i0));
+{$endif}
          Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+         for Index:=FromIndex to ToIndex do begin
+          if ptrint(Instructions[Index].Next)=OutIndex then begin
+           Instructions[Index].Next:=pointer(ptrint(i0));
+          end;
+          if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
+           Instructions[Index].OtherNext:=pointer(ptrint(i0));
+          end;
+         end;
+{$endif}
         end;
        end;
       end else begin
@@ -11518,7 +11624,7 @@ var LowRangeString,HighRangeString:ansistring;
      inc(Index);
      Instruction:=Instruction^.Next;
     end;
-    opJMP,opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
      Instruction:=Instruction^.Next;
     end;
     opMATCH:begin
@@ -11866,6 +11972,7 @@ var CurrentPosition:longint;
    end else begin
     InstructionGenerations[Instruction^.IDandOpcode shr 8]:=Generation;
     case Instruction^.IDandOpcode and $ff of
+{$ifdef UseOpcodeJMP}
      opJMP:begin
       if (CurrentPosition=0) and ((Instruction^.Next^.IDandOpcode shr 8)<=(Instruction^.IDandOpcode shr 8)) then begin
        BeginningJump:=true;
@@ -11873,9 +11980,17 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.Next;
       continue;
      end;
+{$endif}
      opSPLIT,opSPLITMATCH:begin
       if CurrentPosition=0 then begin
        BeginningSplit:=true;
+{$ifndef UseOpcodeJMP}
+       if (CurrentPosition=0) and assigned(Instruction^.Next) and assigned(Instruction^.Next^.Next) and ((Instruction^.Next^.Next^.IDandOpcode shr 8)<=(Instruction^.Next^.IDandOpcode shr 8)) then begin
+        BeginningJump:=true;
+       end else if (CurrentPosition=0) and assigned(Instruction^.OtherNext) and assigned(Instruction^.Next^.Next) and ((Instruction^.OtherNext^.Next^.IDandOpcode shr 8)<=(Instruction^.Next^.IDandOpcode shr 8)) then begin
+        BeginningJump:=true;
+       end;
+{$endif}
       end;
       AddThread(ThreadList,Instruction^.Next);
       Instruction:=Instruction^.OtherNext;
@@ -12136,6 +12251,7 @@ begin
          Instruction:=Stack[StackPointer].Instruction;
          Condition:=Stack[StackPointer].Condition;
          case Instruction^.IDandOpcode and $ff of
+{$ifdef UseOpcodeJMP}
           opJMP:begin
            if WorkQueue.IndexOf(Instruction^.Next)>=0 then begin
             OnePassNFAReady:=false;
@@ -12146,6 +12262,7 @@ begin
            Stack[StackPointer].Condition:=Condition;
            inc(StackPointer);
           end;
+{$endif}
           opSINGLECHAR,opCHAR,opANY:begin
            NextIndex:=NodeByID[Instruction^.Next^.IDandOpcode shr 8];
            if NextIndex<0 then begin
