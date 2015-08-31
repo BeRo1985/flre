@@ -296,8 +296,9 @@ type EFLRE=class(Exception);
 
      PFLREOnePassNFAStateCharClassAction=^TFLREOnePassNFAStateCharClassAction;
      TFLREOnePassNFAStateCharClassAction=record // 32-bit: 16 bytes, 64-bit: 32 bytes
-      AllNext,Next:PFLREOnePassNFAStateCharClassAction;
-      CharClass:TFLRECharClass;
+      AllNext:PFLREOnePassNFAStateCharClassAction;
+      Next:PFLREOnePassNFAStateCharClassAction;
+      CharClass:PFLRECharClass;
       Condition:longword;
      end;
 
@@ -13074,7 +13075,7 @@ begin
             DestCharClassAction:=nil;
             CharClassAction:=Node^.CharClassAction;
             while assigned(CharClassAction) do begin
-             if (CharClassAction.CharClass*CharClass)<>[] then begin
+             if (CharClassAction.CharClass^*CharClass)<>[] then begin
               DestCharClassAction:=CharClassAction;
               break;
              end;
@@ -13092,7 +13093,7 @@ begin
              OnePassNFACharClassActions:=DestCharClassAction;
              DestCharClassAction^.Next:=Node^.CharClassAction;
              Node^.CharClassAction:=DestCharClassAction;
-             DestCharClassAction^.CharClass:=CharClass;
+             DestCharClassAction^.CharClass:=CharClasses[NewCharClass(CharClass)];
              DestCharClassAction^.Condition:=NewAction;
             end;
            end;
