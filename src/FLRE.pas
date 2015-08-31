@@ -188,7 +188,6 @@ type EFLRE=class(Exception);
       Group:longint;
       Left:PFLRENode;
       Right:PFLRENode;
-      Extra:PFLRENode;
       Index:longint;
       Name:ansistring;
      end;
@@ -811,6 +810,7 @@ type EFLRE=class(Exception);
        function NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
        procedure FreeNode(var Node:PFLRENode);
        function CopyNode(Node:PFLRENode):PFLRENode;
+       procedure FreeUnusedNodes(RootNode:PFLRENode);
 
        function AreNodesEqual(NodeA,NodeB:PFLRENode):boolean;
        function AreNodesEqualSafe(NodeA,NodeB:PFLRENode):boolean;
@@ -8599,7 +8599,6 @@ begin
  result^.NodeType:=NodeType;
  result^.Left:=Left;
  result^.Right:=Right;
- result^.Extra:=Extra;
  result^.Value:=Value;
  result^.Index:=Nodes.Add(result);
 end;
@@ -8612,9 +8611,6 @@ begin
   end;
   if assigned(Node^.Right) then begin
    FreeNode(Node^.Right);
-  end;
-  if assigned(Node^.Extra) then begin
-   FreeNode(Node^.Extra);
   end;
   FreeMem(Node);
   Node:=nil;
@@ -8633,11 +8629,56 @@ begin
   if assigned(Node^.Right) then begin
    result^.Right:=CopyNode(Node^.Right);
   end;
-  if assigned(Node^.Extra) then begin
-   result^.Extra:=CopyNode(Node^.Extra);
-  end;
  end else begin
   result:=nil;
+ end;
+end;
+
+// Mark-and-sweep garbage collector for freeing unused nodes
+procedure TFLRE.FreeUnusedNodes(RootNode:PFLRENode);
+var Index,Count:longint;
+    Visited,Stack:TList;
+    Node:PFLRENode;
+begin
+ Visited:=TList.Create;
+ try
+  Count:=0;
+  Stack:=TList.Create;
+  try
+   Stack.Add(RootNode);
+   while Stack.Count>0 do begin
+    Node:=Stack[Stack.Count-1];
+    Stack.Delete(Stack.Count-1);
+    if assigned(Node) then begin
+     Visited.Add(Node);
+     inc(Count);
+     if assigned(Node^.Left) and (Visited.IndexOf(Node^.Left)<0) then begin
+      Stack.Add(Node^.Left);
+     end;
+     if assigned(Node^.Right) and (Visited.IndexOf(Node^.Right)<0) then begin
+      Stack.Add(Node^.Right);
+     end;
+    end;
+   end;
+  finally
+   Stack.Free;
+  end;
+  if Count<>Nodes.Count then begin
+   Index:=0;
+   while Index<Nodes.Count do begin
+    Node:=Nodes[Index];
+    if Visited.IndexOf(Node)<0 then begin
+     Node^.Name:='';
+     Finalize(Node^);
+     FreeMem(Node);
+     Nodes.Delete(Index);
+    end else begin
+     inc(Index);
+    end;
+   end;
+  end;
+ finally
+  Visited.Free;
  end;
 end;
 
@@ -8647,7 +8688,7 @@ begin
          ((((assigned(NodeA) and assigned(NodeB))) and
           ((NodeA^.NodeType=NodeB^.NodeType) and
            ((NodeA^.Value=NodeB^.Value) and
-            ((AreNodesEqual(NodeA^.Left,NodeB^.Left) and AreNodesEqual(NodeA^.Right,NodeB^.Right)) and AreNodesEqual(NodeA^.Extra,NodeB^.Extra))))) or
+            (AreNodesEqual(NodeA^.Left,NodeB^.Left) and AreNodesEqual(NodeA^.Right,NodeB^.Right))))) or
           not (assigned(NodeA) or assigned(NodeB)));
 end;
 
@@ -8657,9 +8698,8 @@ begin
          ((((assigned(NodeA) and assigned(NodeB))) and
            (((NodeA^.NodeType=NodeB^.NodeType) and not (NodeB^.NodeType in [ntPAREN])) and
             ((NodeA^.Value=NodeB^.Value) and
-             ((AreNodesEqualSafe(NodeA^.Left,NodeB^.Left) and
-               AreNodesEqualSafe(NodeA^.Right,NodeB^.Right)) and
-               AreNodesEqualSafe(NodeA^.Extra,NodeB^.Extra))))) or
+             (AreNodesEqualSafe(NodeA^.Left,NodeB^.Left) and
+              AreNodesEqualSafe(NodeA^.Right,NodeB^.Right))))) or
           not (assigned(NodeA) or assigned(NodeB)));
 end;
 
@@ -11272,8 +11312,11 @@ begin
    GroupIndexIntegerStack.Free;
    GroupNameStringStack.Free;
   end;
+  FreeUnusedNodes(AnchoredRootNode);
   while assigned(AnchoredRootNode) and OptimizeNode(@AnchoredRootNode) do begin
+   FreeUnusedNodes(AnchoredRootNode);
   end;
+  FreeUnusedNodes(AnchoredRootNode);
   if rfLONGEST in Flags then begin
    UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass)),nil,nil,qkGREEDY),AnchoredRootNode,nil,0);
   end else begin
