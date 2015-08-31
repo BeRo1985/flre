@@ -8667,6 +8667,7 @@ begin
    Index:=0;
    while Index<Nodes.Count do begin
     Node:=Nodes[Index];
+    Node^.Index:=Index;
     if Visited.IndexOf(Node)<0 then begin
      Node^.Name:='';
      Finalize(Node^);
