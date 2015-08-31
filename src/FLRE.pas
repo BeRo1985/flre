@@ -777,15 +777,15 @@ type EFLRE=class(Exception);
        function AreNodesEqual(NodeA,NodeB:PFLRENode):boolean;
        function AreNodesEqualSafe(NodeA,NodeB:PFLRENode):boolean;
 
+       function IsStarNullable(Node:PFLRENode):boolean;
+       function StarDenull(Node:PFLRENode):PFLRENode;
+
        function Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
 
        function NewAlt(NodeLeft,NodeRight:PFLRENode):PFLRENode;
        function NewPlus(Node:PFLRENode;Kind:longint):PFLRENode;
        function NewStar(Node:PFLRENode;Kind:longint):PFLRENode;
        function NewQuest(Node:PFLRENode;Kind:longint):PFLRENode;
-
-       function IsStarNullable(Node:PFLRENode):boolean;
-       function StarDenull(Node:PFLRENode):PFLRENode;
 
        function OptimizeNode(NodeEx:PPFLRENode):boolean;
 
@@ -8401,6 +8401,51 @@ begin
           not (assigned(NodeA) or assigned(NodeB)));
 end;
 
+// More infos to this see: Xing2004 "A Simple Way to Construct NFA with Fewer States and Transitions"
+function TFLRE.IsStarNullable(Node:PFLRENode):boolean;
+begin
+ if assigned(Node) then begin
+  case Node^.NodeType of
+   ntSTAR:begin
+    result:=Node^.Value=qkGREEDY;
+   end;
+   ntALT:begin
+    result:=(IsStarNullable(Node^.Left) or IsStarNullable(Node^.Right)) or not (assigned(Node^.Left) and assigned(Node^.Right));
+   end;
+   ntCAT:begin
+    result:=IsStarNullable(Node^.Left) and IsStarNullable(Node^.Right);
+   end;
+   else begin
+    result:=false;
+   end;
+  end;
+ end else begin
+  result:=false;
+ end;
+end;
+
+// More infos to this see: Xing2004 "A Simple Way to Construct NFA with Fewer States and Transitions"
+function TFLRE.StarDenull(Node:PFLRENode):PFLRENode;
+begin
+ result:=Node;
+ if IsStarNullable(result) then begin
+  case result^.NodeType of
+   ntSTAR:begin
+    result:=result^.Left;
+   end;
+   ntCAT:begin
+    result^.NodeType:=ntALT;
+    result^.Left:=StarDenull(result^.Left);
+    result^.Right:=StarDenull(result^.Right);
+   end;
+   ntALT:begin
+    result^.Left:=StarDenull(result^.Left);
+    result^.Right:=StarDenull(result^.Right);
+   end;
+  end;
+ end;
+end;
+
 function TFLRE.Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
 var NodeTemp:PFLRENode;
 begin                                                    
@@ -8558,7 +8603,7 @@ begin
   result:=Node;
   result^.NodeType:=ntSTAR;
  end else begin
-  result:=NewNode(ntSTAR,Node,nil,nil,Kind);
+  result:=NewNode(ntSTAR,StarDenull(Node),nil,nil,Kind);
  end;
 end;
 
@@ -8576,53 +8621,6 @@ begin
   result^.NodeType:=ntSTAR;
  end else begin
   result:=NewNode(ntQUEST,Node,nil,nil,Kind);
- end;
-end;
-
-// More infos to this see: Xing2004 "A Simple Way to Construct NFA with Fewer States and Transitions"
-function TFLRE.IsStarNullable(Node:PFLRENode):boolean;
-begin
- if assigned(Node) then begin
-  case Node^.NodeType of
-   ntSTAR:begin
-    result:=Node^.Value=qkGREEDY;
-   end;
-   ntALT:begin
-    result:=(IsStarNullable(Node^.Left) or IsStarNullable(Node^.Right)) or not (assigned(Node^.Left) and assigned(Node^.Right));
-   end;
-   ntCAT:begin
-    result:=IsStarNullable(Node^.Left) and IsStarNullable(Node^.Right);
-   end;
-   else begin
-    result:=false;
-   end;
-  end;
- end else begin
-  result:=false;
- end;
-end;
-
-// More infos to this see: Xing2004 "A Simple Way to Construct NFA with Fewer States and Transitions"
-function TFLRE.StarDenull(Node:PFLRENode):PFLRENode;
-begin
- result:=Node;
- if IsStarNullable(result) then begin
-  case result^.NodeType of
-   ntSTAR:begin
-    result:=result^.Left;
-   end;
-   ntCAT:begin
-    result:=NewAlt(StarDenull(result^.Left),StarDenull(result^.Right));
-{   result^.NodeType:=ntALT;
-    result^.Left:=StarDenull(result^.Left);
-    result^.Right:=StarDenull(result^.Right);}
-   end;
-   ntALT:begin
-    result:=NewAlt(StarDenull(result^.Left),StarDenull(result^.Right));
-{   result^.Left:=StarDenull(result^.Left);
-    result^.Right:=StarDenull(result^.Right);}
-   end;
-  end;
  end;
 end;
 
