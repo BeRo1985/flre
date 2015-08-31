@@ -8851,6 +8851,13 @@ begin
        Node^.Right:=nil;
        DoContinue:=true;
        result:=true;
+      end else if ((Node^.Left^.NodeType=ntANY) and (Node^.Right^.NodeType=ntCHAR)) or
+                  ((Node^.Left^.NodeType=ntCHAR) and (Node^.Right^.NodeType=ntANY)) then begin
+       Node^.NodeType:=ntANY;
+       Node^.Left:=nil;
+       Node^.Right:=nil;
+       DoContinue:=true;
+       result:=true;
       end else begin
        if OptimizeNode(@Node^.Right) then begin
         result:=true;
