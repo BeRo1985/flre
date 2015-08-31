@@ -468,6 +468,41 @@ type EFLRE=class(Exception);
        property Values[const Key:ansistring]:TFLREStringIntegerPairHashMapData read GetValue write SetValue; default;
      end;
 
+     TFLRECharClassHashMapData=int64;
+
+     PFLRECharClassHashMapEntity=^TFLRECharClassHashMapEntity;
+     TFLRECharClassHashMapEntity=record
+      Key:TFLRECharClass;
+      Value:TFLRECharClassHashMapData;
+     end;
+
+     TFLRECharClassHashMapEntities=array of TFLRECharClassHashMapEntity;
+
+     TFLRECharClassHashMapEntityIndices=array of longint;
+
+     TFLRECharClassHashMap=class
+      private
+       function FindCell(const Key:TFLRECharClass):longword;
+       procedure Resize;
+      protected
+       function GetValue(const Key:TFLRECharClass):TFLRECharClassHashMapData;
+       procedure SetValue(const Key:TFLRECharClass;const Value:TFLRECharClassHashMapData);
+      public
+       RealSize:longint;
+       LogSize:longint;
+       Size:longint;
+       Entities:TFLRECharClassHashMapEntities;
+       EntityToCellIndex:TFLRECharClassHashMapEntityIndices;
+       CellToEntityIndex:TFLRECharClassHashMapEntityIndices;
+       constructor Create;
+       destructor Destroy; override;
+       procedure Clear;
+       function Add(const Key:TFLRECharClass;Value:TFLRECharClassHashMapData):PFLRECharClassHashMapEntity;
+       function Get(const Key:TFLRECharClass;CreateIfNotExist:boolean=false):PFLRECharClassHashMapEntity;
+       function Delete(const Key:TFLRECharClass):boolean;
+       property Values[const Key:TFLRECharClass]:TFLRECharClassHashMapData read GetValue write SetValue; default;
+     end;
+
      TFLREMultiSubMatches=array of longint;
 
      TFLREInstructionGenerations=array of int64;
@@ -709,6 +744,8 @@ type EFLRE=class(Exception);
 
        CharClasses:TPFLRECharClasses;
        CountCharClasses:longint;
+
+       CharClassHashMap:TFLRECharClassHashMap;
 
        LookAssertionStrings:TFLRELookAssertionStrings;
        CountLookAssertionStrings:longint;
@@ -4599,6 +4636,184 @@ begin
  Add(Key,Value);
 end;
 
+constructor TFLRECharClassHashMap.Create;
+begin
+ inherited Create;
+ RealSize:=0;
+ LogSize:=0;
+ Size:=0;
+ Entities:=nil;
+ EntityToCellIndex:=nil;
+ CellToEntityIndex:=nil;
+ Resize;
+end;
+
+destructor TFLRECharClassHashMap.Destroy;
+var Counter:longint;
+begin
+ Clear;
+ SetLength(Entities,0);
+ SetLength(EntityToCellIndex,0);
+ SetLength(CellToEntityIndex,0);
+ inherited Destroy;
+end;
+
+procedure TFLRECharClassHashMap.Clear;
+var Counter:longint;
+begin
+ RealSize:=0;
+ LogSize:=0;
+ Size:=0;
+ SetLength(Entities,0);
+ SetLength(EntityToCellIndex,0);
+ SetLength(CellToEntityIndex,0);
+ Resize;
+end;
+
+function TFLRECharClassHashMap.FindCell(const Key:TFLRECharClass):longword;
+var HashCode,Mask,Step:longword;
+    Entity:longint;
+begin
+ HashCode:=HashData(@Key,SizeOf(TFLRECharClass));
+ Mask:=(2 shl LogSize)-1;
+ Step:=((HashCode shl 1)+1) and Mask;
+ if LogSize<>0 then begin
+  result:=HashCode shr (32-LogSize);
+ end else begin
+  result:=0;
+ end;
+ repeat
+  Entity:=CellToEntityIndex[result];
+  if (Entity=ENT_EMPTY) or ((Entity<>ENT_DELETED) and (Entities[Entity].Key=Key)) then begin
+   exit;
+  end;
+  result:=(result+Step) and Mask;
+ until false;
+end;
+
+procedure TFLRECharClassHashMap.Resize;
+var NewLogSize,NewSize,Cell,Entity,Counter:longint;
+    OldEntities:TFLRECharClassHashMapEntities;
+    OldCellToEntityIndex:TFLRECharClassHashMapEntityIndices;
+    OldEntityToCellIndex:TFLRECharClassHashMapEntityIndices;
+begin
+ NewLogSize:=0;
+ NewSize:=RealSize;
+ while NewSize<>0 do begin
+  NewSize:=NewSize shr 1;
+  inc(NewLogSize);
+ end;
+ if NewLogSize<1 then begin
+  NewLogSize:=1;
+ end;
+ Size:=0;
+ RealSize:=0;
+ LogSize:=NewLogSize;
+ OldEntities:=Entities;
+ OldCellToEntityIndex:=CellToEntityIndex;
+ OldEntityToCellIndex:=EntityToCellIndex;
+ Entities:=nil;
+ CellToEntityIndex:=nil;
+ EntityToCellIndex:=nil;
+ SetLength(Entities,2 shl LogSize);
+ SetLength(CellToEntityIndex,2 shl LogSize);
+ SetLength(EntityToCellIndex,2 shl LogSize);
+ for Counter:=0 to length(CellToEntityIndex)-1 do begin
+  CellToEntityIndex[Counter]:=ENT_EMPTY;
+ end;
+ for Counter:=0 to length(EntityToCellIndex)-1 do begin
+  EntityToCellIndex[Counter]:=CELL_EMPTY;
+ end;
+ for Counter:=0 to length(OldEntityToCellIndex)-1 do begin
+  Cell:=OldEntityToCellIndex[Counter];
+  if Cell>=0 then begin
+   Entity:=OldCellToEntityIndex[Cell];
+   if Entity>=0 then begin
+    Add(OldEntities[Counter].Key,OldEntities[Counter].Value);
+   end;
+  end;
+ end;
+ SetLength(OldEntities,0);
+ SetLength(OldCellToEntityIndex,0);
+ SetLength(OldEntityToCellIndex,0);
+end;
+
+function TFLRECharClassHashMap.Add(const Key:TFLRECharClass;Value:TFLRECharClassHashMapData):PFLRECharClassHashMapEntity;
+var Entity:longint;
+    Cell:longword;
+begin
+ result:=nil;
+ while RealSize>=(1 shl LogSize) do begin
+  Resize;
+ end;
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  result:=@Entities[Entity];
+  result^.Key:=Key;
+  result^.Value:=Value;
+  exit;
+ end;
+ Entity:=Size;
+ inc(Size);
+ if Entity<(2 shl LogSize) then begin
+  CellToEntityIndex[Cell]:=Entity;
+  EntityToCellIndex[Entity]:=Cell;
+  inc(RealSize);
+  result:=@Entities[Entity];
+  result^.Key:=Key;
+  result^.Value:=Value;
+ end;
+end;
+
+function TFLRECharClassHashMap.Get(const Key:TFLRECharClass;CreateIfNotExist:boolean=false):PFLRECharClassHashMapEntity;
+var Entity:longint;
+    Cell:longword;
+begin
+ result:=nil;
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  result:=@Entities[Entity];
+ end else if CreateIfNotExist then begin
+  result:=Add(Key,-1);
+ end;
+end;
+
+function TFLRECharClassHashMap.Delete(const Key:TFLRECharClass):boolean;
+var Entity:longint;
+    Cell:longword;
+begin
+ result:=false;
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  Entities[Entity].Key:=[];
+  Entities[Entity].Value:=-1;
+  EntityToCellIndex[Entity]:=CELL_DELETED;
+  CellToEntityIndex[Cell]:=ENT_DELETED;
+  result:=true;
+ end;
+end;
+
+function TFLRECharClassHashMap.GetValue(const Key:TFLRECharClass):TFLRECharClassHashMapData;
+var Entity:longint;
+    Cell:longword;
+begin
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  result:=Entities[Entity].Value;
+ end else begin
+  result:=-1;
+ end;
+end;
+
+procedure TFLRECharClassHashMap.SetValue(const Key:TFLRECharClass;const Value:TFLRECharClassHashMapData);
+begin
+ Add(Key,Value);
+end;
+
 type TFLREUnicodeCharClass=class;
 
      TFLREUnicodeCharClassRange=class
@@ -8081,6 +8296,8 @@ begin
  CharClasses:=nil;
  CountCharClasses:=0;
 
+ CharClassHashMap:=TFLRECharClassHashMap.Create;
+
  LookAssertionStrings:=nil;
  CountLookAssertionStrings:=0;
 
@@ -8318,6 +8535,8 @@ begin
  SetLength(CharClasses,0);
  CountCharClasses:=0;
 
+ CharClassHashMap.Free;
+
  SetLength(LookAssertionStrings,0);
 
  if assigned(OnePassNFANodes) then begin
@@ -8351,13 +8570,7 @@ end;
 function TFLRE.NewCharClass(const CharClass:TFLRECharClass):longint;
 var Counter:longint;
 begin
- result:=-1;
- for Counter:=0 to CountCharClasses-1 do begin
-  if CharClasses[Counter]^=CharClass then begin
-   result:=Counter;
-   break;
-  end;
- end;
+ result:=CharClassHashMap.GetValue(CharClass);
  if result<0 then begin
   result:=CountCharClasses;
   inc(CountCharClasses);
@@ -8366,6 +8579,7 @@ begin
   end;
   GetMem(CharClasses[result],SizeOf(TFLRECharClass));
   CharClasses[result]^:=CharClass;
+  CharClassHashMap.Add(CharClass,result);
  end;
 end;
 
