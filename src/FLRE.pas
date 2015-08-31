@@ -101,13 +101,15 @@ unit FLRE;
 
 interface
 
-uses SysUtils,Classes,FLREUnicode;
+uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$endif}SysUtils,Classes,FLREUnicode;
 
 const FLREVersion=$00000002;
 
       FLREVersionString='1.00.2015.08.29.05.05.0000';
 
       MaxPrefixCharClasses=32;
+
+      MinNativeCodeBlockContainerSize=1048576;
 
       carfIGNORECASE=1 shl 0;
       carfSINGLELINE=1 shl 1;
@@ -213,6 +215,41 @@ type EFLRE=class(Exception);
      TPFLREInstructionsStatic=array[0..65535] of PFLREInstruction;
 
      TFLRECapturesToSubMatchesMap=array of longint;
+
+     PFLRENativeCodeMemoryManagerBlock=^TFLRENativeCodeMemoryManagerBlock;
+     TFLRENativeCodeMemoryManagerBlock=packed record
+      Signature:TFLREPtrUInt;
+      Previous:PFLRENativeCodeMemoryManagerBlock;
+      Next:PFLRENativeCodeMemoryManagerBlock;
+      Size:TFLREPtrUInt;
+     end;
+
+     PFLRENativeCodeMemoryManagerBlockContainer=^TFLRENativeCodeMemoryManagerBlockContainer;
+     TFLRENativeCodeMemoryManagerBlockContainer=record
+      Previous:PFLRENativeCodeMemoryManagerBlockContainer;
+      Next:PFLRENativeCodeMemoryManagerBlockContainer;
+      Base:pointer;
+      Size:TFLREPtrUInt;
+      Used:TFLREPtrUInt;
+      First:PFLRENativeCodeMemoryManagerBlock;
+      Last:PFLRENativeCodeMemoryManagerBlock;
+     end;
+
+     TFLRENativeCodeMemoryManager=class
+      private
+       PageSize:TFLREPtrUInt;
+       Alignment:TFLREPtrUInt;
+       function AllocateBlockContainer(BlockContainerSize:TFLREPtrUInt):PFLRENativeCodeMemoryManagerBlockContainer;
+       procedure FreeBlockContainer(BlockContainer:PFLRENativeCodeMemoryManagerBlockContainer);
+      public
+       First:PFLRENativeCodeMemoryManagerBlockContainer;
+       Last:PFLRENativeCodeMemoryManagerBlockContainer;
+       constructor Create;
+       destructor Destroy; override;
+       function GetMemory(Size:TFLREPtrUInt):pointer;
+       procedure FreeMemory(p:pointer);
+       function ReallocMemory(p:pointer;Size:TFLREPtrUInt):pointer;
+     end;
 
      PFLREParallelNFAStateItem=^TFLREParallelNFAStateItem;
      TFLREParallelNFAStateItem=longint;
@@ -1106,7 +1143,14 @@ const UTF8CharSteps:TUTF8Chars=(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 0
 
 {$endif}
 
-var UTF8DFACharClasses:TUTF8Chars;
+var NativeCodeMemoryManager:TFLRENativeCodeMemoryManager;
+{$ifdef HasJIT}
+{$ifdef unix}
+    fpmprotect:function(__addr:pointer;__len:cardinal;__prot:longint):longint; cdecl;// external 'c' name 'mprotect';
+{$endif}
+{$endif}
+
+    UTF8DFACharClasses:TUTF8Chars;
     UTF8DFATransitions:TUTF8Bytes;
 
     UnicodeCharRangeClasses:TUnicodeCharRangeClasses;
@@ -1127,6 +1171,15 @@ begin
  x:=x or (x shr 32);
 {$endif}
  result:=x+1;
+end;
+
+function RoundUpToMask(x,m:ptruint):ptruint; {$ifdef caninline}inline;{$endif}
+begin
+ if (x and (m-1))<>0 then begin
+  result:=(x+m) and not (m-1);
+ end else begin
+  result:=x;
+ end;
 end;
 
 procedure GetMemAligned(var p;Size:longint;Align:longint=16);
@@ -3749,6 +3802,234 @@ end;
 function IsInstructionGreedy(Instruction:PFLREInstruction):boolean;
 begin
  result:=assigned(Instruction^.Next) and ((Instruction^.Next^.IDandOpcode and $ff) in [opSINGLECHAR,opCHAR,opANY]);
+end;
+
+const bncmmMemoryBlockSignature:ptruint={$ifdef cpu64}$1337bab3deadc0d3{$else}$deadc0d3{$endif};
+
+constructor TFLRENativeCodeMemoryManager.Create;
+{$ifdef windows}
+var SystemInfo:TSystemInfo;
+{$else}
+{$ifdef unix}
+{$endif}
+{$endif}
+begin
+ inherited Create;
+{$ifdef windows}
+ GetSystemInfo(SystemInfo);
+ PageSize:=RoundUpToPowerOfTwo(SystemInfo.dwPageSize);
+{$else}
+{$ifdef unix}
+ PageSize:=4096;
+{$else}
+ PageSize:=4096;
+{$endif}
+{$endif}
+{$ifdef cpu386}
+ Alignment:=16;
+{$else}
+{$ifdef cpuamd64}
+ Alignment:=16;
+{$else}
+{$ifdef cpuarm}
+ Alignment:=16;
+{$else}
+ Alignment:=PageSize;
+{$endif}
+{$endif}
+{$endif}
+ First:=nil;
+ Last:=nil;
+end;
+
+destructor TFLRENativeCodeMemoryManager.Destroy;
+begin
+ while assigned(First) do begin
+  FreeBlockContainer(First);
+ end;
+ inherited Destroy;
+end;
+
+function TFLRENativeCodeMemoryManager.AllocateBlockContainer(BlockContainerSize:TFLREPtrUInt):PFLRENativeCodeMemoryManagerBlockContainer;
+var Size:ptruint;
+    Block:PFLRENativeCodeMemoryManagerBlock;
+begin
+ if BlockContainerSize>0 then begin
+  Size:=RoundUpToMask(BlockContainerSize,PageSize);
+  New(result);
+{$ifdef windows}
+  result^.Base:=VirtualAlloc(nil,Size,MEM_COMMIT,PAGE_EXECUTE_READWRITE);
+{$else}
+{$ifdef unix}
+  result^.Base:=fpmmap(nil,Size,PROT_READ or PROT_WRITE or PROT_EXEC,MAP_PRIVATE or MAP_ANONYMOUS,-1,0);
+{$else}
+  GetMem(result^.Base,Size);
+{$endif}
+{$endif}
+  result^.Size:=Size;
+  result^.Used:=sizeof(TFLRENativeCodeMemoryManagerBlock)*2;
+  if assigned(Last) then begin
+   Last^.Next:=result;
+   result^.Previous:=Last;
+   Last:=result;
+   result^.Next:=nil;
+  end else begin
+   First:=result;
+   Last:=result;
+   result^.Previous:=nil;
+   result^.Next:=nil;
+  end;
+  FillChar(result^.Base^,result^.Size,#0);
+  result^.First:=result^.Base;
+  result^.Last:=pointer(@PAnsiChar(result^.Base)[result^.Size-sizeof(TFLRENativeCodeMemoryManagerBlock)]);
+  Block:=result^.First;
+  Block^.Signature:=bncmmMemoryBlockSignature;
+  Block^.Previous:=nil;
+  Block^.Next:=result^.Last;
+  Block^.Size:=0;
+  Block:=result^.Last;
+  Block^.Signature:=bncmmMemoryBlockSignature;
+  Block^.Previous:=result^.First;
+  Block^.Next:=nil;
+  Block^.Size:=0;
+ end else begin
+  result:=nil;
+ end;
+end;
+
+procedure TFLRENativeCodeMemoryManager.FreeBlockContainer(BlockContainer:PFLRENativeCodeMemoryManagerBlockContainer);
+begin
+ if assigned(BlockContainer^.Previous) then begin
+  BlockContainer^.Previous^.Next:=BlockContainer^.Next;
+ end else begin
+  First:=BlockContainer^.Next;
+ end;
+ if assigned(BlockContainer^.Next) then begin
+  BlockContainer^.Next^.Previous:=BlockContainer^.Previous;
+ end else begin
+  Last:=BlockContainer^.Previous;
+ end;
+{$ifdef windows}
+ VirtualFree(BlockContainer^.Base,0,MEM_RELEASE);
+{$else}
+{$ifdef unix}
+ fpmunmap(BlockContainer^.Base,BlockContainer^.Size);
+{$else}
+ FreeMem(BlockContainer^.Base);
+{$endif}
+{$endif}
+ Dispose(BlockContainer);
+end;
+
+function TFLRENativeCodeMemoryManager.GetMemory(Size:TFLREPtrUInt):pointer;
+var BlockContainer:PFLRENativeCodeMemoryManagerBlockContainer;
+    CurrentBlock,NewBlock:PFLRENativeCodeMemoryManagerBlock;
+    DestSize,BlockContainerSize:ptruint;
+begin
+ result:=nil;
+ if Size>0 then begin
+  DestSize:=Size+sizeof(TFLRENativeCodeMemoryManagerBlock);
+  BlockContainer:=First;
+  while true do begin
+   while assigned(BlockContainer) do begin
+    if (BlockContainer^.Used+DestSize)<=BlockContainer^.Size then begin
+     CurrentBlock:=BlockContainer^.First;
+     while assigned(CurrentBlock) and (CurrentBlock^.Signature=bncmmMemoryBlockSignature) and assigned(CurrentBlock^.Next) do begin
+      NewBlock:=pointer(ptruint(RoundUpToMask(ptruint(pointer(@PAnsiChar(CurrentBlock)[(sizeof(TFLRENativeCodeMemoryManagerBlock)*2)+CurrentBlock^.Size])),Alignment)-sizeof(TFLRENativeCodeMemoryManagerBlock)));
+      if (ptruint(CurrentBlock^.Next)-ptruint(NewBlock))>=DestSize then begin
+       NewBlock^.Signature:=bncmmMemoryBlockSignature;
+       NewBlock^.Previous:=CurrentBlock;
+       NewBlock^.Next:=CurrentBlock^.Next;
+       NewBlock^.Size:=Size;
+       CurrentBlock^.Next^.Previous:=NewBlock;
+       CurrentBlock^.Next:=NewBlock;
+       result:=pointer(@PAnsiChar(NewBlock)[sizeof(TFLRENativeCodeMemoryManagerBlock)]);
+       inc(BlockContainer^.Used,DestSize);
+       exit;
+      end else begin
+       CurrentBlock:=CurrentBlock^.Next;
+      end;
+     end;
+    end;
+    BlockContainer:=BlockContainer^.Next;
+   end;
+   if DestSize<=MinNativeCodeBlockContainerSize then begin
+    BlockContainerSize:=MinNativeCodeBlockContainerSize;
+   end else begin
+    BlockContainerSize:=RoundUpToPowerOfTwo(DestSize);
+   end;
+   BlockContainer:=AllocateBlockContainer(BlockContainerSize);
+   if not assigned(BlockContainer) then begin
+    break;
+   end;
+  end;
+ end;
+end;
+
+procedure TFLRENativeCodeMemoryManager.FreeMemory(p:pointer);
+var BlockContainer:PFLRENativeCodeMemoryManagerBlockContainer;
+    CurrentBlock:PFLRENativeCodeMemoryManagerBlock;
+begin
+ BlockContainer:=First;
+ while assigned(BlockContainer) do begin
+  if ((ptruint(BlockContainer^.Base)+sizeof(TFLRENativeCodeMemoryManagerBlock))<=ptruint(p)) and ((ptruint(p)+sizeof(TFLRENativeCodeMemoryManagerBlock))<(ptruint(BlockContainer^.Base)+BlockContainer^.Size)) then begin
+   CurrentBlock:=pointer(ptruint(ptruint(p)-sizeof(TFLRENativeCodeMemoryManagerBlock)));
+   if (CurrentBlock^.Signature=bncmmMemoryBlockSignature) and (CurrentBlock<>BlockContainer^.First) and (CurrentBlock<>BlockContainer^.Last) then begin
+    dec(BlockContainer^.Used,CurrentBlock^.Size+sizeof(TFLRENativeCodeMemoryManagerBlock));
+    CurrentBlock^.Signature:=0;
+    CurrentBlock^.Previous^.Next:=CurrentBlock^.Next;
+    CurrentBlock^.Next^.Previous:=CurrentBlock^.Previous;
+    if (assigned(BlockContainer^.First) and (BlockContainer^.First^.Next=BlockContainer^.Last)) or not assigned(BlockContainer^.First) then begin
+     FreeBlockContainer(BlockContainer);
+    end;
+    exit;
+   end;
+  end;
+  BlockContainer:=BlockContainer^.Next;
+ end;
+end;
+
+function TFLRENativeCodeMemoryManager.ReallocMemory(p:pointer;Size:TFLREPtrUInt):pointer;
+var BlockContainer:PFLRENativeCodeMemoryManagerBlockContainer;
+    CurrentBlock:PFLRENativeCodeMemoryManagerBlock;
+    DestSize:ptruint;
+begin
+ result:=nil;
+ if assigned(p) then begin
+  if Size=0 then begin
+   FreeMemory(p);
+  end else begin
+   DestSize:=Size+sizeof(TFLRENativeCodeMemoryManagerBlock);
+   BlockContainer:=First;
+   while assigned(BlockContainer) do begin
+    if ((ptruint(BlockContainer^.Base)+sizeof(TFLRENativeCodeMemoryManagerBlock))<=ptruint(p)) and ((ptruint(p)+sizeof(TFLRENativeCodeMemoryManagerBlock))<(ptruint(BlockContainer^.Base)+BlockContainer^.Size)) then begin
+     CurrentBlock:=pointer(ptruint(ptruint(p)-sizeof(TFLRENativeCodeMemoryManagerBlock)));
+     if (CurrentBlock^.Signature=bncmmMemoryBlockSignature) and (CurrentBlock<>BlockContainer^.First) and (CurrentBlock<>BlockContainer^.Last) then begin
+      if (ptruint(CurrentBlock^.Next)-ptruint(CurrentBlock))>=DestSize then begin
+       CurrentBlock^.Size:=Size;
+       result:=p;
+       exit;
+      end else begin
+       result:=GetMemory(Size);
+       if assigned(result) then begin
+        if CurrentBlock^.Size<Size then begin
+         Move(p^,result^,CurrentBlock^.Size);
+        end else begin
+         Move(p^,result^,Size);
+        end;
+       end;
+       FreeMemory(p);
+       exit;
+      end;
+     end;
+    end;
+    BlockContainer:=BlockContainer^.Next;
+   end;
+  end;
+  FreeMemory(p);
+ end else if Size<>0 then begin
+  result:=GetMemory(Size);
+ end;
 end;
 
 constructor TFLREDFAStateHashMap.Create;
@@ -15772,6 +16053,19 @@ begin
   FLREInitialized:=true;
   InitializeUTF8DFA;
   InitializeUnicode;
+{$ifdef HasJIT}
+{$ifdef unix}
+{$ifdef darwin}
+  fpmprotect:=dlsym(dlopen('libc.dylib',RTLD_NOW),'mprotect');
+{$else}
+  fpmprotect:=dlsym(dlopen('libc.so',RTLD_NOW),'mprotect');
+{$endif}
+  if not assigned(fpmprotect) then begin
+   raise Exception.Create('Importing of mprotect from libc.so failed!');
+  end;
+{$endif}
+{$endif}
+  NativeCodeMemoryManager:=TFLRENativeCodeMemoryManager.Create;
  end;
 end;
 
@@ -15779,6 +16073,7 @@ procedure FinalizeFLRE;
 var i:longint;
 begin
  if FLREInitialized then begin
+  FreeAndNil(NativeCodeMemoryManager);
   for i:=low(TUnicodeCharRangeClasses) to high(TUnicodeCharRangeClasses) do begin
    SetLength(UnicodeCharRangeClasses[i],0);
   end;
