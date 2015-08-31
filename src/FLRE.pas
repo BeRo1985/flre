@@ -184,11 +184,8 @@ type EFLRE=class(Exception);
      PFLRENode=^TFLRENode;
      TFLRENode=record
       NodeType:longint;
-      CharClass:TFLRECharClass;
       Value:longint;
       Group:longint;
-      MinCount:longint;
-      MaxCount:longint;
       Left:PFLRENode;
       Right:PFLRENode;
       Extra:PFLRENode;
@@ -770,6 +767,9 @@ type EFLRE=class(Exception);
 
        PrefilterRootNode:TFLREPrefilterNode;
        HasPrefilter:boolean;
+
+       function NewCharClass(const CharClass:TFLRECharClass):longint;
+       function GetCharClass(const CharClass:longint):TFLRECharClass;
 
        function NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
        procedure FreeNode(var Node:PFLRENode);
@@ -8349,6 +8349,36 @@ begin
  inherited Destroy;
 end;
 
+function TFLRE.NewCharClass(const CharClass:TFLRECharClass):longint;
+var Counter:longint;
+begin
+ result:=-1;
+ for Counter:=0 to CountCharClasses-1 do begin
+  if CharClasses[Counter]^=CharClass then begin
+   result:=Counter;
+   break;
+  end;
+ end;
+ if result<0 then begin
+  result:=CountCharClasses;
+  inc(CountCharClasses);
+  if CountCharClasses>length(CharClasses) then begin
+   SetLength(CharClasses,CountCharClasses*2);
+  end;
+  GetMem(CharClasses[result],SizeOf(TFLRECharClass));
+  CharClasses[result]^:=CharClass;
+ end;
+end;
+
+function TFLRE.GetCharClass(const CharClass:longint):TFLRECharClass;
+begin
+ if (CharClass>=0) and (CharClass<CountCharClasses) then begin
+  result:=CharClasses[CharClass]^;
+ end else begin
+  result:=[];
+ end;
+end;
+
 function TFLRE.NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
 begin
  GetMem(result,SizeOf(TFLRENode));
@@ -8382,10 +8412,7 @@ function TFLRE.CopyNode(Node:PFLRENode):PFLRENode;
 begin
  if assigned(Node) then begin
   result:=NewNode(Node^.NodeType,nil,nil,nil,Node^.Value);
-  result^.CharClass:=Node^.CharClass;
   result^.Group:=Node^.Group;
-  result^.MinCount:=Node^.MinCount;
-  result^.MaxCount:=Node^.MaxCount;
   result^.Name:=Node^.Name;
   if assigned(Node^.Left) then begin
    result^.Left:=CopyNode(Node^.Left);
@@ -8407,7 +8434,6 @@ begin
          ((((assigned(NodeA) and assigned(NodeB))) and
           ((NodeA^.NodeType=NodeB^.NodeType) and
            ((NodeA^.Value=NodeB^.Value) and
-            (NodeA^.CharClass=NodeB^.CharClass) and
             ((AreNodesEqual(NodeA^.Left,NodeB^.Left) and AreNodesEqual(NodeA^.Right,NodeB^.Right)) and AreNodesEqual(NodeA^.Extra,NodeB^.Extra))))) or
           not (assigned(NodeA) or assigned(NodeB)));
 end;
@@ -8418,7 +8444,6 @@ begin
          ((((assigned(NodeA) and assigned(NodeB))) and
            (((NodeA^.NodeType=NodeB^.NodeType) and not (NodeB^.NodeType in [ntPAREN])) and
             ((NodeA^.Value=NodeB^.Value) and
-             (NodeA^.CharClass=NodeB^.CharClass) and
              ((AreNodesEqualSafe(NodeA^.Left,NodeB^.Left) and
                AreNodesEqualSafe(NodeA^.Right,NodeB^.Right)) and
                AreNodesEqualSafe(NodeA^.Extra,NodeB^.Extra))))) or
@@ -8581,8 +8606,7 @@ begin
   end else if AreNodesEqualSafe(NodeLeft,NodeRight) then begin
    result:=NodeLeft;
   end else if (NodeLeft^.NodeType=ntCHAR) and (NodeRight^.NodeType=ntCHAR) then begin
-   result:=NewNode(ntCHAR,nil,nil,nil,0);
-   result^.CharClass:=NodeLeft^.CharClass+NodeRight^.CharClass;
+   result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(GetCharClass(NodeLeft^.Value)+GetCharClass(NodeRight^.Value)));
   end else begin
    result:=NewNode(ntALT,NodeLeft,NodeRight,nil,0);
   end;
@@ -8932,7 +8956,7 @@ begin
        result:=true;
       end else if (Node^.Left^.NodeType=ntCHAR) and (Node^.Right^.NodeType=ntCHAR) then begin
        Node^.NodeType:=ntCHAR;
-       Node^.CharClass:=Node^.Left^.CharClass+Node^.Right^.CharClass;
+       Node^.Value:=NewCharClass(GetCharClass(Node^.Left^.Value)+GetCharClass(Node^.Right^.Value));
        Node^.Left:=nil;
        Node^.Right:=nil;
        DoContinue:=true;
@@ -9248,8 +9272,7 @@ var SourcePosition,SourceLength:longint;
   TemporaryString:=UTF32CharToUTF8(UnicodeChar);
   try
    for Index:=1 to length(TemporaryString) do begin
-    TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
-    TemporaryNode^.CharClass:=[TemporaryString[Index]];
+    TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([TemporaryString[Index]]));
     if assigned(result) then begin
      result:=Concat(result,TemporaryNode);
     end else begin
@@ -9265,8 +9288,7 @@ var SourcePosition,SourceLength:longint;
   if (rfUTF8 in Flags) and (UnicodeChar>=$80) then begin
    result:=NewUnicodeChar(UnicodeChar);
   end else if UnicodeChar<=$ff then begin
-   result:=NewNode(ntCHAR,nil,nil,nil,0);
-   result^.CharClass:=[ansichar(byte(UnicodeChar))];
+   result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))]));
   end else begin
    raise EFLRE.Create('Syntax error');
   end;
@@ -9280,15 +9302,13 @@ var SourcePosition,SourceLength:longint;
    if (rfUTF8 in Flags) and ((LowerCaseUnicodeChar>=$80) or (UpperCaseUnicodeChar>=$80)) then begin
     result:=NewAlt(NewCharEx(LowerCaseUnicodeChar),NewCharEx(UpperCaseUnicodeChar));
    end else begin
-    result:=NewNode(ntCHAR,nil,nil,nil,0);
-    result^.CharClass:=[ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))];
+    result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
    end;
   end else begin
    if (rfUTF8 in Flags) and (UnicodeChar>=$80) then begin
     result:=NewCharEx(UnicodeChar);
    end else begin
-    result:=NewNode(ntCHAR,nil,nil,nil,0);
-    result^.CharClass:=[ansichar(byte(UnicodeChar))];
+    result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))]));
    end;
   end;
  end;
@@ -9377,8 +9397,7 @@ var SourcePosition,SourceLength:longint;
   procedure AddRange(const Lo,Hi:byte);
   var Node:PFLRENode;
   begin
-   Node:=NewNode(ntCHAR,nil,nil,nil,0);
-   Node^.CharClass:=[ansichar(byte(Lo))..ansichar(byte(Hi))];
+   Node:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(Lo))..ansichar(byte(Hi))]));
    Add(Node);
   end;
   procedure ProcessRange(Lo,Hi:longword);
@@ -9463,6 +9482,7 @@ var SourcePosition,SourceLength:longint;
  function NewUnicodeCharClass(UnicodeCharClass:TFLREUnicodeCharClass):PFLRENode;
  var Range:TFLREUnicodeCharClassRange;
      Node:PFLRENode;
+     CharClass:TFLRECharClass;
  begin
   UnicodeCharClass.Optimize;
   if UnicodeCharClass.IsSingle then begin
@@ -9485,21 +9505,21 @@ var SourcePosition,SourceLength:longint;
      Range:=Range.Next;
     end;
    end else begin
-    result:=NewNode(ntCHAR,nil,nil,nil,0);
-    result^.CharClass:=[];
+    CharClass:=[];
     Range:=UnicodeCharClass.First;
     while assigned(Range) and (Range.Lo<256) do begin
      if Range.Lo=Range.Hi then begin
-      Include(result^.CharClass,ansichar(byte(Range.Lo)));
+      Include(CharClass,ansichar(byte(Range.Lo)));
      end else begin
       if Range.Hi<256 then begin
-       result^.CharClass:=result^.CharClass+[ansichar(byte(Range.Lo))..ansichar(byte(Range.Hi))];
+       CharClass:=CharClass+[ansichar(byte(Range.Lo))..ansichar(byte(Range.Hi))];
       end else begin
-       result^.CharClass:=result^.CharClass+[ansichar(byte(Range.Lo))..#$ff];
+       CharClass:=CharClass+[ansichar(byte(Range.Lo))..#$ff];
       end;
      end;
      Range:=Range.Next;
     end;
+    result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(CharClass));
    end;
   end;
  end;
@@ -10664,8 +10684,7 @@ var SourcePosition,SourceLength:longint;
            inc(SourcePosition);
            break;
           end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
-           TemporaryNode^.CharClass:=['\'];
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(['\']));
           end;
          end;
          #128..#255:begin
@@ -10679,8 +10698,7 @@ var SourcePosition,SourceLength:longint;
             TemporaryNode:=NewUnicodeChar(UnicodeChar);
            end;
           end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
-           TemporaryNode^.CharClass:=[Source[SourcePosition]];
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([Source[SourcePosition]]));
            inc(SourcePosition);
           end;
          end;
@@ -10689,11 +10707,9 @@ var SourcePosition,SourceLength:longint;
            UnicodeChar:=byte(ansichar(Source[SourcePosition]));
            LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
            UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
-           TemporaryNode^.CharClass:=[ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))];
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
           end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,0);
-           TemporaryNode^.CharClass:=[Source[SourcePosition]];
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([Source[SourcePosition]]));
            inc(SourcePosition);
           end;
          end;
@@ -10751,8 +10767,7 @@ var SourcePosition,SourceLength:longint;
         if rfSINGLELINE in Flags then begin
          result:=NewNode(ntANY,nil,nil,nil,0);
         end else begin
-         result:=NewNode(ntCHAR,nil,nil,nil,0);
-         result^.CharClass:=AllCharClass-[#10,#13];
+         result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass-[#10,#13]));
         end;
        end;
       end;
@@ -10783,8 +10798,7 @@ var SourcePosition,SourceLength:longint;
          result:=NewUnicodeChar(UnicodeChar);
         end;
        end else begin
-        result:=NewNode(ntCHAR,nil,nil,nil,0);
-        result^.CharClass:=[Source[SourcePosition]];
+        result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([Source[SourcePosition]]));
         inc(SourcePosition);
        end;
       end;
@@ -10794,11 +10808,9 @@ var SourcePosition,SourceLength:longint;
         inc(SourcePosition);
         LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
         UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-        result:=NewNode(ntCHAR,nil,nil,nil,0);
-        result^.CharClass:=[ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))];
+        result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
        end else begin
-        result:=NewNode(ntCHAR,nil,nil,nil,0);
-        result^.CharClass:=[Source[SourcePosition]];
+        result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([Source[SourcePosition]]));
         inc(SourcePosition);
        end;
       end;
@@ -11115,6 +11127,7 @@ end;
 procedure TFLRE.Compile;
  procedure GenerateInstructions(var Instructions:TFLREInstructions;var CountInstructions:longint;const Reversed:boolean);
  var NodeStack:TList;
+     CharClass:TFLRECharClass;
   function NewInstruction(Opcode:longword):longint;
   begin
    result:=CountInstructions;
@@ -11175,14 +11188,15 @@ procedure TFLRE.Compile;
       continue;
      end;
      ntCHAR:begin
-      if Node^.CharClass=AllCharClass then begin
+      CharClass:=GetCharClass(Node^.Value);
+      if CharClass=AllCharClass then begin
        i0:=NewInstruction(opANY);
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
       end else begin
        SingleChar:=#0;
        Count:=0;
        for CurrentChar:=#0 to #255 do begin
-        if CurrentChar in Node^.CharClass then begin
+        if CurrentChar in CharClass then begin
          if Count=0 then begin
           SingleChar:=CurrentChar;
           inc(Count);
@@ -11197,23 +11211,7 @@ procedure TFLRE.Compile;
         Instructions[i0].Value:=byte(ansichar(SingleChar));
        end else begin
         i0:=NewInstruction(opCHAR);
-        Index:=-1;
-        for Counter:=0 to CountCharClasses-1 do begin
-         if CharClasses[Counter]^=Node^.CharClass then begin
-          Index:=Counter;
-          break;
-         end;
-        end;
-        if Index<0 then begin
-         Index:=CountCharClasses;
-         inc(CountCharClasses);
-         if CountCharClasses>length(CharClasses) then begin
-          SetLength(CharClasses,CountCharClasses*2);
-         end;
-         GetMem(CharClasses[Index],SizeOf(TFLRECharClass));
-         CharClasses[Index]^:=Node^.CharClass;
-        end;
-        Instructions[i0].Value:=ptruint(pointer(CharClasses[Index]));
+        Instructions[i0].Value:=ptruint(pointer(CharClasses[Node^.Value]));
        end;
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
       end;
@@ -11651,6 +11649,7 @@ var Node:PFLRENode;
     Stack:array of TStackItem;
     Stop,First,IsSingle:boolean;
     SingleChar,CurrentChar:ansichar;
+    CharClass:TFLRECharClass;
 begin
  NodeStrings:=nil;
  Stack:=nil;
@@ -11774,11 +11773,12 @@ begin
       end;
      end;
      ntCHAR:begin
+      CharClass:=GetCharClass(Node^.Value);
       First:=true;
       IsSingle:=false;
       SingleChar:=#0;
       for CurrentChar:=#0 to #255 do begin
-       if CurrentChar in Node^.CharClass then begin
+       if CurrentChar in CharClass then begin
         if First then begin
          IsSingle:=true;
          First:=false;
@@ -12074,8 +12074,8 @@ begin
   if assigned(Node) then begin
    case Node^.NodeType of
     ntCHAR:begin
-     CharClass:=Node^.CharClass;
-     if CharClass<>[#0..#255] then begin
+     CharClass:=GetCharClass(Node^.Value);
+     if CharClass<>AllCharClass then begin
       for j:=0 to 255 do begin
        c:=ansichar(byte(j));
        if (c in CharClass) and not (c in CharSetMap) then begin
@@ -12579,10 +12579,11 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
      result:=Process(Node^.Left);
     end;
     ntCHAR:begin
+     CharClass:=GetCharClass(Node^.Value);
      SingleChar:=#0;
      Count:=0;
      for CurrentChar:=#0 to #255 do begin
-      if CurrentChar in Node^.CharClass then begin
+      if CurrentChar in CharClass then begin
        if Count=0 then begin
         SingleChar:=CurrentChar;
         inc(Count);
@@ -12602,7 +12603,7 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
        result.Operation:=FLREpfnoOR;
        result.Exact:=true;
        for CurrentChar:=#0 to #255 do begin
-        if CurrentChar in Node^.CharClass then begin
+        if CurrentChar in CharClass then begin
          Left:=TFLREPrefilterNode.Create;
          Left.Operation:=FLREpfnoATOM;
          Left.Atom:=CurrentChar;
@@ -13442,6 +13443,7 @@ begin
 end;
 
 function TFLRE.DumpRegularExpression:ansistring;
+var CharClass:TFLRECharClass;
  function ProcessNode(Node:PFLRENode):ansistring;
  const HexChars:array[$0..$f] of ansichar='0123456789abcdef';
  var Count,Counter,LowChar,HighChar:longint;
@@ -13484,10 +13486,11 @@ function TFLRE.DumpRegularExpression:ansistring;
      end;
     end;
     ntCHAR:begin
+     CharClass:=GetCharClass(Node^.Value);
      SingleChar:=#0;
      Count:=0;
      for CurrentChar:=#0 to #255 do begin
-      if CurrentChar in Node^.CharClass then begin
+      if CurrentChar in CharClass then begin
        if Count=0 then begin
         SingleChar:=CurrentChar;
         inc(Count);
@@ -13508,12 +13511,12 @@ function TFLRE.DumpRegularExpression:ansistring;
       Counter:=0;
       while Counter<256 do begin
        CurrentChar:=ansichar(byte(Counter));
-       if CurrentChar in Node^.CharClass then begin
+       if CurrentChar in CharClass then begin
         LowChar:=Counter;
         HighChar:=Counter;
         while Counter<256 do begin
          CurrentChar:=ansichar(byte(Counter));
-         if CurrentChar in Node^.CharClass then begin
+         if CurrentChar in CharClass then begin
           HighChar:=Counter;
           inc(Counter);
          end else begin
