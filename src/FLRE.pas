@@ -925,15 +925,14 @@ const MaxDFAStates=4096;
       ntQUEST=5;
       ntSTAR=6;
       ntPLUS=7;
-      ntEXACT=8;
-      ntMULTIMATCH=9;
-      ntZEROWIDTH=10;
-      ntLOOKBEHINDNEGATIVE=11;
-      ntLOOKBEHINDPOSITIVE=12;
-      ntLOOKAHEADNEGATIVE=13;
-      ntLOOKAHEADPOSITIVE=14;
-      ntBACKREFERENCE=15;
-      ntBACKREFERENCEIGNORECASE=16;
+      ntMULTIMATCH=8;
+      ntZEROWIDTH=9;
+      ntLOOKBEHINDNEGATIVE=10;
+      ntLOOKBEHINDPOSITIVE=11;
+      ntLOOKAHEADNEGATIVE=12;
+      ntLOOKAHEADPOSITIVE=13;
+      ntBACKREFERENCE=14;
+      ntBACKREFERENCEIGNORECASE=15;
 
       // Opcodes
       opSINGLECHAR=0;
@@ -8755,7 +8754,7 @@ begin
    case Node^.NodeType of
     ntCHAR,ntANY,ntZEROWIDTH,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE,ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
     end;
-    ntPAREN,ntEXACT:begin
+    ntPAREN:begin
      NodeEx:=@Node^.Left;
      DoContinue:=true;
     end;
@@ -11323,154 +11322,6 @@ procedure TFLRE.Compile;
        Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
       end;
      end;
-     ntEXACT:begin
-      if (Node^.MinCount=0) and (Node^.MaxCount=0) then begin
-       // nothing
-      end else if (Node^.MinCount=0) and (Node^.MaxCount=1) then begin
-       i0:=NewInstruction(opSPLIT);
-       Instructions[i0].Value:=skQUEST;
-       if Node^.Value<>0 then begin
-        // Non-greedy
-        Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-        Emit(Node^.Left);
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-       end else begin
-        // Greedy
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-        Emit(Node^.Left);
-        Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-       end;
-      end else if Node^.MaxCount<0 then begin
-       if Node^.MinCount>0 then begin
-        // Infinity with minimum connt
-        for Counter:=1 to Node^.MinCount-1 do begin
-         Emit(Node^.Left);
-        end;
-        i0:=CountInstructions;
-        Emit(Node^.Left);
-        i1:=NewInstruction(opSPLIT);
-        Instructions[i1].Value:=skPLUS;
-        if Node^.Value<>0 then begin
-         // Non-greedy
-         Instructions[i1].OtherNext:=pointer(ptrint(i0));
-         Instructions[i1].Next:=pointer(ptrint(CountInstructions));
-        end else begin
-         // Greedy
-         Instructions[i1].Next:=pointer(ptrint(i0));
-         Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
-        end;
-       end else begin
-        // Infinity without minimum connt
-        i0:=NewInstruction(opSPLIT);
-        Instructions[i0].Value:=skSTAR;
-        if Node^.Value<>0 then begin
-         // Non-greedy
-         Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-{$ifndef UseOpcodeJMP}
-         FromIndex:=CountInstructions;
-{$endif}
-         Emit(Node^.Left);
-{$ifndef UseOpcodeJMP}
-         ToIndex:=CountInstructions-1;
-         OutIndex:=CountInstructions;
-{$endif}
-{$ifdef UseOpcodeJMP}
-         i1:=NewInstruction(opJMP);
-         Instructions[i1].Next:=pointer(ptrint(i0));
-{$endif}
-         Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-{$ifndef UseOpcodeJMP}
-         for Index:=FromIndex to ToIndex do begin
-          if ptrint(Instructions[Index].Next)=OutIndex then begin
-           Instructions[Index].Next:=pointer(ptrint(i0));
-          end;
-          if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
-           Instructions[Index].OtherNext:=pointer(ptrint(i0));
-          end;
-         end;
-{$endif}
-        end else begin
-         // Greedy
-         Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-{$ifndef UseOpcodeJMP}
-         FromIndex:=CountInstructions;
-{$endif}
-         Emit(Node^.Left);
-{$ifndef UseOpcodeJMP}
-         ToIndex:=CountInstructions-1;
-         OutIndex:=CountInstructions;
-{$endif}
-{$ifdef UseOpcodeJMP}
-         i1:=NewInstruction(opJMP);
-         Instructions[i1].Next:=pointer(ptrint(i0));
-{$endif}
-         Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-{$ifndef UseOpcodeJMP}
-         for Index:=FromIndex to ToIndex do begin
-          if ptrint(Instructions[Index].Next)=OutIndex then begin
-           Instructions[Index].Next:=pointer(ptrint(i0));
-          end;
-          if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
-           Instructions[Index].OtherNext:=pointer(ptrint(i0));
-          end;
-         end;
-{$endif}
-        end;
-       end;
-      end else begin
-       for Counter:=1 to Node^.MinCount do begin
-        Emit(Node^.Left);
-       end;
-       if Node^.MinCount<Node^.MaxCount then begin
-        if (Node^.MaxCount-Node^.MinCount)<1024 then begin
-         SetLength(Last,Node^.MaxCount-Node^.MinCount);
-         try
-          for Counter:=Node^.MinCount to Node^.MaxCount-1 do begin
-           i0:=NewInstruction(opSPLIT);
-           Instructions[i0].Value:=skQUEST;
-           Last[Counter-Node^.MinCount]:=i0;
-           if Node^.Value<>0 then begin
-            // Non-greedy
-            Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-           end else begin
-            // Greedy
-            Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-           end;
-           Emit(Node^.Left);
-          end;
-          for Counter:=Node^.MaxCount-1 downto Node^.MinCount do begin
-           i0:=Last[Counter-Node^.MinCount];
-           if Node^.Value<>0 then begin
-            // Non-greedy
-            Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-           end else begin
-            // Greedy
-            Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-           end;
-          end;
-         finally
-          SetLength(Last,0);
-         end;
-        end else begin
-         for Counter:=Node^.MinCount to Node^.MaxCount-1 do begin
-          i0:=NewInstruction(opSPLIT);
-          Instructions[i0].Value:=skQUEST;
-          if Node^.Value<>0 then begin
-           // Non-greedy
-           Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-           Emit(Node^.Left);
-           Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-          end else begin
-           // Greedy
-           Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-           Emit(Node^.Left);
-           Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-          end;
-         end;
-        end;
-       end;
-      end;
-     end;
      ntMULTIMATCH:begin
       Emit(Node^.Left);
       if not assigned(BackreferenceParentNode) then begin
@@ -11896,28 +11747,6 @@ begin
           Argument:=0;
           continue;
          end;
-        end;
-       end;
-      end;
-     end;
-     ntEXACT:begin
-      case Argument of
-       1:begin
-        if assigned(Node^.Left) then begin
-         for Counter:=1 to Node^.MinCount do begin
-          NodeStrings[Node^.Index]:=NodeStrings[Node^.Index]+NodeStrings[Node^.Left^.Index];
-         end;
-        end;
-       end;
-       else {0:}begin
-        NodeStrings[Node^.Index]:='';
-        if assigned(Node^.Left) and not Stop then begin
-         Stack[StackPointer].Node:=Node;
-         Stack[StackPointer].Argument:=1;
-         inc(StackPointer);
-         Node:=Node^.Left;
-         Argument:=0;
-         continue;
         end;
        end;
       end;
@@ -12793,7 +12622,7 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
      result.Operation:=FLREpfnoANY;
      result.Exact:=false;
     end;
-    ntQUEST,ntSTAR,ntEXACT,ntZEROWIDTH,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE,ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
+    ntQUEST,ntSTAR,ntZEROWIDTH,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE,ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
      result:=TFLREPrefilterNode.Create;
      result.Operation:=FLREpfnoANY;
      result.Exact:=false;
@@ -13725,7 +13554,7 @@ function TFLRE.DumpRegularExpression:ansistring;
     end;
     ntQUEST:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS,ntEXACT] then begin
+      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS] then begin
        result:=result+'(?:'+ProcessNode(Node^.Left)+')';
       end else begin
        result:=result+ProcessNode(Node^.Left);
@@ -13738,7 +13567,7 @@ function TFLRE.DumpRegularExpression:ansistring;
     end;
     ntSTAR:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS,ntEXACT] then begin
+      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS] then begin
        result:=result+'(?:'+ProcessNode(Node^.Left)+')';
       end else begin
        result:=result+ProcessNode(Node^.Left);
@@ -13751,26 +13580,13 @@ function TFLRE.DumpRegularExpression:ansistring;
     end;
     ntPLUS:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS,ntEXACT] then begin
+      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS] then begin
        result:=result+'(?:'+ProcessNode(Node^.Left)+')';
       end else begin
        result:=result+ProcessNode(Node^.Left);
       end;
      end;
      result:=result+'+';
-     if Node^.Value=qkLAZY then begin
-      result:=result+'?';
-     end;
-    end;
-    ntEXACT:begin
-     if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS,ntEXACT] then begin
-       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
-      end else begin
-       result:=result+ProcessNode(Node^.Left);
-      end;
-     end;
-     result:=result+'{'+IntToStr(Node^.MinCount)+','+IntToStr(Node^.MaxCount)+'}';
      if Node^.Value=qkLAZY then begin
       result:=result+'?';
      end;
