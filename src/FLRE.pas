@@ -333,7 +333,7 @@ type EFLRE=class(Exception);
      TPFLREDFAStates=array of PFLREDFAState;
 
      PPFLREDFANextStatesByteBlock=^TPFLREDFANextStatesByteBlock;
-     TPFLREDFANextStatesByteBlock=array[byte] of PFLREDFAState;
+     TPFLREDFANextStatesByteBlock=array[0..256] of PFLREDFAState;
 
      TFLREDFAWorkQueueItems=array of longint;
 
@@ -628,7 +628,7 @@ type EFLRE=class(Exception);
      PFLREDFAByteMap=^TFLREDFAByteMap;
      TFLREDFAByteMap=array[0..256] of longword;
 
-     TFLREDFASearchMatch=function(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint of object;
+     TFLREDFASearchMatch=function(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint of object; {$ifdef cpu386}stdcall;{$endif}
 
      TFLREDFA=class
       public
@@ -696,10 +696,10 @@ type EFLRE=class(Exception);
        procedure FreeState(State:PFLREDFAState);
        procedure Reset;
 
-       procedure FastAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
-       function FastProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
-       function SearchMatchFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-       function SearchMatchFastReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint;const UnanchoredStart:boolean):longint;
+       procedure FastAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction); {$ifdef cpu386}register;{$endif}
+       function FastProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState; {$ifdef cpu386}register;{$endif}
+       function SearchMatchFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint; {$ifdef cpu386}stdcall;{$endif}
+       function SearchMatchFastReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint;const UnanchoredStart:longbool):longint; {$ifdef cpu386}stdcall;{$endif}
 
        function WorkQueueToCachedState(const WorkQueue:TFLREDFAWorkQueue;Flags:longword):PFLREDFAState;
        procedure StateToWorkQueue(const DFAState:PFLREDFAState;const WorkQueue:TFLREDFAWorkQueue);
@@ -709,8 +709,8 @@ type EFLRE=class(Exception);
        function RunStateOnByte(State:PFLREDFAState;const Position:longint;const CurrentChar:longword):PFLREDFAState;
        function InitializeStartState(const StartPosition:longint;const UnanchoredStart:boolean):PFLREDFAState;
 
-       function SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
-       function SearchMatchFullReversed(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+       function SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint; {$ifdef cpu386}stdcall;{$endif}
+       function SearchMatchFullReversed(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint; {$ifdef cpu386}stdcall;{$endif}
 
      end;
 
@@ -7510,7 +7510,7 @@ begin
 
 end;
 
-procedure TFLREDFA.FastAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction);
+procedure TFLREDFA.FastAddInstructionThread(const State:PFLREDFAState;Instruction:PFLREInstruction); {$ifdef cpu386}register;{$endif}
 var StackPointer:longint;
     Stack:PPFLREInstructionsStatic;
 begin
@@ -7557,8 +7557,8 @@ begin
  end;
 end;
 
-function TFLREDFA.FastProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState;
-var Counter:longint;
+function TFLREDFA.FastProcessNextState(State:PFLREDFAState;const CurrentChar:ansichar;const Reversed:boolean):PFLREDFAState; {$ifdef cpu386}register;{$endif}
+var Counter:longint;        
     Instruction:PFLREInstruction;
 begin
 
@@ -7618,7 +7618,106 @@ begin
 
 end;
 
-function TFLREDFA.SearchMatchFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+function TFLREDFA.SearchMatchFast(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint; {$ifdef cpu386}assembler; stdcall;
+var ResultValue:longint;
+    StartOffset:pointer;
+asm
+ push ebx
+ push esi
+ push edi
+
+  mov dword ptr ResultValue,DFAFail
+
+  mov edx,self
+
+  mov edi,dword ptr [edx+TFLREDFA.ThreadLocalStorageInstance]
+
+  mov esi,dword ptr [edi+TFLREThreadLocalStorageInstance.Input]
+  inc esi
+  mov dword ptr StartOffset,esi
+  dec esi
+  add esi,dword ptr StartPosition
+
+  cmp dword ptr UnanchoredStart,0
+  je @AnchoredStart
+   mov edi,dword ptr [edx+TFLREDFA.DefaultStates+dskFastUnanchored*4]
+   jmp @AnchoredStartSkip
+  @AnchoredStart:
+   mov edi,dword ptr [edx+TFLREDFA.DefaultStates+dskFastAnchored*4]
+  @AnchoredStartSkip:
+
+  mov ecx,dword ptr UntilExcludingPosition
+  sub ecx,dword ptr StartPosition
+  jz @Done
+  js @Done
+
+  mov edx,[edx+TFLREDFA.Instance]
+  lea edx,[edx+TFLRE.ByteMap]
+
+  @Loop:
+
+    movzx eax,byte ptr [esi]
+    inc esi
+
+    movzx ebx,byte ptr [edx+eax]
+    mov ebx,dword ptr [edi+TFLREDFAState.NextStates+ebx*4]
+    xchg edi,ebx
+    test edi,edi
+    jz @HaveNoNextState
+    @HaveNextState:
+
+    mov ebx,dword ptr [edi+TFLREDFAState.Flags]
+    test ebx,sfDFAMatchWins or sfDFADead
+    jnz @CheckFlags
+
+   @BackToLoop:
+   dec ecx
+   jnz @Loop
+   jmp @Done
+
+   @CheckFlags:
+    test ebx,sfDFADead
+    jz @IsNotDFADead
+     cmp dword ptr ResultValue,DFAMatch
+     jz @Done
+      mov dword ptr ResultValue,DFAFail
+      jmp @Done
+    @IsNotDFADead:
+    test ebx,sfDFAMatchWins
+    jz @IsNotMatchWin
+     mov eax,esi
+     sub eax,dword ptr StartOffset
+     mov ebx,dword ptr MatchEnd
+     mov dword ptr [ebx],eax
+     mov dword ptr ResultValue,DFAMatch
+    @IsNotMatchWin:
+    jmp @BackToLoop
+
+   @HaveNoNextState:
+    push ecx
+    push edx          
+     push 0 // Reversed
+     mov ecx,eax // Char
+     mov eax,self
+     mov edx,ebx // State
+     call FastProcessNextState
+    pop edx
+    pop ecx
+    mov edi,eax
+    test edi,edi
+    jnz @HaveNextState
+
+    mov dword ptr ResultValue,DFAError
+
+  @Done:
+
+  mov eax,dword ptr ResultValue
+
+ pop edi
+ pop esi
+ pop ebx
+end;
+{$else}
 var Position:longint;
     State,LastState:PFLREDFAState;
     LocalInput:pansichar;
@@ -7656,8 +7755,9 @@ begin
   end;
  end;
 end;
+{$endif}
 
-function TFLREDFA.SearchMatchFastReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint;const UnanchoredStart:boolean):longint;
+function TFLREDFA.SearchMatchFastReversed(const StartPosition,UntilIncludingPosition:longint;out MatchBegin:longint;const UnanchoredStart:longbool):longint;
 var Position:longint;
     State,LastState:PFLREDFAState;
     LocalInput:pansichar;
@@ -8136,7 +8236,7 @@ begin
 
 end;
 
-function TFLREDFA.SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+function TFLREDFA.SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint;
 var Position,LocalInputLength,Index:longint;
     State,LastState:PFLREDFAState;
     LocalInput:pansichar;
@@ -8236,7 +8336,7 @@ begin
 
 end;
 
-function TFLREDFA.SearchMatchFullReversed(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:boolean):longint;
+function TFLREDFA.SearchMatchFullReversed(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint;
 var Position,LocalInputLength:longint;
     State,LastState:PFLREDFAState;
     LocalInput:pansichar;
