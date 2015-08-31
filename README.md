@@ -15,7 +15,7 @@ The secret of FLRE speed is that FLRE uses multiple subengines with automatic se
 * **Bit state NFA** This subengine is quite still fast. But it can process short regexs only with less than 512 regex VM bytecode instructions and visited-flag-bitmaps with less than or equal 32 kilobytes. It's a backtracking algorithm with a manual stack in general, but it members the already visited (state, string position) pairs in a bitmap. The base idea is even from the re2 regular expression engine from Google.
 * **Parallel threaded NFA** (aka Thompson NFA / Pike VM). This subengine supports the most 08/15 regular expression syntax features _except_ backtracking-stuff as backreferences and so on. And this subengine is also still fast, but not so fast like the one pass NFA subengine.
 
-All these subengines are also UTF8 capable, where FLRE has Unicode 6.1.0 support, and where the UTF8 decoding work is baked into the regular expression DFA&NFA automations itself, so the underlying algorithms are still pure bytewise working algorithms, so that speed optimizations are easier to implement and where the code is overall less error-prone regarding bugs.
+All these subengines are also UTF8 capable, where FLRE has Unicode 8.0.0 support, and where the UTF8 decoding work is baked into the regular expression DFA&NFA automations itself, so the underlying algorithms are still pure bytewise working algorithms, so that speed optimizations are easier to implement and where the code is overall less error-prone regarding bugs.
 
 And as an addon, FLRE features prefix presearching. So for example the prefix for the example regex `Hel(?:lo|loop) [A-Za-z]+` is `Hello`.
 
