@@ -11377,7 +11377,6 @@ end;
 procedure TFLRE.Compile;
  procedure GenerateInstructions(var Instructions:TFLREInstructions;var CountInstructions:longint;const Reversed:boolean);
  var NodeStack:TList;
-     CharClass:TFLRECharClass;
   function NewInstruction(Opcode:longword):longint;
   begin
    result:=CountInstructions;
@@ -11389,272 +11388,612 @@ procedure TFLRE.Compile;
    Instructions[result].Next:=pointer(ptrint(-1));
    Instructions[result].OtherNext:=pointer(ptrint(-1));
   end;
-  procedure Emit(Node:PFLRENode;const BackreferenceParentNode:PFLRENode=nil);
-  var i0,i1,i2,Counter,Count,Index{$ifndef UseOpcodeJMP},FromIndex,ToIndex,OutIndex{$endif},Flags:longint;
-      Last:array of longint;
+  procedure Emit(Node,BackreferenceParentNode:PFLRENode);
+  type PStackItem=^TStackItem;
+       TStackItem=record
+        Node,BackreferenceParentNode:PFLRENode;
+        Argument,i0,i1{$ifndef UseOpcodeJMP},FromIndex,ToIndex,OutIndex{$endif}:longint;
+       end;
+       TStackItems=array of TStackItem;
+  var Stack:TStackItems;
+      StackItem:PStackItem;
+      StackSize,Counter,Count,Argument,i0,i1,i2,Index{$ifndef UseOpcodeJMP},FromIndex,ToIndex,OutIndex{$endif},Flags:longint;
       CurrentChar,SingleChar:ansichar;
-      DoIgnoreCase:boolean;
+      CharClass:TFLRECharClass;
   begin
-   while assigned(Node) and (NodeStack.IndexOf(Node)<0) do begin
-    case Node^.NodeType of
-     ntALT:begin
-      i0:=NewInstruction(opSPLIT);
-      Instructions[i0].Value:=skALT;
-      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+   Stack:=nil;
+   try
+    SetLength(Stack,(Nodes.Count*2)+16);
+    StackSize:=0;
+    StackItem:=@Stack[StackSize];
+    StackItem^.Node:=Node;
+    StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+    StackItem^.Argument:=0;
+    inc(StackSize);
+    while StackSize>0 do begin
+     dec(StackSize);
+     StackItem:=@Stack[StackSize];
+     Node:=StackItem^.Node;
+     BackreferenceParentNode:=StackItem^.BackreferenceParentNode;
+     Argument:=StackItem^.Argument;
+     if Argument<>0 then begin
+      i0:=StackItem^.i0;
+      i1:=StackItem^.i1;
 {$ifndef UseOpcodeJMP}
-      FromIndex:=CountInstructions;
+      FromIndex:=StackItem^.FromIndex;
+      ToIndex:=StackItem^.ToIndex;
+      OutIndex:=StackItem^.OutIndex;
 {$endif}
-      Emit(Node^.Left);
+     end;
+     if assigned(Node) and ((Argument<>0) or (NodeStack.IndexOf(Node)<0)) then begin
+      case Node^.NodeType of
+       ntALT:begin
+        case Argument of
+         0:begin
+          i0:=NewInstruction(opSPLIT);
+          Instructions[i0].Value:=skALT;
+          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
 {$ifndef UseOpcodeJMP}
-      ToIndex:=CountInstructions-1;
-      OutIndex:=CountInstructions;
+          FromIndex:=CountInstructions;
+{$endif}
+          begin
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=1;
+           StackItem^.i0:=i0;
+{$ifndef UseOpcodeJMP}
+           StackItem^.FromIndex:=FromIndex;
+{$endif}
+          end;
+          begin
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node^.Left;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=0;
+          end;
+         end;
+         1:begin
+{$ifndef UseOpcodeJMP}
+          ToIndex:=CountInstructions-1;
+          OutIndex:=CountInstructions;
 {$endif}
 {$ifdef UseOpcodeJMP}
-      i1:=NewInstruction(opJMP);
+          i1:=NewInstruction(opJMP);
 {$endif}
-      Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-      Emit(Node^.Right);
+          Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+          begin
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=2;
+           StackItem^.i0:=i0;
+           StackItem^.i1:=i1;
+{$ifndef UseOpcodeJMP}
+           StackItem^.FromIndex:=FromIndex;
+           StackItem^.ToIndex:=ToIndex;
+           StackItem^.OutIndex:=OutIndex;
+{$endif}
+          end;
+          begin
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node^.Right;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=0;
+          end;
+         end;
+         2:begin
 {$ifdef UseOpcodeJMP}
-      Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+          Instructions[i1].Next:=pointer(ptrint(CountInstructions));
 {$else}
-      for Index:=FromIndex to ToIndex do begin
-       if ptrint(Instructions[Index].Next)=OutIndex then begin
-        Instructions[Index].Next:=pointer(ptrint(CountInstructions));
-       end;
-       if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
-        Instructions[Index].OtherNext:=pointer(ptrint(CountInstructions));
-       end;
-      end;
+          for Index:=FromIndex to ToIndex do begin
+           if ptrint(Instructions[Index].Next)=OutIndex then begin
+            Instructions[Index].Next:=pointer(ptrint(CountInstructions));
+           end;
+           if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
+            Instructions[Index].OtherNext:=pointer(ptrint(CountInstructions));
+           end;
+          end;
 {$endif}
-     end;
-     ntCAT:begin
-      if Reversed then begin
-       Emit(Node^.Right);
-       Node:=Node^.Left;
-      end else begin
-       Emit(Node^.Left);
-       Node:=Node^.Right;
-      end;
-      continue;
-     end;
-     ntCHAR:begin
-      CharClass:=GetCharClass(Node^.Value);
-      if CharClass=AllCharClass then begin
-       i0:=NewInstruction(opANY);
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end else begin
-       SingleChar:=#0;
-       Count:=0;
-       for CurrentChar:=#0 to #255 do begin
-        if CurrentChar in CharClass then begin
-         if Count=0 then begin
-          SingleChar:=CurrentChar;
-          inc(Count);
-         end else begin
-          inc(Count);
-          break;
          end;
         end;
        end;
-       if Count=1 then begin
-        i0:=NewInstruction(opSINGLECHAR);
-        Instructions[i0].Value:=byte(ansichar(SingleChar));
-       end else begin
-        i0:=NewInstruction(opCHAR);
-        Instructions[i0].Value:=ptruint(pointer(CharClasses[Node^.Value]));
-       end;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end;
-     end;
-     ntPAREN:begin
-      if assigned(BackreferenceParentNode) then begin
-       Emit(Node^.Left);
-      end else begin
-       i0:=NewInstruction(opSAVE);
-       Instructions[i0].Value:=Node^.Value shl 1;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-       Emit(Node^.Left);
-       i0:=NewInstruction(opSAVE);
-       Instructions[i0].Value:=(Node^.Value shl 1) or 1;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end;
-     end;
-     ntQUEST:begin
-      i0:=NewInstruction(opSPLIT);
-      Instructions[i0].Value:=skQUEST;
-      if Node^.Value<>0 then begin
-       // Non-greedy
-       Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-       Emit(Node^.Left);
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end else begin
-       // Greedy
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-       Emit(Node^.Left);
-       Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-      end;
-     end;
-     ntSTAR:begin
-      i0:=NewInstruction(opSPLIT);
-      Instructions[i0].Value:=skSTAR;
-      if Node^.Value<>0 then begin
-       // Non-greedy
-       Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-{$ifndef UseOpcodeJMP}
-       FromIndex:=CountInstructions;
-{$endif}
-       Emit(Node^.Left);
-{$ifndef UseOpcodeJMP}
-       ToIndex:=CountInstructions-1;
-       OutIndex:=CountInstructions;
-{$endif}
-{$ifdef UseOpcodeJMP}
-       i1:=NewInstruction(opJMP);
-       Instructions[i1].Next:=pointer(ptrint(i0));
-{$endif}
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-{$ifndef UseOpcodeJMP}
-       for Index:=FromIndex to ToIndex do begin
-        if ptrint(Instructions[Index].Next)=OutIndex then begin
-         Instructions[Index].Next:=pointer(ptrint(i0));
-        end;
-        if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
-         Instructions[Index].OtherNext:=pointer(ptrint(i0));
-        end;
-       end;
-{$endif}
-      end else begin
-       // Greedy
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-{$ifndef UseOpcodeJMP}
-       FromIndex:=CountInstructions;
-{$endif}
-       Emit(Node^.Left);
-{$ifndef UseOpcodeJMP}
-       ToIndex:=CountInstructions-1;
-       OutIndex:=CountInstructions;
-{$endif}
-{$ifdef UseOpcodeJMP}
-       i1:=NewInstruction(opJMP);
-       Instructions[i1].Next:=pointer(ptrint(i0));
-{$endif}
-       Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
-{$ifndef UseOpcodeJMP}
-       for Index:=FromIndex to ToIndex do begin
-        if ptrint(Instructions[Index].Next)=OutIndex then begin
-         Instructions[Index].Next:=pointer(ptrint(i0));
-        end;
-        if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
-         Instructions[Index].OtherNext:=pointer(ptrint(i0));
-        end;
-       end;
-{$endif}
-      end;
-     end;
-     ntPLUS:begin
-      i0:=CountInstructions;
-      Emit(Node^.Left);
-      i1:=NewInstruction(opSPLIT);
-      Instructions[i1].Value:=skPLUS;
-      if Node^.Value<>0 then begin
-       // Non-greedy
-       Instructions[i1].OtherNext:=pointer(ptrint(i0));
-       Instructions[i1].Next:=pointer(ptrint(CountInstructions));
-      end else begin
-       // Greedy
-       Instructions[i1].Next:=pointer(ptrint(i0));
-       Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
-      end;
-     end;
-     ntMULTIMATCH:begin
-      Emit(Node^.Left);
-      if not assigned(BackreferenceParentNode) then begin
-       i0:=NewInstruction(opMATCH);
-       Instructions[i0].Value:=Node^.Value;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end;
-     end;
-     ntZEROWIDTH:begin
-      if Reversed then begin
-       Flags:=Node^.Value and (sfEmptyWordBoundary or sfEmptyNonWordBoundary);
-       if (Node^.Value and sfEmptyBeginLine)<>0 then begin
-        Flags:=Flags or sfEmptyEndLine;
-       end;
-       if (Node^.Value and sfEmptyEndLine)<>0 then begin
-        Flags:=Flags or sfEmptyBeginLine;
-       end;
-       if (Node^.Value and sfEmptyBeginText)<>0 then begin
-        Flags:=Flags or sfEmptyEndText;
-       end;
-       if (Node^.Value and sfEmptyEndText)<>0 then begin
-        Flags:=Flags or sfEmptyBeginText;
-       end;
-      end else begin
-       Flags:=Node^.Value;
-      end;
-      i0:=NewInstruction(opZEROWIDTH);
-      Instructions[i0].Value:=Flags;
-      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-     end;
-     ntLOOKBEHINDNEGATIVE:begin
-      i0:=NewInstruction(opLOOKBEHINDNEGATIVE);
-      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      Instructions[i0].Value:=Node^.Value;
-     end;
-     ntLOOKBEHINDPOSITIVE:begin
-      i0:=NewInstruction(opLOOKBEHINDPOSITIVE);
-      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      Instructions[i0].Value:=Node^.Value;
-     end;
-     ntLOOKAHEADNEGATIVE:begin
-      i0:=NewInstruction(opLOOKAHEADNEGATIVE);
-      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      Instructions[i0].Value:=Node^.Value;
-     end;
-     ntLOOKAHEADPOSITIVE:begin
-      i0:=NewInstruction(opLOOKAHEADPOSITIVE);
-      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      Instructions[i0].Value:=Node^.Value;
-     end;
-     ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
-      DoIgnoreCase:=Node^.NodeType=ntBACKREFERENCEIGNORECASE;
-      if not Reversed then begin
-       i0:=NewInstruction(opSAVE);
-       Instructions[i0].Value:=Node^.Value shl 1;
-       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-      end else begin
-       i0:=0;
-      end;
-      begin
-       NodeStack.Add(Node);
-       if assigned(Node^.Left) then begin
-        if assigned(BackreferenceParentNode) then begin
-         Emit(Node^.Left,BackreferenceParentNode);
+       ntCAT:begin
+        if Reversed then begin
+         begin
+          if (StackSize+1)>length(Stack) then begin
+           SetLength(Stack,(StackSize+1)*2);
+          end;
+          StackItem:=@Stack[StackSize];
+          inc(StackSize);
+          StackItem^.Node:=Node^.Left;
+          StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+          StackItem^.Argument:=0;
+         end;
+         begin
+          if (StackSize+1)>length(Stack) then begin
+           SetLength(Stack,(StackSize+1)*2);
+          end;
+          StackItem:=@Stack[StackSize];
+          inc(StackSize);
+          StackItem^.Node:=Node^.Right;
+          StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+          StackItem^.Argument:=0;
+         end;
         end else begin
-         Emit(Node^.Left,Node);
+         begin
+          if (StackSize+1)>length(Stack) then begin
+           SetLength(Stack,(StackSize+1)*2);
+          end;
+          StackItem:=@Stack[StackSize];
+          inc(StackSize);
+          StackItem^.Node:=Node^.Right;
+          StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+          StackItem^.Argument:=0;
+         end;
+         begin
+          if (StackSize+1)>length(Stack) then begin
+           SetLength(Stack,(StackSize+1)*2);
+          end;
+          StackItem:=@Stack[StackSize];
+          inc(StackSize);
+          StackItem^.Node:=Node^.Left;
+          StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+          StackItem^.Argument:=0;
+         end;
         end;
        end;
-       NodeStack.Delete(NodeStack.Count-1);
-      end;
-      if not Reversed then begin
-       i1:=NewInstruction(opSAVE);
-       Instructions[i1].Value:=(Node^.Value shl 1) or 1;
-       Instructions[i1].Next:=pointer(ptrint(CountInstructions));
-       if DoIgnoreCase then begin
-        i1:=NewInstruction(opBACKREFERENCEIGNORECASE);
-       end else begin
-        i1:=NewInstruction(opBACKREFERENCE);
+       ntCHAR:begin
+        CharClass:=GetCharClass(Node^.Value);
+        if CharClass=AllCharClass then begin
+         i0:=NewInstruction(opANY);
+         Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        end else begin
+         SingleChar:=#0;
+         Count:=0;
+         for CurrentChar:=#0 to #255 do begin
+          if CurrentChar in CharClass then begin
+           if Count=0 then begin
+            SingleChar:=CurrentChar;
+            inc(Count);
+           end else begin
+            inc(Count);
+            break;
+           end;
+          end;
+         end;
+         if Count=1 then begin
+          i0:=NewInstruction(opSINGLECHAR);
+          Instructions[i0].Value:=byte(ansichar(SingleChar));
+         end else begin
+          i0:=NewInstruction(opCHAR);
+          Instructions[i0].Value:=ptruint(pointer(CharClasses[Node^.Value]));
+         end;
+         Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        end;
        end;
-       Instructions[i1].Value:=CapturesToSubMatchesMap[Node^.Group] shl 1;
-       Instructions[i1].Next:=pointer(ptrint(CountInstructions));
-       Instructions[i1].OtherNext:=pointer(ptrint(i0));
+       ntPAREN:begin
+        case Argument of
+         0:begin
+          if assigned(BackreferenceParentNode) then begin
+           begin
+            if (StackSize+1)>length(Stack) then begin
+             SetLength(Stack,(StackSize+1)*2);
+            end;
+            StackItem:=@Stack[StackSize];
+            inc(StackSize);
+            StackItem^.Node:=Node^.Left;
+            StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+            StackItem^.Argument:=0;
+           end;
+          end else begin
+           i0:=NewInstruction(opSAVE);
+           Instructions[i0].Value:=Node^.Value shl 1;
+           Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+           begin
+            if (StackSize+1)>length(Stack) then begin
+             SetLength(Stack,(StackSize+1)*2);
+            end;
+            StackItem:=@Stack[StackSize];
+            inc(StackSize);
+            StackItem^.Node:=Node;
+            StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+            StackItem^.Argument:=1;
+           end;
+           begin
+            if (StackSize+1)>length(Stack) then begin
+             SetLength(Stack,(StackSize+1)*2);
+            end;
+            StackItem:=@Stack[StackSize];
+            inc(StackSize);
+            StackItem^.Node:=Node^.Left;
+            StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+            StackItem^.Argument:=0;
+           end;
+          end;
+         end;
+         1:begin
+          i0:=NewInstruction(opSAVE);
+          Instructions[i0].Value:=(Node^.Value shl 1) or 1;
+          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+         end;
+        end;
+       end;
+       ntQUEST:begin
+        case Argument of
+         0:begin
+          i0:=NewInstruction(opSPLIT);
+          Instructions[i0].Value:=skQUEST;
+          if Node^.Value<>0 then begin
+           // Non-greedy
+           Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+           begin
+            if (StackSize+1)>length(Stack) then begin
+             SetLength(Stack,(StackSize+1)*2);
+            end;
+            StackItem:=@Stack[StackSize];
+            inc(StackSize);
+            StackItem^.Node:=Node;
+            StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+            StackItem^.Argument:=1;
+            StackItem^.i0:=i0;
+           end;
+          end else begin
+           // Greedy
+           Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+           begin
+            if (StackSize+1)>length(Stack) then begin
+             SetLength(Stack,(StackSize+1)*2);
+            end;
+            StackItem:=@Stack[StackSize];
+            inc(StackSize);
+            StackItem^.Node:=Node;
+            StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+            StackItem^.Argument:=2;
+            StackItem^.i0:=i0;
+           end;
+          end;
+          begin
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node^.Left;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=0;
+          end;
+         end;
+         1:begin
+          // Non-greedy
+          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+         end;
+         2:begin
+          // Greedy
+          Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+         end;
+        end;
+       end;
+       ntSTAR:begin
+        case Argument of
+         0:begin
+          i0:=NewInstruction(opSPLIT);
+          Instructions[i0].Value:=skSTAR;
+          if Node^.Value<>0 then begin
+           // Non-greedy
+           Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+           FromIndex:=CountInstructions;
+{$endif}
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=1;
+           StackItem^.i0:=i0;
+{$ifndef UseOpcodeJMP}
+           StackItem^.FromIndex:=FromIndex;
+{$endif}
+          end else begin
+           // Greedy
+           Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+{$ifndef UseOpcodeJMP}
+           FromIndex:=CountInstructions;
+{$endif}
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=2;
+           StackItem^.i0:=i0;
+{$ifndef UseOpcodeJMP}
+           StackItem^.FromIndex:=FromIndex;
+{$endif}
+          end;
+          begin
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node^.Left;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=0;
+          end;
+         end;
+         1,2:begin
+{$ifndef UseOpcodeJMP}
+          ToIndex:=CountInstructions-1;
+          OutIndex:=CountInstructions;
+{$endif}
+{$ifdef UseOpcodeJMP}
+          i1:=NewInstruction(opJMP);
+          Instructions[i1].Next:=pointer(ptrint(i0));
+{$endif}
+          case Argument of
+           1:begin
+            // Non-greedy
+            Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+           end;
+           2:begin
+            // Greedy
+            Instructions[i0].OtherNext:=pointer(ptrint(CountInstructions));
+           end;
+          end;
+{$ifndef UseOpcodeJMP}
+          for Index:=FromIndex to ToIndex do begin
+           if ptrint(Instructions[Index].Next)=OutIndex then begin
+            Instructions[Index].Next:=pointer(ptrint(i0));
+           end;
+           if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
+            Instructions[Index].OtherNext:=pointer(ptrint(i0));
+           end;
+          end;
+{$endif}
+         end;
+        end;
+       end;
+       ntPLUS:begin
+        case Argument of
+         0:begin
+          i0:=CountInstructions;
+          if Node^.Value<>0 then begin
+           // Non-greedy
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=1;
+           StackItem^.i0:=i0;
+          end else begin
+           // Greedy
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=2;
+           StackItem^.i0:=i0;
+          end;
+          begin
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node^.Left;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=0;
+          end;
+         end;
+         1:begin  
+          // Non-greedy
+          i1:=NewInstruction(opSPLIT);
+          Instructions[i1].Value:=skPLUS;
+          Instructions[i1].OtherNext:=pointer(ptrint(i0));
+          Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+         end;
+         2:begin
+          // Greedy
+          i1:=NewInstruction(opSPLIT);
+          Instructions[i1].Value:=skPLUS;
+          Instructions[i1].Next:=pointer(ptrint(i0));
+          Instructions[i1].OtherNext:=pointer(ptrint(CountInstructions));
+         end;
+        end;
+       end;
+       ntMULTIMATCH:begin
+        case Argument of
+         0:begin
+          if not assigned(BackreferenceParentNode) then begin
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=1;
+          end;
+          begin
+           if (StackSize+1)>length(Stack) then begin
+            SetLength(Stack,(StackSize+1)*2);
+           end;
+           StackItem:=@Stack[StackSize];
+           inc(StackSize);
+           StackItem^.Node:=Node^.Left;
+           StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+           StackItem^.Argument:=0;
+          end;
+         end;
+         1:begin
+          i0:=NewInstruction(opMATCH);
+          Instructions[i0].Value:=Node^.Value;
+          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+         end;
+        end;
+       end;
+       ntZEROWIDTH:begin
+        if Reversed then begin
+         Flags:=Node^.Value and (sfEmptyWordBoundary or sfEmptyNonWordBoundary);
+         if (Node^.Value and sfEmptyBeginLine)<>0 then begin
+          Flags:=Flags or sfEmptyEndLine;
+         end;
+         if (Node^.Value and sfEmptyEndLine)<>0 then begin
+          Flags:=Flags or sfEmptyBeginLine;
+         end;
+         if (Node^.Value and sfEmptyBeginText)<>0 then begin
+          Flags:=Flags or sfEmptyEndText;
+         end;
+         if (Node^.Value and sfEmptyEndText)<>0 then begin
+          Flags:=Flags or sfEmptyBeginText;
+         end;
+        end else begin
+         Flags:=Node^.Value;
+        end;
+        i0:=NewInstruction(opZEROWIDTH);
+        Instructions[i0].Value:=Flags;
+        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+       end;
+       ntLOOKBEHINDNEGATIVE:begin
+        i0:=NewInstruction(opLOOKBEHINDNEGATIVE);
+        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        Instructions[i0].Value:=Node^.Value;
+       end;
+       ntLOOKBEHINDPOSITIVE:begin
+        i0:=NewInstruction(opLOOKBEHINDPOSITIVE);
+        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        Instructions[i0].Value:=Node^.Value;
+       end;
+       ntLOOKAHEADNEGATIVE:begin
+        i0:=NewInstruction(opLOOKAHEADNEGATIVE);
+        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        Instructions[i0].Value:=Node^.Value;
+       end;
+       ntLOOKAHEADPOSITIVE:begin
+        i0:=NewInstruction(opLOOKAHEADPOSITIVE);
+        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        Instructions[i0].Value:=Node^.Value;
+       end;
+       ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
+        if Reversed then begin
+         case Argument of
+          0:begin
+           begin
+            if (StackSize+1)>length(Stack) then begin
+             SetLength(Stack,(StackSize+1)*2);
+            end;
+            StackItem:=@Stack[StackSize];
+            inc(StackSize);
+            StackItem^.Node:=Node;
+            StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+            StackItem^.Argument:=1;
+           end;
+           begin
+            if (StackSize+1)>length(Stack) then begin
+             SetLength(Stack,(StackSize+1)*2);
+            end;
+            StackItem:=@Stack[StackSize];
+            inc(StackSize);
+            StackItem^.Node:=Node^.Left;
+            if assigned(BackreferenceParentNode) then begin
+             StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+            end else begin
+             StackItem^.BackreferenceParentNode:=Node;
+            end;
+            StackItem^.Argument:=0;
+           end;
+           NodeStack.Add(Node);
+          end;
+          1:begin
+           NodeStack.Delete(NodeStack.Count-1);
+          end;
+         end;
+        end else begin
+         case Argument of
+          0:begin
+           i0:=NewInstruction(opSAVE);
+           Instructions[i0].Value:=Node^.Value shl 1;
+           Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+           begin
+            if (StackSize+1)>length(Stack) then begin
+             SetLength(Stack,(StackSize+1)*2);
+            end;
+            StackItem:=@Stack[StackSize];
+            inc(StackSize);
+            StackItem^.Node:=Node;
+            StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+            StackItem^.Argument:=1;
+            StackItem^.i0:=i0;
+           end;
+           begin
+            if (StackSize+1)>length(Stack) then begin
+             SetLength(Stack,(StackSize+1)*2);
+            end;
+            StackItem:=@Stack[StackSize];
+            inc(StackSize);
+            StackItem^.Node:=Node^.Left;
+            if assigned(BackreferenceParentNode) then begin
+             StackItem^.BackreferenceParentNode:=BackreferenceParentNode;
+            end else begin
+             StackItem^.BackreferenceParentNode:=Node;
+            end;
+            StackItem^.Argument:=0;
+           end;
+           NodeStack.Add(Node);
+          end;
+          1:begin
+           NodeStack.Delete(NodeStack.Count-1);
+           i1:=NewInstruction(opSAVE);
+           Instructions[i1].Value:=(Node^.Value shl 1) or 1;
+           Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+           if Node^.NodeType=ntBACKREFERENCEIGNORECASE then begin
+            i1:=NewInstruction(opBACKREFERENCEIGNORECASE);
+           end else begin
+            i1:=NewInstruction(opBACKREFERENCE);
+           end;
+           Instructions[i1].Value:=CapturesToSubMatchesMap[Node^.Group] shl 1;
+           Instructions[i1].Next:=pointer(ptrint(CountInstructions));
+           Instructions[i1].OtherNext:=pointer(ptrint(i0));
+          end;
+         end;
+        end;
+       end;
+       else begin
+        raise EFLRE.Create('Internal error');
+       end;
       end;
-     end;
-     else begin
-      raise EFLRE.Create('Internal error');
      end;
     end;
-    break;
+   finally
+    SetLength(Stack,0);
    end;
   end;
  var Counter:longint;
@@ -11667,9 +12006,9 @@ procedure TFLRE.Compile;
     NodeStack:=TList.Create;
     try
      if Reversed then begin
-      Emit(AnchoredRootNode);
+      Emit(AnchoredRootNode,nil);
      end else begin
-      Emit(UnanchoredRootNode);
+      Emit(UnanchoredRootNode,nil);
      end;
     finally
      NodeStack.Free;
