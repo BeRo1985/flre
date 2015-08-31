@@ -873,7 +873,7 @@ const MaxDFAStates=4096;
 
       Mark=nil;
 
-      AllCharClass:TFLRECharClass=[#0..#255];
+      AllCharClass{:TFLRECharClass}=[#0..#255];
 
       // State flags
       sfEmptyBeginLine=1 shl 0;
@@ -920,19 +920,18 @@ const MaxDFAStates=4096;
       ntALT=0;
       ntCAT=1;
       ntCHAR=2;
-      ntANY=3;
-      ntPAREN=4;
-      ntQUEST=5;
-      ntSTAR=6;
-      ntPLUS=7;
-      ntMULTIMATCH=8;
-      ntZEROWIDTH=9;
-      ntLOOKBEHINDNEGATIVE=10;
-      ntLOOKBEHINDPOSITIVE=11;
-      ntLOOKAHEADNEGATIVE=12;
-      ntLOOKAHEADPOSITIVE=13;
-      ntBACKREFERENCE=14;
-      ntBACKREFERENCEIGNORECASE=15;
+      ntPAREN=3;
+      ntQUEST=4;
+      ntSTAR=5;
+      ntPLUS=6;
+      ntMULTIMATCH=7;
+      ntZEROWIDTH=8;
+      ntLOOKBEHINDNEGATIVE=9;
+      ntLOOKBEHINDPOSITIVE=10;
+      ntLOOKAHEADNEGATIVE=11;
+      ntLOOKAHEADPOSITIVE=12;
+      ntBACKREFERENCE=13;
+      ntBACKREFERENCEIGNORECASE=14;
 
       // Opcodes
       opSINGLECHAR=0;
@@ -8776,7 +8775,7 @@ begin
   Node:=NodeEx^;
   if assigned(Node) then begin
    case Node^.NodeType of
-    ntCHAR,ntANY,ntZEROWIDTH,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE,ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
+    ntCHAR,ntZEROWIDTH,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE,ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
     end;
     ntPAREN:begin
      NodeEx:=@Node^.Left;
@@ -8957,13 +8956,6 @@ begin
       end else if (Node^.Left^.NodeType=ntCHAR) and (Node^.Right^.NodeType=ntCHAR) then begin
        Node^.NodeType:=ntCHAR;
        Node^.Value:=NewCharClass(GetCharClass(Node^.Left^.Value)+GetCharClass(Node^.Right^.Value));
-       Node^.Left:=nil;
-       Node^.Right:=nil;
-       DoContinue:=true;
-       result:=true;
-      end else if ((Node^.Left^.NodeType=ntANY) and (Node^.Right^.NodeType=ntCHAR)) or
-                  ((Node^.Left^.NodeType=ntCHAR) and (Node^.Right^.NodeType=ntANY)) then begin
-       Node^.NodeType:=ntANY;
        Node^.Left:=nil;
        Node^.Right:=nil;
        DoContinue:=true;
@@ -10765,7 +10757,7 @@ var SourcePosition,SourceLength:longint;
         end;
        end else begin
         if rfSINGLELINE in Flags then begin
-         result:=NewNode(ntANY,nil,nil,nil,0);
+         result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass));
         end else begin
          result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass-[#10,#13]));
         end;
@@ -11069,9 +11061,9 @@ begin
   while assigned(AnchoredRootNode) and OptimizeNode(@AnchoredRootNode) do begin
   end;
   if rfLONGEST in Flags then begin
-   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntANY,nil,nil,nil,0),nil,nil,qkGREEDY),AnchoredRootNode,nil,0);
+   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass)),nil,nil,qkGREEDY),AnchoredRootNode,nil,0);
   end else begin
-   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntANY,nil,nil,nil,0),nil,nil,qkLAZY),AnchoredRootNode,nil,0);
+   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass)),nil,nil,qkLAZY),AnchoredRootNode,nil,0);
   end;
   DFANeedVerification:=false;
   BeginningAnchor:=false;
@@ -11215,10 +11207,6 @@ procedure TFLRE.Compile;
        end;
        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
       end;
-     end;
-     ntANY:begin
-      i0:=NewInstruction(opANY);
-      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
      end;
      ntPAREN:begin
       if assigned(BackreferenceParentNode) then begin
@@ -12009,7 +11997,7 @@ begin
         BeginningWildCard:=true;
        end;
        if CurrentPosition<MaxPrefixCharClasses then begin
-        PrefixCharClasses[CurrentPosition]:=PrefixCharClasses[CurrentPosition]+[#0..#255];
+        PrefixCharClasses[CurrentPosition]:=PrefixCharClasses[CurrentPosition]+AllCharClass;
        end;
        AddThread(NewThreadList,Instruction^.Next);
       end;
@@ -12205,7 +12193,7 @@ begin
               CharClass:=PFLRECharClass(pointer(ptruint(Instruction^.Value)))^;
              end;
              else {FLREoANY:}begin
-              CharClass:=[#0..#255];
+              CharClass:=AllCharClass;
              end;
             end;
             DestCharClassAction:=nil;
@@ -12246,7 +12234,7 @@ begin
               end;
              end;
              opCHAR:begin
-              if PFLRECharClass(pointer(ptruint(Instruction^.Value)))^=[#0..#255] then begin
+              if PFLRECharClass(pointer(ptruint(Instruction^.Value)))^=AllCharClass then begin
                for i:=0 to ByteMapCount-1 do begin
                 Action:=Node^.Action[i];
                 if (Action and sfImpossible)=sfImpossible then begin
@@ -12617,11 +12605,6 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
        result.Exact:=false;
       end;
      end;
-    end;
-    ntANY:begin
-     result:=TFLREPrefilterNode.Create;
-     result.Operation:=FLREpfnoANY;
-     result.Exact:=false;
     end;
     ntQUEST,ntSTAR,ntZEROWIDTH,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE,ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
      result:=TFLREPrefilterNode.Create;
@@ -13548,9 +13531,6 @@ var CharClass:TFLRECharClass;
       end;
       result:=result+']';
      end;
-    end;
-    ntANY:begin
-     result:=result+'.';
     end;
     ntPAREN,ntMULTIMATCH:begin
      result:='('+ProcessNode(Node^.Left)+')';
