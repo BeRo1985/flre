@@ -773,6 +773,7 @@ type EFLRE=class(Exception);
 
        function NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
        procedure FreeNode(var Node:PFLRENode);
+       function CopyNode(Node:PFLRENode):PFLRENode;
 
        function AreNodesEqual(NodeA,NodeB:PFLRENode):boolean;
        function AreNodesEqualSafe(NodeA,NodeB:PFLRENode):boolean;
@@ -786,6 +787,7 @@ type EFLRE=class(Exception);
        function NewPlus(Node:PFLRENode;Kind:longint):PFLRENode;
        function NewStar(Node:PFLRENode;Kind:longint):PFLRENode;
        function NewQuest(Node:PFLRENode;Kind:longint):PFLRENode;
+       function NewExact(Node:PFLRENode;MinCount,MaxCount,Kind:longint):PFLRENode;
 
        function OptimizeNode(NodeEx:PPFLRENode):boolean;
 
@@ -8377,6 +8379,29 @@ begin
  end;
 end;
 
+function TFLRE.CopyNode(Node:PFLRENode):PFLRENode;
+begin
+ if assigned(Node) then begin
+  result:=NewNode(Node^.NodeType,nil,nil,nil,Node^.Value);
+  result^.CharClass:=Node^.CharClass;
+  result^.Group:=Node^.Group;
+  result^.MinCount:=Node^.MinCount;
+  result^.MaxCount:=Node^.MaxCount;
+  result^.Name:=Node^.Name;
+  if assigned(Node^.Left) then begin
+   result^.Left:=CopyNode(Node^.Left);
+  end;
+  if assigned(Node^.Right) then begin
+   result^.Right:=CopyNode(Node^.Right);
+  end;
+  if assigned(Node^.Extra) then begin
+   result^.Extra:=CopyNode(Node^.Extra);
+  end;
+ end else begin
+  result:=nil;
+ end;
+end;
+
 function TFLRE.AreNodesEqual(NodeA,NodeB:PFLRENode):boolean;
 begin
  result:=(NodeA=NodeB) or
@@ -8621,6 +8646,68 @@ begin
   result^.NodeType:=ntSTAR;
  end else begin
   result:=NewNode(ntQUEST,Node,nil,nil,Kind);
+ end;
+end;
+
+function TFLRE.NewExact(Node:PFLRENode;MinCount,MaxCount,Kind:longint):PFLRENode;
+var Counter:longint;
+    OptionalNode:PFLRENode;
+begin
+ if (MinCount>=0) and (MaxCount<0) then begin
+  case MinCount of
+   0:begin
+    // x{0,} is x*
+    result:=NewStar(StarDenull(Node),Kind);
+   end;
+   1:begin
+    // x{1,} is x+
+    result:=NewPlus(Node,Kind);
+   end;
+   else begin
+    // x{2,} is xx+, x{3,} is xxx+, x{4,} is xxxx+ and so on...
+    result:=Node;
+    for Counter:=3 to MinCount do begin
+     result:=Concat(result,CopyNode(Node));
+    end;
+    result:=Concat(result,NewPlus(CopyNode(Node),Kind));
+   end;
+  end;
+ end else if (MinCount=0) and (MaxCount=0) then begin
+  // x{0,0} is nothing
+  result:=nil;
+ end else if (MinCount=0) and (MaxCount=1) then begin
+  // x{0,1} is x?
+  result:=NewQuest(Node,Kind);
+ end else if (MinCount=1) and (MaxCount=1) then begin
+  // x{1,1} is just x
+  result:=Node;
+ end else if (MinCount>0) and (MinCount=MaxCount) then begin
+  // x{n,m}, when where n equals to m, is n-multiple x
+  result:=Node;
+  for Counter:=2 to MaxCount do begin
+   result:=Concat(result,CopyNode(Node));
+  end;
+ end else if (MinCount>=0) and (MinCount<MaxCount) then begin
+  // x{n,m} is n-multiple x + m-multiple x?
+  if MinCount=0 then begin
+   result:=nil;
+  end else begin
+   result:=Node;
+   for Counter:=2 to MinCount do begin
+    result:=Concat(result,CopyNode(Node));
+   end;
+  end;
+  if MaxCount>MinCount then begin
+   OptionalNode:=NewQuest(CopyNode(Node),Kind);
+   for Counter:=MinCount+2 to MaxCount do begin
+    OptionalNode:=NewQuest(Concat(CopyNode(Node),OptionalNode),Kind);
+   end;
+   result:=Concat(result,OptionalNode);
+  end;
+ end else begin
+  // Oops, this should never happen, so cases like min > max, or min < max < 0, but the parser rejects such cases.
+  result:=Node;
+  raise EFLRE.Create('Syntax error');
  end;
 end;
 
@@ -10731,7 +10818,7 @@ var SourcePosition,SourceLength:longint;
   end;
  end;
  function ParseTerm:PFLRENode;
- var MinCount,MaxCount:longint;
+ var MinCount,MaxCount,Kind:longint;
  begin
   result:=nil;
   try
@@ -10830,22 +10917,20 @@ var SourcePosition,SourceLength:longint;
        end;
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]='}') then begin
         inc(SourcePosition);
-        result:=NewNode(ntEXACT,result,nil,nil,0);
         if (SourcePosition<=SourceLength) and (Source[SourcePosition]='?') then begin
          inc(SourcePosition);
-         result^.Value:=1;
          if rfLONGEST in Flags then begin
           raise EFLRE.Create('Syntax error');
          end;
+         Kind:=qkLAZY;
         end else begin
          if rfLONGEST in Flags then begin
-          result^.Value:=1;
+          Kind:=qkLAZY;
          end else begin
-          result^.Value:=0;
+          Kind:=qkGREEDY;
          end;
         end;
-        result^.MinCount:=MinCount;
-        result^.MaxCount:=MaxCount;
+        result:=NewExact(result,MinCount,MaxCount,Kind);
        end else begin
         raise EFLRE.Create('Syntax error');
        end;
@@ -11091,43 +11176,48 @@ procedure TFLRE.Compile;
       continue;
      end;
      ntCHAR:begin
-      SingleChar:=#0;
-      Count:=0;
-      for CurrentChar:=#0 to #255 do begin
-       if CurrentChar in Node^.CharClass then begin
-        if Count=0 then begin
-         SingleChar:=CurrentChar;
-         inc(Count);
-        end else begin
-         inc(Count);
-         break;
-        end;
-       end;
-      end;
-      if Count=1 then begin
-       i0:=NewInstruction(opSINGLECHAR);
-       Instructions[i0].Value:=byte(ansichar(SingleChar));
+      if Node^.CharClass=AllCharClass then begin
+       i0:=NewInstruction(opANY);
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
       end else begin
-       i0:=NewInstruction(opCHAR);
-       Index:=-1;
-       for Counter:=0 to CountCharClasses-1 do begin
-        if CharClasses[Counter]^=Node^.CharClass then begin
-         Index:=Counter;
-         break;
+       SingleChar:=#0;
+       Count:=0;
+       for CurrentChar:=#0 to #255 do begin
+        if CurrentChar in Node^.CharClass then begin
+         if Count=0 then begin
+          SingleChar:=CurrentChar;
+          inc(Count);
+         end else begin
+          inc(Count);
+          break;
+         end;
         end;
        end;
-       if Index<0 then begin
-        Index:=CountCharClasses;
-        inc(CountCharClasses);
-        if CountCharClasses>length(CharClasses) then begin
-         SetLength(CharClasses,CountCharClasses*2);
+       if Count=1 then begin
+        i0:=NewInstruction(opSINGLECHAR);
+        Instructions[i0].Value:=byte(ansichar(SingleChar));
+       end else begin
+        i0:=NewInstruction(opCHAR);
+        Index:=-1;
+        for Counter:=0 to CountCharClasses-1 do begin
+         if CharClasses[Counter]^=Node^.CharClass then begin
+          Index:=Counter;
+          break;
+         end;
         end;
-        GetMem(CharClasses[Index],SizeOf(TFLRECharClass));
-        CharClasses[Index]^:=Node^.CharClass;
+        if Index<0 then begin
+         Index:=CountCharClasses;
+         inc(CountCharClasses);
+         if CountCharClasses>length(CharClasses) then begin
+          SetLength(CharClasses,CountCharClasses*2);
+         end;
+         GetMem(CharClasses[Index],SizeOf(TFLRECharClass));
+         CharClasses[Index]^:=Node^.CharClass;
+        end;
+        Instructions[i0].Value:=ptruint(pointer(CharClasses[Index]));
        end;
-       Instructions[i0].Value:=ptruint(pointer(CharClasses[Index]));
+       Instructions[i0].Next:=pointer(ptrint(CountInstructions));
       end;
-      Instructions[i0].Next:=pointer(ptrint(CountInstructions));
      end;
      ntANY:begin
       i0:=NewInstruction(opANY);
