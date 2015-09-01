@@ -684,7 +684,11 @@ type EFLRE=class(Exception);
 
        SearchMatch:TFLREDFASearchMatch;
 
-       constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean);
+       MaximalDFAStates:longint;
+
+       HadReset:longbool;
+
+       constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean;const AMaximalDFAStates:longint);
        destructor Destroy; override;
 
        function CacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
@@ -894,6 +898,8 @@ type EFLRE=class(Exception);
 
       public
 
+       MaximalDFAStates:longint;
+
        constructor Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[rfDELIMITERS]); overload;
        constructor Create(const ARegularExpressions:array of ansistring;const AFlags:TFLREFlags=[]); overload;
        destructor Destroy; override;
@@ -946,9 +952,7 @@ procedure InitializeFLRE;
 
 implementation
 
-const MaxDFAStates=4096;
-
-      MaxGeneration=int64($4000000000000000);
+const MaxGeneration=int64($4000000000000000);
 
       Mark=nil;
 
@@ -7215,7 +7219,7 @@ begin
 
 end;
 
-constructor TFLREDFA.Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean);
+constructor TFLREDFA.Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean;const AMaximalDFAStates:longint);
 var Index,SubIndex:longint;
     FLREDFAStateCreateTempDFAState:TFLREDFAState;
     DFAState:PFLREDFAState;
@@ -7225,6 +7229,10 @@ begin
  ThreadLocalStorageInstance:=AThreadLocalStorageInstance;
 
  Instance:=ThreadLocalStorageInstance.Instance;
+
+ MaximalDFAStates:=AMaximalDFAStates;
+
+ HadReset:=false;
 
  if AReversed then begin
 
@@ -7409,7 +7417,7 @@ begin
   // No, it is not already cached yet
 
   // Do we need reset the states?
-  if CountStatesCached>=MaxDFAStates then begin
+  if CountStatesCached>=MaximalDFAStates then begin
    // Yes, so do it
    Reset;
   end;
@@ -7538,6 +7546,8 @@ begin
  end;
 
  FillChar(StartStates,SizeOf(StartStates),AnsiChar(#0));
+
+ HadReset:=true;
 
 end;
 
@@ -8588,8 +8598,8 @@ begin
  end;
 
  if Instance.DFAReady then begin
-  DFA:=TFLREDFA.Create(self,false);
-  ReversedDFA:=TFLREDFA.Create(self,true);
+  DFA:=TFLREDFA.Create(self,false,Instance.MaximalDFAStates);
+  ReversedDFA:=TFLREDFA.Create(self,true,Instance.MaximalDFAStates);
  end else begin
   DFA:=nil;
   ReversedDFA:=nil;
@@ -8781,6 +8791,8 @@ var StartDelimiter,EndDelimiter:ansichar;
 begin
  inherited Create;
 
+ MaximalDFAStates:=4096;
+ 
  CountCaptures:=0;
 
  CountInternalCaptures:=0;
