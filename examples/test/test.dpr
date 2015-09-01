@@ -4,7 +4,8 @@ program test;
 uses
   SysUtils,
   Classes,
-  FLRE in '..\..\src\FLRE.pas';
+  FLRE in '..\..\src\FLRE.pas',
+  FLREUnicode in '..\..\src\FLREUnicode.pas';
 
 var FLREInstance:TFLRE;
     s:ansistring;
