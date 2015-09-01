@@ -992,7 +992,6 @@ const MaxDFAStates=4096;
       sskMax=4*3;
 
       // Node types
-      ntNOP=-1;
       ntALT=0;
       ntCAT=1;
       ntCHAR=2;
@@ -1068,6 +1067,33 @@ const MaxDFAStates=4096;
 
       ucACCEPT=0;
       ucERROR=16;
+
+      // Node precedences
+      npAtom=0;
+      npUnary=1;
+      npConcat=2;
+      npAlternate=3;
+      npZeroWidth=4;
+      npParen=5;
+      npMultiMatch=6;
+      npTopLevel=7;
+
+      NodePrecedences:array[ntALT..ntBACKREFERENCEIGNORECASE] of longint=(
+       npAlternate,   // ntALT=0;
+       npConcat,      // ntCAT=1;
+       npAtom,        // ntCHAR=2;
+       npParen,       // ntPAREN=3;
+       npUnary,       // ntQUEST=4;
+       npUnary,       // ntSTAR=5;
+       npUnary,       // ntPLUS=6;
+       npMultiMatch,  // ntMULTIMATCH=7;
+       npZeroWidth,   // ntZEROWIDTH=8;
+       npZeroWidth,   // ntLOOKBEHINDNEGATIVE=9;
+       npZeroWidth,   // ntLOOKBEHINDPOSITIVE=10;
+       npZeroWidth,   // ntLOOKAHEADNEGATIVE=11;
+       npZeroWidth,   // ntLOOKAHEADPOSITIVE=12;
+       npZeroWidth,   // ntBACKREFERENCE=13;
+       npZeroWidth);  // ntBACKREFERENCEIGNORECASE=14;
 
       FLREInitialized:longbool=false;
 
@@ -12105,8 +12131,6 @@ procedure TFLRE.Compile;
 {$endif}
      if assigned(Node) and ((Argument<>0) or (NodeStack.IndexOf(Node)<0)) then begin
       case Node^.NodeType of
-       ntNOP:begin
-       end;
        ntALT:begin
         case Argument of
          0:begin
@@ -14715,7 +14739,7 @@ end;
 
 function TFLRE.DumpRegularExpression:ansistring;
 var CharClass:TFLRECharClass;
- function ProcessNode(Node:PFLRENode):ansistring;
+ function ProcessNode(Node:PFLRENode;ParentPrecedence:longint):ansistring;
  const HexChars:array[$0..$f] of ansichar='0123456789abcdef';
  var Count,Counter,LowChar,HighChar:longint;
      SingleChar,CurrentChar:ansichar;
@@ -14725,34 +14749,34 @@ var CharClass:TFLRECharClass;
    case Node^.NodeType of
     ntALT:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntCAT] then begin
-       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      if NodePrecedences[Node^.Left^.NodeType]>NodePrecedences[Node^.NodeType] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType])+')';
       end else begin
-       result:=result+ProcessNode(Node^.Left);
+       result:=result+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType]);
       end;
      end;
      result:=result+'|';
      if assigned(Node^.Right) then begin
-      if Node^.Right^.NodeType in [ntCAT] then begin
-       result:=result+'(?:'+ProcessNode(Node^.Right)+')';
+      if NodePrecedences[Node^.Right^.NodeType]>NodePrecedences[Node^.NodeType] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Right,NodePrecedences[Node^.NodeType])+')';
       end else begin
-       result:=result+ProcessNode(Node^.Right);
+       result:=result+ProcessNode(Node^.Right,NodePrecedences[Node^.NodeType]);
       end;
      end;
     end;
     ntCAT:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT] then begin
-       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      if NodePrecedences[Node^.Left^.NodeType]>NodePrecedences[Node^.NodeType] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType])+')';
       end else begin
-       result:=result+ProcessNode(Node^.Left);
+       result:=result+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType]);
       end;
      end;
      if assigned(Node^.Right) then begin
-      if Node^.Right^.NodeType in [ntALT] then begin
-       result:=result+'(?:'+ProcessNode(Node^.Right)+')';
+      if NodePrecedences[Node^.Right^.NodeType]>NodePrecedences[Node^.NodeType] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Right,NodePrecedences[Node^.NodeType])+')';
       end else begin
-       result:=result+ProcessNode(Node^.Right);
+       result:=result+ProcessNode(Node^.Right,NodePrecedences[Node^.NodeType]);
       end;
      end;
     end;
@@ -14821,14 +14845,14 @@ var CharClass:TFLRECharClass;
      end;
     end;
     ntPAREN,ntMULTIMATCH:begin
-     result:='('+ProcessNode(Node^.Left)+')';
+     result:='('+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType])+')';
     end;
     ntQUEST:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS] then begin
-       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      if NodePrecedences[Node^.Left^.NodeType]>NodePrecedences[Node^.NodeType] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType])+')';
       end else begin
-       result:=result+ProcessNode(Node^.Left);
+       result:=result+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType]);
       end;
      end;
      result:=result+'?';
@@ -14838,10 +14862,10 @@ var CharClass:TFLRECharClass;
     end;
     ntSTAR:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS] then begin
-       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      if NodePrecedences[Node^.Left^.NodeType]>NodePrecedences[Node^.NodeType] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType])+')';
       end else begin
-       result:=result+ProcessNode(Node^.Left);
+       result:=result+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType]);
       end;
      end;
      result:=result+'*';
@@ -14851,10 +14875,10 @@ var CharClass:TFLRECharClass;
     end;
     ntPLUS:begin
      if assigned(Node^.Left) then begin
-      if Node^.Left^.NodeType in [ntALT,ntCAT,ntQUEST,ntSTAR,ntPLUS] then begin
-       result:=result+'(?:'+ProcessNode(Node^.Left)+')';
+      if NodePrecedences[Node^.Left^.NodeType]>NodePrecedences[Node^.NodeType] then begin
+       result:=result+'(?:'+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType])+')';
       end else begin
-       result:=result+ProcessNode(Node^.Left);
+       result:=result+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType]);
       end;
      end;
      result:=result+'+';
@@ -14901,7 +14925,7 @@ var CharClass:TFLRECharClass;
   end;
  end;
 begin
- result:=ProcessNode(AnchoredRootNode);
+ result:=ProcessNode(AnchoredRootNode,npTopLevel);
 end;
 
 function TFLRE.GetPrefilterExpression:ansistring;
