@@ -11930,7 +11930,7 @@ var SourcePosition,SourceLength:longint;
   result:=nil;
   try
    SkipFreeSpacingWhiteSpace;
-   while SourcePosition<=SourceLength do begin
+   while (SourcePosition<=SourceLength) and not (Source[SourcePosition] in ['|',')',#0]) do begin
     Node:=ParseTerm;
     SkipFreeSpacingWhiteSpace;
     if assigned(result) then begin
@@ -11958,7 +11958,7 @@ var SourcePosition,SourceLength:longint;
   result:=nil;
   try
    SkipFreeSpacingWhiteSpace;
-   while SourcePosition<=SourceLength do begin
+   while (SourcePosition<=SourceLength) and not (Source[SourcePosition] in [')',#0]) do begin
     Node:=ParseAlternative;
     SkipFreeSpacingWhiteSpace;
     if assigned(result) then begin
