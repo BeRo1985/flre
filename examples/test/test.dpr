@@ -1,4 +1,7 @@
 program test;
+{$ifdef fpc}
+ {$mode delphi}
+{$endif}
 {$apptype console}
 
 uses
