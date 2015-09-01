@@ -9042,9 +9042,11 @@ begin
   ThreadLocalStorageInstance:=NextThreadLocalStorageInstance;
  end;
 
- for Index:=0 to Nodes.Count-1 do begin
-  PFLRENode(Nodes[Index])^.Name:='';
-  FreeMem(Nodes[Index]);
+ if assigned(Nodes) then begin
+  for Index:=0 to Nodes.Count-1 do begin
+   PFLRENode(Nodes[Index])^.Name:='';
+   FreeMem(Nodes[Index]);
+  end;
  end;
  FreeAndNil(Nodes);
 
