@@ -813,6 +813,7 @@ type EFLRE=class(Exception);
 
        BitStateNFAReady:longbool;
 
+       DFAReady:longbool;
        DFANeedVerification:longbool;
        DFAFast:longbool;
 
@@ -822,6 +823,9 @@ type EFLRE=class(Exception);
        BeginningAnchor:longbool;
        EndingAnchor:longbool;
        BeginningWildcardLoop:longbool;
+
+       HasLookAssertions:longbool;
+       HasBackReferences:longbool;
 
        DoUnanchoredStart:longbool;
 
@@ -8583,8 +8587,13 @@ begin
   BitStateNFA:=nil;
  end;
 
- DFA:=TFLREDFA.Create(self,false);
- ReversedDFA:=TFLREDFA.Create(self,true);
+ if Instance.DFAReady then begin
+  DFA:=TFLREDFA.Create(self,false);
+  ReversedDFA:=TFLREDFA.Create(self,true);
+ end else begin
+  DFA:=nil;
+  ReversedDFA:=nil;
+ end;
 
 end;
 
@@ -8919,6 +8928,7 @@ begin
 
  BitStateNFAReady:=false;
 
+ DFAReady:=false;
  DFANeedVerification:=false;
  DFAFast:=true;
 
@@ -8927,6 +8937,9 @@ begin
  BeginningWildCard:=false;
  BeginningAnchor:=false;
  EndingAnchor:=false;
+
+ HasLookAssertions:=false;
+ HasBackReferences:=false;
 
  NamedGroupStringList:=TStringList.Create;
  NamedGroupStringIntegerPairHashMap:=TFLREStringIntegerPairHashMap.Create;
@@ -8974,7 +8987,13 @@ begin
 
   CompileByteMapForOnePassNFAAndDFA;
 
-  CompileOnePassNFA;
+  DFAReady:=not (HasLookAssertions or HasBackReferences);
+
+  if HasLookAssertions or HasBackReferences then begin
+   OnePassNFAReady:=false;
+  end else begin
+   CompileOnePassNFA;
+  end;
 
   BitStateNFAReady:=(CountForwardInstructions>0) and (CountForwardInstructions<512);
 
@@ -12032,6 +12051,8 @@ begin
   DFANeedVerification:=false;
   BeginningAnchor:=false;
   EndingAnchor:=false;
+  HasLookAssertions:=false;
+  HasBackReferences:=false;
   for Counter:=0 to Nodes.Count-1 do begin
    Node:=Nodes[Counter];
    case Node^.NodeType of
@@ -12050,9 +12071,11 @@ begin
     end;
     ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE:begin
      DFANeedVerification:=true;
+     HasLookAssertions:=true;
     end;
     ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
      DFANeedVerification:=true;
+     HasBackReferences:=true;
      if Node^.Group<0 then begin
       Node^.Group:=NamedGroupStringIntegerPairHashMap[Node^.Name];
       Node^.Name:='';
@@ -14175,56 +14198,57 @@ function TFLRE.SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageIns
 var MatchBegin,MatchEnd:longint;
 begin
  result:=false;
- ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
-(**)
- case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
-  DFAMatch:begin
-   if UnanchoredStart then begin
-    // For unanchored searchs, we must do also a "backward" DFA search
-    case ThreadLocalStorageInstance.ReversedDFA.SearchMatch(MatchEnd,StartPosition,MatchBegin,false) of
-     DFAMatch:begin
-      if MatchBegin<StartPosition then begin
-       MatchBegin:=StartPosition;
-      end;
-      if (CountCaptures=1) and not DFANeedVerification then begin
-       // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-       Captures[0].Start:=MatchBegin;
-       Captures[0].Length:=(MatchEnd-MatchBegin)+1;
-       result:=true;
-       exit;
-      end else begin
-       // Otherwise if we have group captures or if we do need verify the found, set the new start position *NFA algorithms
-       StartPosition:=MatchBegin;
-       UnanchoredStart:=false;
+ if DFAReady then begin
+  ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
+  case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
+   DFAMatch:begin
+    if UnanchoredStart then begin
+     // For unanchored searchs, we must do also a "backward" DFA search
+     case ThreadLocalStorageInstance.ReversedDFA.SearchMatch(MatchEnd,StartPosition,MatchBegin,false) of
+      DFAMatch:begin
+       if MatchBegin<StartPosition then begin
+        MatchBegin:=StartPosition;
+       end;
+       if (CountCaptures=1) and not DFANeedVerification then begin
+        // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
+        Captures[0].Start:=MatchBegin;
+        Captures[0].Length:=(MatchEnd-MatchBegin)+1;
+        result:=true;
+        exit;
+       end else begin
+        // Otherwise if we have group captures or if we do need verify the found, set the new start position *NFA algorithms
+        StartPosition:=MatchBegin;
+        UnanchoredStart:=false;
+       end;
       end;
      end;
     end;
-   end;
-   if (CountCaptures=1) and not (DFANeedVerification or UnanchoredStart) then begin
-    // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
-    Captures[0].Start:=StartPosition;
-    Captures[0].Length:=(MatchEnd-StartPosition)+1;
-    result:=true;
-    exit;
-   end else begin
-    // Otherwise if we have group captures or if we do need verify the found, limit search length for the slower *NFA algorithms
-    if UntilExcludingPosition>(MatchEnd+1) then begin
-     UntilExcludingPosition:=MatchEnd+1;
+    if (CountCaptures=1) and not (DFANeedVerification or UnanchoredStart) then begin
+     // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
+     Captures[0].Start:=StartPosition;
+     Captures[0].Length:=(MatchEnd-StartPosition)+1;
+     result:=true;
+     exit;
+    end else begin
+     // Otherwise if we have group captures or if we do need verify the found, limit search length for the slower *NFA algorithms
+     if UntilExcludingPosition>(MatchEnd+1) then begin
+      UntilExcludingPosition:=MatchEnd+1;
+     end;
     end;
    end;
-  end;
-  DFAFail:begin
-   // No DFA match => stop
-   result:=false;
-   exit;
-  end;
-  else {DFAError:}begin
-   // Internal error?
+   DFAFail:begin
+    // No DFA match => stop
+    result:=false;
+    exit;
+   end;
+   else {DFAError:}begin
+    // Internal error?
 {$ifdef debug}
-   Assert(false,'Internal error in DFA code');
+    Assert(false,'Internal error in DFA code');
 {$endif}
+   end;
   end;
- end;(**)
+ end;
  if OnePassNFAReady and not UnanchoredStart then begin
   result:=ThreadLocalStorageInstance.OnePassNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition);
  end else begin
