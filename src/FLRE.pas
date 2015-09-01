@@ -3162,7 +3162,12 @@ asm
 {$else}
  mov eax,dword ptr [rdi]
 {$endif}
+{$if defined(FPC_FULLVERSION) and (FPC_FULLVERSION < 20700)}
+ mov edx,eax
+ dec edx
+{$else}
  lea edx,[eax-1]
+{$ifend}
  bsf eax,eax
 {$ifdef win64}
  and dword ptr [rcx],edx
