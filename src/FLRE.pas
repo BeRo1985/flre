@@ -7710,7 +7710,7 @@ asm
     mov ebx,dword ptr [edi+TFLREDFAState.Flags]
     test ebx,sfDFAMatchWins or sfDFADead
     jnz @CheckFlags
-
+          
    @BackToLoop:
    dec ecx
    jnz @Loop
@@ -8252,7 +8252,7 @@ begin
  result:=WorkQueueToCachedState(Queues[0],Flags);
 
  // Connect the last state to the new state with the current char
- State.NextStates[Instance.ByteMap[CurrentChar]]:=result;
+ State.NextStates[ByteMap[CurrentChar]]:=result;
 
 end;
 
@@ -8305,16 +8305,6 @@ begin
   inc(Start,sskReversed);
 
  end else begin
-
-  if (StartPosition>=0) and (StartPosition<ThreadLocalStorageInstance.InputLength) then begin
-   if rfUTF8 in Instance.Flags then begin
-    CurrentChar:=UTF8PtrCodeUnitGetCharFallback(LocalInput,ThreadLocalStorageInstance.InputLength,StartPosition);
-   end else begin
-    CurrentChar:=byte(ansichar(LocalInput[StartPosition]));
-   end;
-  end else begin
-   CurrentChar:=$ffffffff;
-  end;
 
   if StartPosition<=0 then begin
    Start:=sskBeginText;
@@ -9011,7 +9001,7 @@ begin
 
   BeginningWildcardLoop:=BeginningJump and BeginningSplit and BeginningWildcard;
 
-  DoUnanchoredStart:=(FixedStringLength=0) and (CountPrefixCharClasses=0) and not BeginningAnchor;
+  DoUnanchoredStart:=((FixedStringLength>1) or (CountPrefixCharClasses>1)) and not BeginningAnchor;
 
  finally
  end;
@@ -12072,7 +12062,7 @@ begin
      DFANeedVerification:=true;
     end;
     ntZEROWIDTH:begin
-     DFANeedVerification:=true;
+     //DFANeedVerification:=true;
      DFAFast:=false;
      if (Node^.Value and sfEmptyBeginText)<>0 then begin
       BeginningAnchor:=true;
