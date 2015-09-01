@@ -845,7 +845,7 @@ type EFLRE=class(Exception);
        function NewCharClass(const CharClass:TFLRECharClass):longint;
        function GetCharClass(const CharClass:longint):TFLRECharClass;
 
-       function NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
+       function NewNode(const NodeType:longint;const Left,Right:PFLRENode;const Value:longint):PFLRENode;
        procedure FreeNode(var Node:PFLRENode);
        function CopyNode(Node:PFLRENode):PFLRENode;
        procedure FreeUnusedNodes(RootNode:PFLRENode);
@@ -864,7 +864,7 @@ type EFLRE=class(Exception);
        function NewQuest(Node:PFLRENode;Kind:longint):PFLRENode;
        function NewExact(Node:PFLRENode;MinCount,MaxCount,Kind:longint):PFLRENode;
 
-       function OptimizeNode(NodeEx:PPFLRENode):boolean;
+       function OptimizeNode(StartNodeEx:PPFLRENode):boolean;
 
        procedure Parse;
 
@@ -9065,7 +9065,7 @@ begin
  end;
 end;
 
-function TFLRE.NewNode(const NodeType:longint;const Left,Right,Extra:PFLRENode;const Value:longint):PFLRENode;
+function TFLRE.NewNode(const NodeType:longint;const Left,Right:PFLRENode;const Value:longint):PFLRENode;
 begin
  GetMem(result,SizeOf(TFLRENode));
  FillChar(result^,SizeOf(TFLRENode),#0);
@@ -9093,7 +9093,7 @@ end;
 function TFLRE.CopyNode(Node:PFLRENode):PFLRENode;
 begin
  if assigned(Node) then begin
-  result:=NewNode(Node^.NodeType,nil,nil,nil,Node^.Value);
+  result:=NewNode(Node^.NodeType,nil,nil,Node^.Value);
   result^.Group:=Node^.Group;
   result^.Name:=Node^.Name;
   if assigned(Node^.Left) then begin
@@ -9243,10 +9243,10 @@ begin
    end else if ((NodeLeft^.Right^.NodeType in [ntSTAR,ntPLUS]) and (NodeRight^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(NodeLeft^.Right^.Left,NodeRight^.Left) and (NodeLeft^.Right^.Value=0) and (NodeRight^.Value=0) then begin
     result:=NodeLeft;
    end else begin
-    result:=NewNode(ntCAT,NodeLeft,NodeRight,nil,0);
+    result:=NewNode(ntCAT,NodeLeft,NodeRight,0);
    end;
   end else begin
-   result:=NewNode(ntCAT,NodeLeft,NodeRight,nil,0);
+   result:=NewNode(ntCAT,NodeLeft,NodeRight,0);
   end;
  end else begin
   if assigned(NodeLeft) then begin
@@ -9303,8 +9303,8 @@ var NodeEx,pl,pr:PPFLRENode;
     c:TFLRECharClass;
 begin
  if assigned(NodeLeft) and assigned(NodeRight) then begin
-{ if (NodeLeft^.NodeType=ntCAT) and (NodeRight^.NodeType=ntCAT) then begin
-   result:=NewNode(ntALT,NodeLeft,NodeRight,nil,0);
+  if (NodeLeft^.NodeType=ntCAT) and (NodeRight^.NodeType=ntCAT) then begin
+   result:=NewNode(ntALT,NodeLeft,NodeRight,0);
    NodeEx:=@result;
    while (((assigned(NodeEx) and assigned(NodeEx^)) and (NodeEx^^.NodeType=ntALT)) and (assigned(NodeEx^^.Left) and assigned(NodeEx^^.Right))) and ((NodeEx^^.Left^.NodeType=ntCAT) and (NodeEx^^.Right^.NodeType=ntCAT)) do begin
     Node:=NodeEx^;
@@ -9333,11 +9333,10 @@ begin
   end else if AreNodesEqualSafe(NodeLeft,NodeRight) then begin
    result:=NodeLeft;
   end else if (NodeLeft^.NodeType=ntCHAR) and (NodeRight^.NodeType=ntCHAR) then begin
-   result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(GetCharClass(NodeLeft^.Value)+GetCharClass(NodeRight^.Value)));
+   result:=NewNode(ntCHAR,nil,nil,NewCharClass(GetCharClass(NodeLeft^.Value)+GetCharClass(NodeRight^.Value)));
   end else begin
-   result:=NewNode(ntALT,NodeLeft,NodeRight,nil,0);
-  end;{}
-  result:=NewNode(ntALT,NodeLeft,NodeRight,nil,0);
+   result:=NewNode(ntALT,NodeLeft,NodeRight,0);
+  end;
  end else begin
   if assigned(NodeLeft) then begin
    result:=NodeLeft;
@@ -9366,7 +9365,7 @@ begin
   result:=Node;
   result^.NodeType:=ntSTAR;
  end else begin
-  result:=NewNode(ntPLUS,Node,nil,nil,Kind);
+  result:=NewNode(ntPLUS,Node,nil,Kind);
  end;
 end;
 
@@ -9379,7 +9378,7 @@ begin
   result:=Node;
   result^.NodeType:=ntSTAR;
  end else begin
-  result:=NewNode(ntSTAR,StarDenull(Node),nil,nil,Kind);
+  result:=NewNode(ntSTAR,StarDenull(Node),nil,Kind);
  end;
 end;
 
@@ -9396,7 +9395,7 @@ begin
   result:=Node;
   result^.NodeType:=ntSTAR;
  end else begin
-  result:=NewNode(ntQUEST,Node,nil,nil,Kind);
+  result:=NewNode(ntQUEST,Node,nil,Kind);
  end;
 end;
 
@@ -9462,7 +9461,7 @@ begin
  end;
 end;
 
-function TFLRE.OptimizeNode(NodeEx:PPFLRENode):boolean;
+function TFLRE.OptimizeNode(StartNodeEx:PPFLRENode):boolean;
  procedure ParseNodes(NodeList:TList;n:PFLRENode;NodeType:longint);
  begin
   while assigned(n) do begin
@@ -9490,9 +9489,10 @@ function TFLRE.OptimizeNode(NodeEx:PPFLRENode):boolean;
    end;
   end;
  end;
-var Node,SeedNode,TestNode,l,r,nl,nr,n,Prefix,Alternative,NewLeft,NewRight:PFLRENode;
+var NodeEx:PPFLRENode;
+    Node,SeedNode,TestNode,l,r,nl,nr,n,Prefix,Suffix,Alternative,TempNode:PFLRENode;
     pr,pl:PPFLRENode;
-    DoContinue,Optimized,Found:boolean;
+    HasOptimizations,DoContinue,Optimized,Found:boolean;
     NodeStack,NodeList,NodeListLeft,NodeListRight,Visited,TempNodeList,NewNodeList:TList;
     NodeIndex,SubNodeIndex,NewNodeIndex:longint;
     c:TFLRECharClass;
@@ -9500,531 +9500,416 @@ begin
  result:=false;
  NodeStack:=TList.Create;
  try
-  NodeStack.Add(NodeEx);
-  while NodeStack.Count>0 do begin
-   NodeEx:=NodeStack[NodeStack.Count-1];
-   NodeStack.Delete(NodeStack.Count-1);
-   repeat
-    Node:=NodeEx^;
-    if assigned(Node) then begin
-     case Node^.NodeType of
-      ntCHAR,ntZEROWIDTH,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE,ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
-      end;
-      ntPAREN:begin
-       NodeEx:=@Node^.Left;
-       continue;
-      end;
-      ntPLUS:begin
-       if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntPLUS,ntSTAR])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-        NodeEx^:=Node^.Left;
-        result:=true;
-        continue;
-       end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPLUS)) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-        NodeEx^:=Node^.Left;
-        result:=true;
-        continue;
-       end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntSTAR,ntQUEST])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-        NodeEx^:=Node^.Left;
-        NodeEx^^.NodeType:=ntSTAR;
-        result:=true;
-        continue;
-       end else begin
+  repeat
+   HasOptimizations:=false;
+   NodeStack.Clear;
+   NodeStack.Add(StartNodeEx);
+   while NodeStack.Count>0 do begin
+    NodeEx:=NodeStack[NodeStack.Count-1];
+    NodeStack.Delete(NodeStack.Count-1);
+    repeat
+     Node:=NodeEx^;
+     if assigned(Node) then begin
+      case Node^.NodeType of
+       ntCHAR,ntZEROWIDTH,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE,ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
+       end;
+       ntPAREN:begin
         NodeEx:=@Node^.Left;
         continue;
        end;
-      end;
-      ntSTAR:begin
-       if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-        NodeEx^:=Node^.Left;
-        NodeEx^^.Left^.NodeType:=ntSTAR;
-        result:=true;
-        continue;
-       end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntPLUS,ntQUEST,ntSTAR])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-        NodeEx^:=Node^.Left;
-        NodeEx^^.NodeType:=ntSTAR;
-        result:=true;
-        continue;
-       end else begin
-        if IsStarNullable(Node^.Left) then begin
-         Node^.Left:=StarDenull(Node^.Left);
-         result:=true;
-        end;
-        NodeEx:=@Node^.Left;
-        continue;
-       end;
-      end;
-      ntQUEST:begin
-       if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType=ntQUEST)) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-        NodeEx^:=Node^.Left;
-        result:=true;
-        continue;
-       end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-        NodeEx^:=Node^.Left;
-        NodeEx^^.Left^.NodeType:=ntSTAR;
-        result:=true;
-        continue;
-       end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntQUEST)) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-        NodeEx^:=Node^.Left;
-        result:=true;
-        continue;
-       end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntPLUS,ntSTAR])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-        NodeEx^:=Node^.Left;
-        NodeEx^^.NodeType:=ntSTAR;
-        result:=true;
-        continue;
-       end else begin
-        NodeEx:=@Node^.Left;
-        continue;
-       end;
-      end;
-      ntCAT:begin
-       if assigned(Node^.Left) and assigned(Node^.Right) then begin
-        if (Node^.Left^.NodeType=ntZEROWIDTH) and (Node^.Right^.NodeType=ntZEROWIDTH) then begin
-         Node^.Left^.Value:=Node^.Left^.Value or Node^.Right^.Value;
+       ntPLUS:begin
+        if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntPLUS,ntSTAR])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
          NodeEx^:=Node^.Left;
-         result:=true;
+         HasOptimizations:=true;
          continue;
-        end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (Node^.Right^.NodeType=ntPLUS)) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
-         NodeEx^:=Node^.Right;
-         result:=true;
-         continue;
-        end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS]) and (Node^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
+        end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPLUS)) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
          NodeEx^:=Node^.Left;
-         result:=true;
+         HasOptimizations:=true;
+         continue;
+        end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntSTAR,ntQUEST])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+         NodeEx^:=Node^.Left;
+         NodeEx^^.NodeType:=ntSTAR;
+         HasOptimizations:=true;
          continue;
         end else begin
-         DoContinue:=false;
-         NodeList:=TList.Create;
-         try
-          ParseNodes(NodeList,Node,ntCAT);
-          Optimized:=false;
-          DoContinue:=true;
-          while DoContinue do begin
-           DoContinue:=false;
-           NodeIndex:=NodeList.Count-1;
-           while NodeIndex>0 do begin
-            l:=PFLRENode(NodeList[NodeIndex]);
-            r:=PFLRENode(NodeList[NodeIndex-1]);
-            if (l^.NodeType=ntZEROWIDTH) and (r^.NodeType=ntZEROWIDTH) then begin
-             l^.Value:=l^.Value or r^.Value;
-             NodeList.Delete(NodeIndex-1);
-             if NodeIndex>=NodeList.Count then begin
-              NodeIndex:=NodeList.Count-1;
-             end;
-             DoContinue:=true;
-             Optimized:=true;
-            end else if ((l^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (r^.NodeType=ntPLUS)) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
-             NodeList.Delete(NodeIndex);
-             if NodeIndex>=NodeList.Count then begin
-              NodeIndex:=NodeList.Count-1;
-             end;
-             DoContinue:=true;
-             Optimized:=true;
-            end else if ((l^.NodeType in [ntSTAR,ntPLUS]) and (r^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
-             NodeList.Delete(NodeIndex-1);
-             if NodeIndex>=NodeList.Count then begin
-              NodeIndex:=NodeList.Count-1;
-             end;
-             DoContinue:=true;
-             Optimized:=true;
-            end else begin
-             dec(NodeIndex);
-            end;
-           end;
-          end;
-          if Optimized and (NodeList.Count>0) then begin
-           NodeEx^:=NodeList[NodeList.Count-1];
-           for NodeIndex:=NodeList.Count-2 downto 0 do begin
-            NodeEx^:=NewNode(ntCAT,NodeEx^,NodeList[NodeIndex],nil,0);
-           end;
-           DoContinue:=true;
-           result:=true;
-          end;
-         finally
-          FreeAndNil(NodeList);
-         end;
-         if DoContinue then begin
-          continue;
-         end else if not Optimized then begin
-          NodeStack.Add(@Node^.Right);
-          NodeEx:=@Node^.Left;
-          continue;
-         end;
+         NodeEx:=@Node^.Left;
+         continue;
         end;
-       end else begin
-        NodeStack.Add(@Node^.Right);
-        NodeEx:=@Node^.Left;
-        continue;
        end;
-      end;
-      ntALT:begin
-       if assigned(Node^.Left) and assigned(Node^.Right) then begin
-        if (Node^.Left^.NodeType=ntALT) or (Node^.Right^.NodeType=ntALT) then begin
-         Optimized:=false;
-         repeat
+       ntSTAR:begin
+        if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+         NodeEx^:=Node^.Left;
+         NodeEx^^.Left^.NodeType:=ntSTAR;
+         HasOptimizations:=true;
+         continue;
+        end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntPLUS,ntQUEST,ntSTAR])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+         NodeEx^:=Node^.Left;
+         NodeEx^^.NodeType:=ntSTAR;
+         HasOptimizations:=true;
+         continue;
+        end else begin
+         if IsStarNullable(Node^.Left) then begin
+          Node^.Left:=StarDenull(Node^.Left);
+          HasOptimizations:=true;
+         end;
+         NodeEx:=@Node^.Left;
+         continue;
+        end;
+       end;
+       ntQUEST:begin
+        if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType=ntQUEST)) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+         NodeEx^:=Node^.Left;
+         HasOptimizations:=true;
+         continue;
+        end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+         NodeEx^:=Node^.Left;
+         NodeEx^^.Left^.NodeType:=ntSTAR;
+         HasOptimizations:=true;
+         continue;
+        end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntQUEST)) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+         NodeEx^:=Node^.Left;
+         HasOptimizations:=true;
+         continue;
+        end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntPLUS,ntSTAR])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
+         NodeEx^:=Node^.Left;
+         NodeEx^^.NodeType:=ntSTAR;
+         HasOptimizations:=true;
+         continue;
+        end else begin
+         NodeEx:=@Node^.Left;
+         continue;
+        end;
+       end;
+       ntCAT:begin
+        if assigned(Node^.Left) and assigned(Node^.Right) then begin
+         if (Node^.Left^.NodeType=ntZEROWIDTH) and (Node^.Right^.NodeType=ntZEROWIDTH) then begin
+          Node^.Left^.Value:=Node^.Left^.Value or Node^.Right^.Value;
+          NodeEx^:=Node^.Left;
+          HasOptimizations:=true;
+          continue;
+         end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (Node^.Right^.NodeType=ntPLUS)) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
+          NodeEx^:=Node^.Right;
+          HasOptimizations:=true;
+          continue;
+         end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS]) and (Node^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
+          NodeEx^:=Node^.Left;
+          HasOptimizations:=true;
+          continue;
+         end else begin
           DoContinue:=false;
           NodeList:=TList.Create;
           try
-           ParseNodes(NodeList,Node,ntALT);
-           TempNodeList:=TList.Create;
-           try
-            for NodeIndex:=NodeList.Count-1 downto 0 do begin
-             TempNodeList.Add(NodeList[NodeIndex]);
-            end;
-            for NodeIndex:=0 to TempNodeList.Count-1 do begin
-             NodeList[NodeIndex]:=TempNodeList[NodeIndex];
-            end;
-           finally
-            TempNodeList.Free;
-           end;
-           NewNodeList:=TList.Create;
-           try
-            Visited:=TList.Create;
-            try
-             NodeIndex:=0;
-             while NodeIndex<NodeList.Count do begin
-              SeedNode:=NodeList[NodeIndex];
-              inc(NodeIndex);
-              if Visited.IndexOf(SeedNode)<0 then begin
-               Visited.Add(SeedNode);
-               TempNodeList:=TList.Create;
-               try
-                TempNodeList.Add(SeedNode);
-                l:=SeedNode;
-                while assigned(l) and (l^.NodeType=ntCAT) do begin
-                 l:=l^.Left;
-                end;
-                for SubNodeIndex:=NodeIndex to NodeList.Count-1 do begin
-                 TestNode:=NodeList[SubNodeIndex];
-                 if Visited.IndexOf(TestNode)<0 then begin
-                  r:=TestNode;
-                  while assigned(r) and (r^.NodeType=ntCAT) do begin
-                   r:=r^.Left;
-                  end;
-                  if (assigned(l) and assigned(r)) and AreNodesEqualSafe(l,r) then begin
-                   Visited.Add(TestNode);
-                   TempNodeList.Add(TestNode);
-                  end;
-                 end;
-                end;
-                if TempNodeList.Count>1 then begin
-                 Prefix:=l;
-                 Alternative:=nil;
-                 for SubNodeIndex:=0 to TempNodeList.Count-1 do begin
-                  TestNode:=TempNodeList[SubNodeIndex];
-                  NodeListLeft:=TList.Create;
-                  try
-                   ParseNodes(NodeListLeft,TestNode,ntCAT);
-                   NodeListLeft.Delete(NodeListLeft.Count-1);
-                   if NodeListLeft.Count>0 then begin
-                    NewLeft:=NodeListLeft[NodeListLeft.Count-1];
-                    for NewNodeIndex:=NodeListLeft.Count-2 downto 0 do begin
-                     NewLeft:=NewNode(ntCAT,NewLeft,NodeListLeft[NewNodeIndex],nil,0);
-                    end;
-                    Alternative:=NewAlt(Alternative,NewLeft);
-                   end;
-                  finally
-                   NodeListLeft.Free;
-                  end;
-                 end;
-                 NewNodeList.Add(Concat(Prefix,Alternative));
-                 DoContinue:=true;
-                 Optimized:=true;
-                end else begin
-                 NewNodeList.Add(SeedNode);
-                end;
-               finally
-                TempNodeList.Free;
-               end;
+           ParseNodes(NodeList,Node,ntCAT);
+           Optimized:=false;
+           DoContinue:=true;
+           while DoContinue do begin
+            DoContinue:=false;
+            NodeIndex:=NodeList.Count-1;
+            while NodeIndex>0 do begin
+             l:=PFLRENode(NodeList[NodeIndex]);
+             r:=PFLRENode(NodeList[NodeIndex-1]);
+             if (l^.NodeType=ntZEROWIDTH) and (r^.NodeType=ntZEROWIDTH) then begin
+              l^.Value:=l^.Value or r^.Value;
+              NodeList.Delete(NodeIndex-1);
+              if NodeIndex>=NodeList.Count then begin
+               NodeIndex:=NodeList.Count-1;
               end;
+              DoContinue:=true;
+              Optimized:=true;
+             end else if ((l^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (r^.NodeType=ntPLUS)) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+              NodeList.Delete(NodeIndex);
+              if NodeIndex>=NodeList.Count then begin
+               NodeIndex:=NodeList.Count-1;
+              end;
+              DoContinue:=true;
+              Optimized:=true;
+             end else if ((l^.NodeType in [ntSTAR,ntPLUS]) and (r^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+              NodeList.Delete(NodeIndex-1);
+              if NodeIndex>=NodeList.Count then begin
+               NodeIndex:=NodeList.Count-1;
+              end;
+              DoContinue:=true;
+              Optimized:=true;
+             end else begin
+              dec(NodeIndex);
              end;
-            finally
-             Visited.Free;
             end;
-            if DoContinue and (NewNodeList.Count>0) then begin
-             NodeEx^:=NewNodeList[0];
-             for NodeIndex:=1 to NewNodeList.Count-1 do begin
-              NodeEx^:=NewNode(ntALT,NodeEx^,NewNodeList[NodeIndex],nil,0);
-             end;
-             Node:=NodeEx^;
+           end;
+           if Optimized and (NodeList.Count>0) then begin
+            NodeEx^:=NodeList[NodeList.Count-1];
+            for NodeIndex:=NodeList.Count-2 downto 0 do begin
+             NodeEx^:=NewNode(ntCAT,NodeEx^,NodeList[NodeIndex],0);
             end;
-           finally
-            NewNodeList.Free;
+            DoContinue:=true;
+            HasOptimizations:=true;
            end;
           finally
            FreeAndNil(NodeList);
           end;
-         until not DoContinue;
-         if Optimized then begin
-          result:=true;
-          continue;
-         end else begin
-          NodeStack.Add(@Node^.Right);
-          NodeEx:=@Node^.Left;
-          continue;
+          if DoContinue then begin
+           continue;
+          end else if not Optimized then begin
+           NodeStack.Add(@Node^.Right);
+           NodeEx:=@Node^.Left;
+           continue;
+          end;
          end;
-        end else if (Node^.Left^.NodeType=ntCAT) and (Node^.Right^.NodeType=ntCAT) then begin
-         pl:=@Node^.Left;
-         l:=Node^.Left;
-         while (assigned(l) and assigned(l^.Left)) and (l^.Left^.NodeType=ntCAT) do begin
-          pl:=@l^.Left;
-          l:=l^.Left;
-         end;
-         pr:=@Node^.Right;
-         r:=Node^.Right;
-         while (assigned(r) and assigned(r^.Left)) and (r^.Left^.NodeType=ntCAT) do begin
-          pr:=@r^.Left;
-          r:=r^.Left;
-         end;
-         if ((assigned(l^.Left) and assigned(l^.Right)) and (assigned(r^.Left) and assigned(r^.Right))) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
-          NodeEx^:=l;
-          pl^:=l^.Right;
-          pr^:=r^.Right;
-          l^.Right:=Node;
-          result:=true;
-          continue;
-         end else begin
-          NodeStack.Add(@Node^.Right);
-          NodeEx:=@Node^.Left;
-          continue;
-         end;
-        end else if AreNodesEqualSafe(Node^.Left,Node^.Right) then begin
-         NodeEx^:=Node^.Left;
-         result:=true;
-         continue;
-        end else if (Node^.Left^.NodeType=ntCHAR) and (Node^.Right^.NodeType=ntCHAR) then begin
-         Node^.NodeType:=ntCHAR;
-         Node^.Value:=NewCharClass(GetCharClass(Node^.Left^.Value)+GetCharClass(Node^.Right^.Value));
-         Node^.Left:=nil;
-         Node^.Right:=nil;
-         result:=true;
-         continue;
         end else begin
          NodeStack.Add(@Node^.Right);
          NodeEx:=@Node^.Left;
          continue;
         end;
-       end else begin
-        NodeStack.Add(@Node^.Right);
-        NodeEx:=@Node^.Left;
-        continue;
        end;
-      end;
-     end;
-    end;
-    break;
-   until false;
-  end;
-(*DoContinue:=true;
-  while DoContinue and (assigned(NodeEx) and assigned(NodeEx^)) do begin
-   DoContinue:=false;
-   Node:=NodeEx^;
-   if assigned(Node) then begin
-    case Node^.NodeType of
-     ntCHAR,ntZEROWIDTH,ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE,ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
-     end;
-     ntPAREN:begin
-      NodeEx:=@Node^.Left;
-      DoContinue:=true;
-     end;
-     ntPLUS:begin
-      if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntPLUS,ntSTAR])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-       NodeEx^:=Node^.Left;
-       DoContinue:=true;
-       result:=true;
-      end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPLUS)) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-       NodeEx^:=Node^.Left;
-       DoContinue:=true;
-       result:=true;
-      end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntSTAR,ntQUEST])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-       NodeEx^:=Node^.Left;
-       NodeEx^^.NodeType:=ntSTAR;
-       DoContinue:=true;
-       result:=true;
-      end else begin
-       NodeEx:=@Node^.Left;
-       DoContinue:=true;
-      end;
-     end;
-     ntSTAR:begin
-      if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-       NodeEx^:=Node^.Left;
-       NodeEx^^.Left^.NodeType:=ntSTAR;
-       DoContinue:=true;
-       result:=true;
-      end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntPLUS,ntQUEST,ntSTAR])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-       NodeEx^:=Node^.Left;
-       NodeEx^^.NodeType:=ntSTAR;
-       DoContinue:=true;
-       result:=true;
-      end else begin
-       if IsStarNullable(Node^.Left) then begin
-        Node^.Left:=StarDenull(Node^.Left);
-        result:=true;
-       end;
-       NodeEx:=@Node^.Left;
-       DoContinue:=true;
-      end;
-     end;
-     ntQUEST:begin
-      if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType=ntQUEST)) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-       NodeEx^:=Node^.Left;
-       DoContinue:=true;
-       result:=true;
-      end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntPAREN)) and (assigned(Node^.Left^.Left) and (Node^.Left^.Left^.NodeType in [ntSTAR,ntPLUS{,ntQUEST}])) and ((Node^.Left^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-       NodeEx^:=Node^.Left;
-       NodeEx^^.Left^.NodeType:=ntSTAR;
-       DoContinue:=true;
-       result:=true;
-      end else if (assigned(Node^.Left) and (Node^.Left^.NodeType=ntQUEST)) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-       NodeEx^:=Node^.Left;
-       DoContinue:=true;
-       result:=true;
-      end else if (assigned(Node^.Left) and (Node^.Left^.NodeType in [ntPLUS,ntSTAR])) and ((Node^.Left^.Value=qkGREEDY) and (Node^.Value=qkGREEDY)) then begin
-       NodeEx^:=Node^.Left;
-       NodeEx^^.NodeType:=ntSTAR;
-       DoContinue:=true;
-       result:=true;
-      end else begin
-       NodeEx:=@Node^.Left;
-       DoContinue:=true;
-      end;
-     end;
-     ntCAT:begin
-      if assigned(Node^.Left) and assigned(Node^.Right) then begin
-       if (Node^.Left^.NodeType=ntZEROWIDTH) and (Node^.Right^.NodeType=ntZEROWIDTH) then begin
-        Node^.Left^.Value:=Node^.Left^.Value or Node^.Right^.Value;
-        NodeEx^:=Node^.Left;
-        DoContinue:=true;
-        result:=true;
-       end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (Node^.Right^.NodeType=ntPLUS)) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
-        NodeEx^:=Node^.Right;
-        DoContinue:=true;
-        result:=true;
-       end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS]) and (Node^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
-        NodeEx^:=Node^.Left;
-        DoContinue:=true;
-        result:=true;
-       end else begin
-        NodeList:=TList.Create;
-        try
-         ParseNodes(NodeList,Node);
-         Optimized:=false;
-         DoContinue:=true;
-         while DoContinue do begin
-          DoContinue:=false;
-          NodeIndex:=NodeList.Count-1;
-          while NodeIndex>0 do begin
-           l:=PFLRENode(NodeList[NodeIndex]);
-           r:=PFLRENode(NodeList[NodeIndex-1]);
-           if (l^.NodeType=ntZEROWIDTH) and (r^.NodeType=ntZEROWIDTH) then begin
-            l^.Value:=l^.Value or r^.Value;
-            NodeList.Delete(NodeIndex-1);
-            if NodeIndex>=NodeList.Count then begin
-             NodeIndex:=NodeList.Count-1;
+       ntALT:begin
+        if assigned(Node^.Left) and assigned(Node^.Right) then begin
+         if AreNodesEqualSafe(Node^.Left,Node^.Right) then begin
+          NodeEx^:=Node^.Left;
+          HasOptimizations:=true;
+          continue;
+         end else if (Node^.Left^.NodeType=ntALT) or (Node^.Right^.NodeType=ntALT) then begin
+          begin
+           // Prefix factoring
+           Optimized:=false;
+           repeat
+            DoContinue:=false;
+            NodeList:=TList.Create;
+            try
+             ParseNodes(NodeList,Node,ntALT);
+             NewNodeList:=TList.Create;
+             try
+              Visited:=TList.Create;
+              try
+               for NodeIndex:=NodeList.Count-1 downto 0 do begin
+                SeedNode:=NodeList[NodeIndex];
+                if Visited.IndexOf(SeedNode)<0 then begin
+                 Visited.Add(SeedNode);
+                 TempNodeList:=TList.Create;
+                 try
+                  TempNodeList.Add(SeedNode);
+                  l:=SeedNode;
+                  while assigned(l) and (l^.NodeType=ntCAT) do begin
+                   l:=l^.Left;
+                  end;
+                  for SubNodeIndex:=NodeIndex-1 downto 0 do begin
+                   TestNode:=NodeList[SubNodeIndex];
+                   if Visited.IndexOf(TestNode)<0 then begin
+                    r:=TestNode;
+                    while assigned(r) and (r^.NodeType=ntCAT) do begin
+                     r:=r^.Left;
+                    end;
+                    if (assigned(l) and assigned(r)) and AreNodesEqualSafe(l,r) then begin
+                     Visited.Add(TestNode);
+                     TempNodeList.Add(TestNode);
+                    end;
+                   end;
+                  end;
+                  if TempNodeList.Count>1 then begin
+                   Prefix:=l;
+                   Alternative:=nil;
+                   for SubNodeIndex:=0 to TempNodeList.Count-1 do begin
+                    TestNode:=TempNodeList[SubNodeIndex];
+                    NodeListLeft:=TList.Create;
+                    try
+                     ParseNodes(NodeListLeft,TestNode,ntCAT);
+                     NodeListLeft.Delete(NodeListLeft.Count-1);
+                     if NodeListLeft.Count>0 then begin
+                      TempNode:=NodeListLeft[NodeListLeft.Count-1];
+                      for NewNodeIndex:=NodeListLeft.Count-2 downto 0 do begin
+                       TempNode:=NewNode(ntCAT,TempNode,NodeListLeft[NewNodeIndex],0);
+                      end;
+                      Alternative:=NewAlt(Alternative,TempNode);
+                     end;
+                    finally
+                     NodeListLeft.Free;
+                    end;
+                   end;
+                   TempNode:=Concat(Prefix,Alternative);
+                   if assigned(TempNode) then begin
+                    NewNodeList.Add(TempNode);
+                   end;
+                   DoContinue:=true;
+                   Optimized:=true;
+                  end else begin
+                   NewNodeList.Add(SeedNode);
+                  end;
+                 finally
+                  TempNodeList.Free;
+                 end;
+                end;
+               end;
+              finally
+               Visited.Free;
+              end;
+              if DoContinue and (NewNodeList.Count>0) then begin
+               NodeEx^:=NewNodeList[0];
+               for NodeIndex:=1 to NewNodeList.Count-1 do begin
+                NodeEx^:=NewNode(ntALT,NodeEx^,NewNodeList[NodeIndex],0);
+               end;
+               Node:=NodeEx^;
+              end;
+             finally
+              NewNodeList.Free;
+             end;
+            finally
+             FreeAndNil(NodeList);
             end;
-            DoContinue:=true;
-            Optimized:=true;
-           end else if ((l^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (r^.NodeType=ntPLUS)) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
-            NodeList.Delete(NodeIndex);
-            if NodeIndex>=NodeList.Count then begin
-             NodeIndex:=NodeList.Count-1;
-            end;
-            DoContinue:=true;
-            Optimized:=true;
-           end else if ((l^.NodeType in [ntSTAR,ntPLUS]) and (r^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
-            NodeList.Delete(NodeIndex-1);
-            if NodeIndex>=NodeList.Count then begin
-             NodeIndex:=NodeList.Count-1;
-            end;
-            DoContinue:=true;
-            Optimized:=true;
-           end else begin
-            dec(NodeIndex);
+           until not DoContinue;
+           if Optimized then begin
+            HasOptimizations:=true;
+            continue;
            end;
           end;
-         end;
-         if Optimized and (NodeList.Count>0) then begin
-          NodeEx^:=NodeList[NodeList.Count-1];
-          for NodeIndex:=NodeList.Count-2 downto 0 do begin
-           NodeEx^:=NewNode(ntCAT,NodeEx^,NodeList[NodeIndex],nil,0);
+          begin
+           // Suffix factoring
+           Optimized:=false;
+           repeat
+            DoContinue:=false;
+            NodeList:=TList.Create;
+            try
+             ParseNodes(NodeList,Node,ntALT);
+             NewNodeList:=TList.Create;
+             try
+              Visited:=TList.Create;
+              try
+               for NodeIndex:=NodeList.Count-1 downto 0 do begin
+                SeedNode:=NodeList[NodeIndex];
+                if Visited.IndexOf(SeedNode)<0 then begin
+                 Visited.Add(SeedNode);
+                 TempNodeList:=TList.Create;
+                 try
+                  TempNodeList.Add(SeedNode);
+                  l:=SeedNode;
+                  while assigned(l) and (l^.NodeType=ntCAT) do begin
+                   l:=l^.Right;
+                  end;
+                  for SubNodeIndex:=NodeIndex-1 downto 0 do begin
+                   TestNode:=NodeList[SubNodeIndex];
+                   if Visited.IndexOf(TestNode)<0 then begin
+                    r:=TestNode;
+                    while assigned(r) and (r^.NodeType=ntCAT) do begin
+                     r:=r^.Right;
+                    end;
+                    if (assigned(l) and assigned(r)) and AreNodesEqualSafe(l,r) then begin
+                     Visited.Add(TestNode);
+                     TempNodeList.Add(TestNode);
+                    end;
+                   end;
+                  end;
+                  if TempNodeList.Count>1 then begin
+                   Suffix:=l;
+                   Alternative:=nil;
+                   for SubNodeIndex:=0 to TempNodeList.Count-1 do begin
+                    TestNode:=TempNodeList[SubNodeIndex];
+                    NodeListLeft:=TList.Create;
+                    try
+                     ParseNodes(NodeListLeft,TestNode,ntCAT);
+                     NodeListLeft.Delete(0);
+                     if NodeListLeft.Count>0 then begin
+                      TempNode:=NodeListLeft[NodeListLeft.Count-1];
+                      for NewNodeIndex:=NodeListLeft.Count-2 downto 0 do begin
+                       TempNode:=NewNode(ntCAT,TempNode,NodeListLeft[NewNodeIndex],0);
+                      end;
+                      Alternative:=NewAlt(Alternative,TempNode);
+                     end;
+                    finally
+                     NodeListLeft.Free;
+                    end;
+                   end;                               
+                   TempNode:=Concat(Alternative,Suffix);
+                   if assigned(TempNode) then begin
+                    NewNodeList.Add(TempNode);
+                   end;
+                   DoContinue:=true;
+                   Optimized:=true;
+                  end else begin
+                   NewNodeList.Add(SeedNode);
+                  end;
+                 finally
+                  TempNodeList.Free;
+                 end;
+                end;
+               end;
+              finally
+               Visited.Free;
+              end;
+              if DoContinue and (NewNodeList.Count>0) then begin
+               NodeEx^:=NewNodeList[0];
+               for NodeIndex:=1 to NewNodeList.Count-1 do begin
+                NodeEx^:=NewNode(ntALT,NodeEx^,NewNodeList[NodeIndex],0);
+               end;
+               Node:=NodeEx^;
+              end;
+             finally
+              NewNodeList.Free;
+             end;
+            finally
+             FreeAndNil(NodeList);
+            end;
+           until not DoContinue;
+           if Optimized then begin
+            HasOptimizations:=true;
+            continue;
+           end;
           end;
-          DoContinue:=true;
-          result:=true;
+          begin
+           NodeStack.Add(@Node^.Right);
+           NodeEx:=@Node^.Left;
+           continue;
+          end;
+         end else if (Node^.Left^.NodeType=ntCAT) and (Node^.Right^.NodeType=ntCAT) then begin
+          pl:=@Node^.Left;
+          l:=Node^.Left;
+          while (assigned(l) and assigned(l^.Left)) and (l^.Left^.NodeType=ntCAT) do begin
+           pl:=@l^.Left;
+           l:=l^.Left;
+          end;
+          pr:=@Node^.Right;
+          r:=Node^.Right;
+          while (assigned(r) and assigned(r^.Left)) and (r^.Left^.NodeType=ntCAT) do begin
+           pr:=@r^.Left;
+           r:=r^.Left;
+          end;
+          if ((assigned(l^.Left) and assigned(l^.Right)) and (assigned(r^.Left) and assigned(r^.Right))) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+           NodeEx^:=l;
+           pl^:=l^.Right;
+           pr^:=r^.Right;
+           l^.Right:=Node;
+           HasOptimizations:=true;
+           continue;
+          end else begin
+           NodeStack.Add(@Node^.Right);
+           NodeEx:=@Node^.Left;
+           continue;
+          end;
+         end else if (Node^.Left^.NodeType=ntCHAR) and (Node^.Right^.NodeType=ntCHAR) then begin
+          Node^.NodeType:=ntCHAR;
+          Node^.Value:=NewCharClass(GetCharClass(Node^.Left^.Value)+GetCharClass(Node^.Right^.Value));
+          Node^.Left:=nil;
+          Node^.Right:=nil;
+          HasOptimizations:=true;
+          continue;
+         end else begin
+          NodeStack.Add(@Node^.Right);
+          NodeEx:=@Node^.Left;
+          continue;
          end;
-        finally
-         FreeAndNil(NodeList);
-        end;
-        if not Optimized then begin
-         if OptimizeNode(@Node^.Right) then begin
-          result:=true;
-         end;
+        end else begin
+         NodeStack.Add(@Node^.Right);
          NodeEx:=@Node^.Left;
-         DoContinue:=true;
+         continue;
         end;
        end;
-      end else begin
-       if assigned(Node^.Left) then begin
-        NodeEx:=@Node^.Left;
-       end else begin
-        NodeEx:=@Node^.Right;
-       end;
-       DoContinue:=true;
       end;
      end;
-     ntALT:begin
-      if assigned(Node^.Left) and assigned(Node^.Right) then begin
-       if (Node^.Left^.NodeType=ntCAT) and (Node^.Right^.NodeType=ntCAT) then begin
-        pl:=@Node^.Left;
-        l:=Node^.Left;
-        while (assigned(l) and assigned(l^.Left)) and (l^.Left^.NodeType=ntCAT) do begin
-         pl:=@l^.Left;
-         l:=l^.Left;
-        end;
-        pr:=@Node^.Right;
-        r:=Node^.Right;
-        while (assigned(r) and assigned(r^.Left)) and (r^.Left^.NodeType=ntCAT) do begin
-         pr:=@r^.Left;
-         r:=r^.Left;
-        end;
-        if ((assigned(l^.Left) and assigned(l^.Right)) and (assigned(r^.Left) and assigned(r^.Right))) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
-         NodeEx^:=l;
-         pl^:=l^.Right;
-         pr^:=r^.Right;
-         l^.Right:=Node;
-         DoContinue:=true;
-         result:=true;
-        end;
-       end else if AreNodesEqualSafe(Node^.Left,Node^.Right) then begin
-        NodeEx^:=Node^.Left;
-        DoContinue:=true;
-        result:=true;
-       end else if (Node^.Left^.NodeType=ntCHAR) and (Node^.Right^.NodeType=ntCHAR) then begin
-        Node^.NodeType:=ntCHAR;
-        Node^.Value:=NewCharClass(GetCharClass(Node^.Left^.Value)+GetCharClass(Node^.Right^.Value));
-        Node^.Left:=nil;
-        Node^.Right:=nil;
-        DoContinue:=true;
-        result:=true;
-       end else begin
-        if OptimizeNode(@Node^.Right) then begin
-         result:=true;
-        end;
-        NodeEx:=@Node^.Left;
-        DoContinue:=true;
-       end;
-      end else begin
-       if assigned(Node^.Left) then begin
-        NodeEx:=@Node^.Left;
-       end else begin
-        NodeEx:=@Node^.Right;
-       end;
-       DoContinue:=true;
-      end;
-     end;
-    end;
+     break;
+    until false;
    end;
-  end;*)
+   if HasOptimizations then begin
+    result:=true;
+   end else begin
+    break;
+   end;
+  until false;
  finally
   NodeStack.Free;
  end;
@@ -10313,7 +10198,7 @@ var SourcePosition,SourceLength:longint;
   TemporaryString:=UTF32CharToUTF8(UnicodeChar);
   try
    for Index:=1 to length(TemporaryString) do begin
-    TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([TemporaryString[Index]]));
+    TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([TemporaryString[Index]]));
     if assigned(result) then begin
      result:=Concat(result,TemporaryNode);
     end else begin
@@ -10329,7 +10214,7 @@ var SourcePosition,SourceLength:longint;
   if (rfUTF8 in Flags) and (UnicodeChar>=$80) then begin
    result:=NewUnicodeChar(UnicodeChar);
   end else if UnicodeChar<=$ff then begin
-   result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))]));
+   result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))]));
   end else begin
    raise EFLRE.Create('Syntax error');
   end;
@@ -10343,13 +10228,13 @@ var SourcePosition,SourceLength:longint;
    if (rfUTF8 in Flags) and ((LowerCaseUnicodeChar>=$80) or (UpperCaseUnicodeChar>=$80)) then begin
     result:=NewAlt(NewCharEx(LowerCaseUnicodeChar),NewCharEx(UpperCaseUnicodeChar));
    end else begin
-    result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
+    result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
    end;
   end else begin
    if (rfUTF8 in Flags) and (UnicodeChar>=$80) then begin
     result:=NewCharEx(UnicodeChar);
    end else begin
-    result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))]));
+    result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))]));
    end;
   end;
  end;
@@ -10438,7 +10323,7 @@ var SourcePosition,SourceLength:longint;
   procedure AddRange(const Lo,Hi:byte);
   var Node:PFLRENode;
   begin
-   Node:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(Lo))..ansichar(byte(Hi))]));
+   Node:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(Lo))..ansichar(byte(Hi))]));
    Add(Node);
   end;
   procedure ProcessRange(Lo,Hi:longword);
@@ -10560,7 +10445,7 @@ var SourcePosition,SourceLength:longint;
      end;
      Range:=Range.Next;
     end;
-    result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(CharClass));
+    result:=NewNode(ntCHAR,nil,nil,NewCharClass(CharClass));
    end;
   end;
  end;
@@ -11168,7 +11053,7 @@ var SourcePosition,SourceLength:longint;
    end;
    GroupIndexIntegerStack.Add(Value);
    try
-    result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+    result:=NewNode(ntPAREN,ParseDisjunction,nil,Value);
    finally
     GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
    end;
@@ -11202,7 +11087,7 @@ var SourcePosition,SourceLength:longint;
    GroupIndexIntegerStack.Add(Value);
    GroupNameStringStack.Add(Name);
    try
-    result:=NewNode(ntPAREN,ParseDisjunction,nil,nil,Value);
+    result:=NewNode(ntPAREN,ParseDisjunction,nil,Value);
    finally
     GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
     GroupNameStringStack.Delete(GroupNameStringStack.Count-1);
@@ -11219,9 +11104,9 @@ var SourcePosition,SourceLength:longint;
    Value:=CountInternalCaptures;
    inc(CountInternalCaptures);
    if rfIGNORECASE in Flags then begin
-    result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,nil,Value);
+    result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,Value);
    end else begin
-    result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
+    result:=NewNode(ntBACKREFERENCE,nil,nil,Value);
    end;
    result^.Group:=Group;
   end;
@@ -11270,9 +11155,9 @@ var SourcePosition,SourceLength:longint;
     Value:=CountInternalCaptures;
     inc(CountInternalCaptures);
     if rfIGNORECASE in Flags then begin
-     result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,nil,Value);
+     result:=NewNode(ntBACKREFERENCEIGNORECASE,nil,nil,Value);
     end else begin
-     result:=NewNode(ntBACKREFERENCE,nil,nil,nil,Value);
+     result:=NewNode(ntBACKREFERENCE,nil,nil,Value);
     end;
     result^.Group:=-1;
     result^.Name:=Name;
@@ -11442,9 +11327,9 @@ var SourcePosition,SourceLength:longint;
             LookAssertionStrings[Value]:=TemporaryString;
            end;
            if Negate then begin
-            result:=NewNode(ntLOOKAHEADNEGATIVE,nil,nil,nil,Value);
+            result:=NewNode(ntLOOKAHEADNEGATIVE,nil,nil,Value);
            end else begin
-            result:=NewNode(ntLOOKAHEADPOSITIVE,nil,nil,nil,Value);
+            result:=NewNode(ntLOOKAHEADPOSITIVE,nil,nil,Value);
            end;
           end;
           '<':begin
@@ -11473,9 +11358,9 @@ var SourcePosition,SourceLength:longint;
              LookAssertionStrings[Value]:=TemporaryString;
             end;
             if Negate then begin
-             result:=NewNode(ntLOOKBEHINDNEGATIVE,nil,nil,nil,Value);
+             result:=NewNode(ntLOOKBEHINDNEGATIVE,nil,nil,Value);
             end else begin
-             result:=NewNode(ntLOOKBEHINDPOSITIVE,nil,nil,nil,Value);
+             result:=NewNode(ntLOOKBEHINDPOSITIVE,nil,nil,Value);
             end;
            end else begin
             Name:='';
@@ -11560,19 +11445,19 @@ var SourcePosition,SourceLength:longint;
           result:=NewBackReferencePerIndex(Value);
          end;
          'b','y':begin
-          result:=NewNode(ntZEROWIDTH,nil,nil,nil,sfEmptyWordBoundary);
+          result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyWordBoundary);
           inc(SourcePosition);
          end;
          'B','Y':begin
-          result:=NewNode(ntZEROWIDTH,nil,nil,nil,sfEmptyNonWordBoundary);
+          result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyNonWordBoundary);
           inc(SourcePosition);
          end;
          'A':begin
-          result:=NewNode(ntZEROWIDTH,nil,nil,nil,sfEmptyBeginText);
+          result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyBeginText);
           inc(SourcePosition);
          end;
          'Z':begin
-          result:=NewNode(ntZEROWIDTH,nil,nil,nil,sfEmptyEndText);
+          result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyEndText);
           inc(SourcePosition);
          end;
          'p':begin
@@ -11725,7 +11610,7 @@ var SourcePosition,SourceLength:longint;
            inc(SourcePosition);
            break;
           end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(['\']));
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass(['\']));
           end;
          end;
          #128..#255:begin
@@ -11739,7 +11624,7 @@ var SourcePosition,SourceLength:longint;
             TemporaryNode:=NewUnicodeChar(UnicodeChar);
            end;
           end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([Source[SourcePosition]]));
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]]));
            inc(SourcePosition);
           end;
          end;
@@ -11748,9 +11633,9 @@ var SourcePosition,SourceLength:longint;
            UnicodeChar:=byte(ansichar(Source[SourcePosition]));
            LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
            UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
           end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([Source[SourcePosition]]));
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]]));
            inc(SourcePosition);
           end;
          end;
@@ -11806,25 +11691,25 @@ var SourcePosition,SourceLength:longint;
         end;
        end else begin
         if rfSINGLELINE in Flags then begin
-         result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass));
+         result:=NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass));
         end else begin
-         result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass-[#10,#13]));
+         result:=NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass-[#10,#13]));
         end;
        end;
       end;
       '^':begin
        if rfMULTILINE in Flags then begin
-        result:=NewNode(ntZEROWIDTH,nil,nil,nil,sfEmptyBeginLine);
+        result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyBeginLine);
        end else begin
-        result:=NewNode(ntZEROWIDTH,nil,nil,nil,sfEmptyBeginText);
+        result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyBeginText);
        end;
        inc(SourcePosition);
       end;
       '$':begin
        if rfMULTILINE in Flags then begin
-        result:=NewNode(ntZEROWIDTH,nil,nil,nil,sfEmptyEndLine);
+        result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyEndLine);
        end else begin
-        result:=NewNode(ntZEROWIDTH,nil,nil,nil,sfEmptyEndText);
+        result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyEndText);
        end;
        inc(SourcePosition);
       end;
@@ -11839,7 +11724,7 @@ var SourcePosition,SourceLength:longint;
          result:=NewUnicodeChar(UnicodeChar);
         end;
        end else begin
-        result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([Source[SourcePosition]]));
+        result:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]]));
         inc(SourcePosition);
        end;
       end;
@@ -11849,9 +11734,9 @@ var SourcePosition,SourceLength:longint;
         inc(SourcePosition);
         LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
         UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-        result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
+        result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
        end else begin
-        result:=NewNode(ntCHAR,nil,nil,nil,NewCharClass([Source[SourcePosition]]));
+        result:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]]));
         inc(SourcePosition);
        end;
       end;
@@ -12062,7 +11947,7 @@ var SourcePosition,SourceLength:longint;
    SkipFreeSpacingWhiteSpace;
    while SourcePosition<=SourceLength do begin
     OldFlags:=Flags;
-    Node:=NewNode(ntMULTIMATCH,ParseDisjunction,nil,nil,CountMultiSubMatches);
+    Node:=NewNode(ntMULTIMATCH,ParseDisjunction,nil,CountMultiSubMatches);
     Flags:=OldFlags;
     inc(CountMultiSubMatches);
     SkipFreeSpacingWhiteSpace;
@@ -12099,23 +11984,24 @@ begin
   GroupNameStringStack:=TStringList.Create;
   try
    if rfMULTIMATCH in Flags then begin
-    AnchoredRootNode:=NewNode(ntPAREN,ParseMultiMatch,nil,nil,0);
+    AnchoredRootNode:=NewNode(ntPAREN,ParseMultiMatch,nil,0);
    end else begin
-    AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,nil,0);
+    AnchoredRootNode:=NewNode(ntPAREN,ParseDisjunction,nil,0);
    end;
   finally
    GroupIndexIntegerStack.Free;
    GroupNameStringStack.Free;
   end;
   FreeUnusedNodes(AnchoredRootNode);
-  while assigned(AnchoredRootNode) and OptimizeNode(@AnchoredRootNode) do begin
-   FreeUnusedNodes(AnchoredRootNode);
+  if assigned(AnchoredRootNode) then begin
+   if OptimizeNode(@AnchoredRootNode) then begin
+    FreeUnusedNodes(AnchoredRootNode);
+   end;
   end;
-  FreeUnusedNodes(AnchoredRootNode);
   if rfLONGEST in Flags then begin
-   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass)),nil,nil,qkGREEDY),AnchoredRootNode,nil,0);
+   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass)),nil,qkGREEDY),AnchoredRootNode,0);
   end else begin
-   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,nil,NewCharClass(AllCharClass)),nil,nil,qkLAZY),AnchoredRootNode,nil,0);
+   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass)),nil,qkLAZY),AnchoredRootNode,0);
   end;
   DFANeedVerification:=false;
   BeginningAnchor:=false;
@@ -12210,15 +12096,13 @@ procedure TFLRE.Compile;
      Node:=StackItem^.Node;
      BackreferenceParentNode:=StackItem^.BackreferenceParentNode;
      Argument:=StackItem^.Argument;
-     if Argument<>0 then begin
-      i0:=StackItem^.i0;
-      i1:=StackItem^.i1;
+     i0:=StackItem^.i0;
+     i1:=StackItem^.i1;
 {$ifndef UseOpcodeJMP}
-      FromIndex:=StackItem^.FromIndex;
-      ToIndex:=StackItem^.ToIndex;
-      OutIndex:=StackItem^.OutIndex;
+     FromIndex:=StackItem^.FromIndex;
+     ToIndex:=StackItem^.ToIndex;
+     OutIndex:=StackItem^.OutIndex;
 {$endif}
-     end;
      if assigned(Node) and ((Argument<>0) or (NodeStack.IndexOf(Node)<0)) then begin
       case Node^.NodeType of
        ntNOP:begin
