@@ -17,7 +17,7 @@ begin
 //FLREInstance:=TFLRE.Create('\d\d\d?[\-\.\ \,\:]\d\d\d?[\-\.\ \,\:]\d\d\d\d?',[rfCASEINSENSITIVE,rfMULTILINE]);
 //  FLREInstance:=TFLRE.Create('\d\d\d{0,1}[\-\.\ \,\:]\d\d\d{0,1}[\-\.\ \,\:]\d\d\d\d{0,1}',[rfMULTILINE]);
 //FLREInstance:=TFLRE.Create('[a-z\dA-Z][a-z0-9-_.]?',[rfMULTILINE]);
-  FLREInstance:=TFLRE.Create('(?<test>[a][bde])*(va\a?)?(hello)?c',[rfCASEINSENSITIVE,rfMULTILINE]);
+  FLREInstance:=TFLRE.Create('(?<test>[a][bde])*(va\a?)?(hello)?c',[rfIGNORECASE,rfMULTILINE]);
   try
    s:='abc abbc advac boom';
    if FLREInstance.MatchAll(s,Captures) then begin
