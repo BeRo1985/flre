@@ -800,7 +800,7 @@ type EFLRE=class(Exception);
 
        PrefixCharClasses:TFLREPrefixCharClasses;
        CountPrefixCharClasses:longint;
-       CountObviousPrefixCharClasses:longint;
+       AveragePrefixCharClassesVariance:longint;
        PrefixPatternBitMasks:TFLRECharPatternBitMasks;
 
        ByteMap:TFLREByteMap;
@@ -13524,7 +13524,7 @@ var CurrentPosition:longint;
    end;
   end;
  end;
-var ThreadIndex,Count,Index:longint;
+var ThreadIndex,Count,TotalCount,Index:longint;
     CurrentThreadList,NewThreadList,TemporaryThreadList:PThreadList;
     CurrentThread:PThread;
     Instruction:PFLREInstruction;
@@ -13616,7 +13616,7 @@ begin
     end;
    end;
 
-   CountObviousPrefixCharClasses:=0;
+   TotalCount:=0;
    for CurrentPosition:=0 to CountPrefixCharClasses-1 do begin
     Count:=0;
     for CurrentChar:=#0 to #255 do begin
@@ -13624,13 +13624,14 @@ begin
       inc(Count);
      end;
     end;
-    if CurrentPosition=0 then begin
-     DFAFastBeginningSearch:=(Count>0) and (Count=1);
-    end;
-    if (Count>0) and (Count<=128) then begin
-     inc(CountObviousPrefixCharClasses);
-    end;
+    inc(TotalCount,Count);
    end;
+   if CountPrefixCharClasses>0 then begin
+    AveragePrefixCharClassesVariance:=(TotalCount+((CountPrefixCharClasses+1) div 2)) div CountPrefixCharClasses;
+   end else begin
+    AveragePrefixCharClassesVariance:=255;
+   end;
+   DFAFastBeginningSearch:=AveragePrefixCharClassesVariance<32;
 
    CompilePrefixPattern;
 
