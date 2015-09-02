@@ -626,7 +626,7 @@ type EFLRE=class(Exception);
      end;
 
      PFLREDFAByteMap=^TFLREDFAByteMap;
-     TFLREDFAByteMap=array[0..256] of word;
+     TFLREDFAByteMap=array[0..256] of longword;
 
      TFLREDFASearchMatch=function(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint of object; {$ifdef cpu386}stdcall;{$endif}
 
@@ -8404,6 +8404,9 @@ begin
 end;
 
 function TFLREDFA.SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint;
+{$ifdef cpu386}
+label ProcessNewStartState,SkipProcessNewStartState,NewStartState;
+{$endif}
 var Position,LocalInputLength,Index,Offset:longint;
     State,LastState:PFLREDFAState;
     LocalInput:pansichar;
@@ -8427,6 +8430,125 @@ begin
  end;
 
  Position:=StartPosition;
+
+{$ifdef cpu386}
+ asm
+
+  NewStartState:
+
+   pushad
+
+   mov ecx,dword ptr UntilExcludingPosition
+   sub ecx,dword ptr Position
+   jz @Done
+   js @Done
+  
+   mov esi,dword ptr LocalInput
+   add esi,dword ptr Position
+
+   mov edx,dword ptr LocalByteMap
+
+   mov edi,dword ptr State
+
+    @Loop:
+
+     movzx eax,byte ptr [esi]
+     inc esi
+
+     mov ebx,dword ptr [edx+eax*4]
+     mov ebx,dword ptr [edi+TFLREDFAState.NextStates+ebx*4]
+     xchg edi,ebx
+     test edi,edi
+     jz @HaveNoNextState
+     @HaveNextState:
+
+     mov ebx,dword ptr [edi+TFLREDFAState.Flags]
+     test ebx,sfDFAMatchWins or sfDFADead or sfDFAStart
+     jnz @CheckFlags
+
+    @BackToLoop:
+    dec ecx
+    jnz @Loop
+    jmp @Done
+
+    @CheckFlags:
+     test ebx,sfDFADead
+     jz @IsNotDFADead
+      cmp dword ptr result,DFAMatch
+      jz @Done
+       mov dword ptr result,DFAFail
+       jmp @Done
+     @IsNotDFADead:
+     test ebx,sfDFAMatchWins
+     jz @IsNotMatchWin
+      push ebx
+      mov eax,esi
+      sub eax,dword ptr LocalInput
+      mov ebx,dword ptr MatchEnd
+      sub eax,2
+      mov dword ptr [ebx],eax
+      mov dword ptr result,DFAMatch
+      pop ebx
+     @IsNotMatchWin:
+     test ebx,sfDFAStart
+     jz @IsNotStartState
+      push ecx
+      push edx
+       dec ecx // because "dec ecx" comes after @BackToLoop first, but "inc esi" already directly after fetching the char byte
+       mov edx,esi
+       mov eax,self
+       mov eax,dword ptr [eax+TFLREDFA.Instance]
+       call TFLRE.SearchNextPossibleStart
+      pop edx
+      pop ecx
+      test eax,eax
+      js @Done
+       add esi,eax
+       sub esi,dword ptr LocalInput
+       mov dword ptr Position,esi
+       popad
+      jmp NewStartState
+     @IsNotStartState:
+     jmp @BackToLoop
+
+    @HaveNoNextState:
+     push ecx
+     push edx
+      push eax // Char
+      mov ecx,esi
+      sub ecx,dword ptr LocalInput
+      dec ecx
+      mov eax,self
+      mov edx,ebx // State
+      call RunStateOnByte
+     pop edx
+     pop ecx
+     mov edi,eax
+     test edi,edi
+     jnz @HaveNextState
+
+     mov dword ptr result,DFAError
+
+    @Done:
+
+   popad
+
+   jmp SkipProcessNewStartState
+ end;
+ ProcessNewStartState:
+   Offset:=Instance.SearchNextPossibleStart(@LocalInput[Position],UntilExcludingPosition-Position);
+   if Offset<0 then begin
+    exit;
+   end;
+   inc(Position,Offset);
+   State:=InitializeStartState(Position,UnanchoredStart);
+   if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
+    MatchEnd:=Position-1;
+    result:=DFAMatch;
+   end;
+  goto NewStartState;
+ SkipProcessNewStartState:
+{$else}
  while Position<UntilExcludingPosition do begin
   CurrentChar:=byte(ansichar(LocalInput[Position]));
   inc(Position);
@@ -8469,6 +8591,7 @@ begin
    end;
   end;
  end;
+{$endif}
 
  Position:=UntilExcludingPosition;
 
