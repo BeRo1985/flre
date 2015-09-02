@@ -14384,36 +14384,37 @@ end;
 
 function TFLRE.SearchNextPossibleStart(const Input:PAnsiChar;const InputLength:longint):longint; {$ifdef cpu386}register;{$endif}
 begin
- result:=0;
- if FixedStringIsWholeRegExp or not BeginningAnchor then begin
+ if CountPrefixCharClasses>0 then begin
   if (CountPrefixCharClasses<=FixedStringLength) and not (rfIGNORECASE in Flags) then begin
    case FixedStringLength of
-    1:begin
-     result:=PtrPosChar(FixedString[1],Input,InputLength,result);
+    1:begin      
+     result:=PtrPosChar(FixedString[1],Input,InputLength,0);
     end;
     2..31:begin
-     result:=PtrPosPattern(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks,result);
+     result:=PtrPosPattern(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks,0);
     end;
     else begin
-     result:=PtrPosBoyerMoore(FixedString,Input,InputLength,FixedStringBoyerMooreSkip,FixedStringBoyerMooreNext,result);
+     result:=PtrPosBoyerMoore(FixedString,Input,InputLength,FixedStringBoyerMooreSkip,FixedStringBoyerMooreNext,0);
     end;
    end;
-  end else if CountPrefixCharClasses>0 then begin
+  end else begin
    case CountPrefixCharClasses of
     1:begin
+     result:=0;
      while (result<InputLength) and not (PAnsiChar(Input)[result] in PrefixCharClasses[0]) do begin
       inc(result);
      end;
+     if result>=InputLength then begin
+      result:=-1;
+     end;
     end;
     else begin
-     result:=PtrPosPattern(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,result);
+     result:=PtrPosPattern(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
     end;
    end;
   end;
-  if (result<0) or (result>=InputLength) then begin
-   result:=-1;
-   exit;
-  end;
+ end else begin
+  result:=0;
  end;
 end;
 
