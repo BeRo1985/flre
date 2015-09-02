@@ -13626,12 +13626,24 @@ begin
     end;
     inc(TotalCount,Count);
    end;
+
    if CountPrefixCharClasses>0 then begin
     AveragePrefixCharClassesVariance:=(TotalCount+((CountPrefixCharClasses+1) div 2)) div CountPrefixCharClasses;
    end else begin
     AveragePrefixCharClassesVariance:=255;
    end;
-   DFAFastBeginningSearch:=AveragePrefixCharClassesVariance<32;
+
+   case CountPrefixCharClasses of
+    0..1:begin
+     DFAFastBeginningSearch:=false;
+    end;
+    2..15:begin
+     DFAFastBeginningSearch:=AveragePrefixCharClassesVariance<(((CountPrefixCharClasses*128)+8) shr 4);
+    end;
+    else begin
+     DFAFastBeginningSearch:=AveragePrefixCharClassesVariance<128;
+    end;
+   end;
 
    CompilePrefixPattern;
 
