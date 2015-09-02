@@ -626,7 +626,7 @@ type EFLRE=class(Exception);
      end;
 
      PFLREDFAByteMap=^TFLREDFAByteMap;
-     TFLREDFAByteMap=array[0..256] of longword;
+     TFLREDFAByteMap=array[0..256] of word;
 
      TFLREDFASearchMatch=function(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint of object; {$ifdef cpu386}stdcall;{$endif}
 
@@ -820,6 +820,7 @@ type EFLRE=class(Exception);
        DFAReady:longbool;
        DFANeedVerification:longbool;
        DFAFast:longbool;
+       DFAFastBeginningSearch:longbool;
 
        BeginningJump:longbool;
        BeginningSplit:longbool;
@@ -831,7 +832,7 @@ type EFLRE=class(Exception);
        HasLookAssertions:longbool;
        HasBackReferences:longbool;
 
-       DoUnanchoredStart:longbool;
+       HaveUnanchoredStart:longbool;
 
        NamedGroupStringList:TStringList;
        NamedGroupStringIntegerPairHashMap:TFLREStringIntegerPairHashMap;
@@ -892,9 +893,9 @@ type EFLRE=class(Exception);
        function AcquireThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
        procedure ReleaseThreadLocalStorageInstance(const ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
 
-       function SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
+       function SearchNextPossibleStart(const Input:PAnsiChar;const InputLength:longint):longint; {$ifdef cpu386}register;{$endif}
 
-       function InternalPtrMatchNext(const ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
+       function SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
 
       public
 
@@ -975,11 +976,13 @@ const MaxGeneration=int64($4000000000000000);
       sfMatchWins=1 shl sfEmptyShift;
       sfCapMask=((1 shl sfRealMaxCap)-1) shl sfRealCapShift;
       sfImpossible=sfEmptyWordBoundary or sfEmptyNonWordBoundary;
-      sfDFAMatchWins=$1000;
-      sfDFALastWord=$2000;
-      sfDFADead=$4000;
-      sfDFAFullMatch=$8000;
+      sfDFAMatchWins=1 shl (sfEmptyShift+0);
+      sfDFALastWord=1 shl (sfEmptyShift+1);
+      sfDFADead=1 shl (sfEmptyShift+2);
+      sfDFAFullMatch=1 shl (sfEmptyShift+3);
+      sfDFAStart=1 shl (sfEmptyShift+4);
       sfDFANeedShift=16;
+      sfDFACacheMask=longword(longword($ffffffff) and not sfDFAStart);
 
       // Default state kind
       dskDead=0;
@@ -3813,7 +3816,7 @@ begin
  if assigned(Key) and (Key.CountInstructions>0) then begin
   result:=HashData(@Key.Instructions[0],Key.CountInstructions*sizeof(PFLREInstruction));
   result:=result xor ((longword(Key.CountInstructions) shr 16) or (longword(Key.CountInstructions) shl 16));
-  result:=result xor ((Key.Flags shl 19) or (Key.Flags shr 13));
+  result:=result xor (((Key.Flags and sfDFACacheMask) shl 19) or ((Key.Flags and sfDFACacheMask) shr 13));
   if result=0 then begin
    result:=$ffffffff;
   end;
@@ -3828,7 +3831,7 @@ begin
  result:=a=b;
  if not result then begin
   if (assigned(a) and assigned(b)) and
-     ((a.CountInstructions=b.CountInstructions) and (a.Flags=b.Flags)) then begin
+     ((a.CountInstructions=b.CountInstructions) and ((a.Flags and sfDFACacheMask)=(b.Flags and sfDFACacheMask))) then begin
    result:=true;
    for i:=0 to a.CountInstructions-1 do begin
     if a.Instructions[i]<>b.Instructions[i] then begin
@@ -6919,7 +6922,7 @@ begin
 
   inc(CurrentPosition);
  end;
- 
+
  if assigned(State) and not Done then begin
   MatchCondition:=State^.MatchCondition;
   if (MatchCondition<>sfImpossible) and
@@ -7340,6 +7343,9 @@ begin
    GetMem(DFAState,StateSize);
    FillChar(DFAState^,StateSize,AnsiChar(#0));
    FastAddInstructionThread(DFAState,Instance.UnanchoredStartInstruction);
+   if Instance.DFAFastBeginningSearch then begin
+    DFAState.Flags:=DFAState.Flags or sfDFAStart;
+   end;
    StateCache.Add(DFAState);
    inc(CountStatesCached);
    DefaultStates[dskFastUnanchored]:=DFAState;
@@ -7684,18 +7690,19 @@ asm
   dec esi
   add esi,dword ptr StartPosition
 
+  mov ecx,dword ptr UntilExcludingPosition
+  sub ecx,dword ptr StartPosition
+  jz @Done
+  js @Done
+
   cmp dword ptr UnanchoredStart,0
   je @AnchoredStart
+  @UnanchoredStart:
    mov edi,dword ptr [edx+TFLREDFA.DefaultStates+dskFastUnanchored*4]
    jmp @AnchoredStartSkip
   @AnchoredStart:
    mov edi,dword ptr [edx+TFLREDFA.DefaultStates+dskFastAnchored*4]
   @AnchoredStartSkip:
-
-  mov ecx,dword ptr UntilExcludingPosition
-  sub ecx,dword ptr StartPosition
-  jz @Done
-  js @Done
 
   mov edx,[edx+TFLREDFA.Instance]
   lea edx,[edx+TFLRE.ByteMap]
@@ -7713,9 +7720,9 @@ asm
     @HaveNextState:
 
     mov ebx,dword ptr [edi+TFLREDFAState.Flags]
-    test ebx,sfDFAMatchWins or sfDFADead
+    test ebx,sfDFAMatchWins or sfDFADead or sfDFAStart
     jnz @CheckFlags
-          
+
    @BackToLoop:
    dec ecx
    jnz @Loop
@@ -7731,17 +7738,36 @@ asm
     @IsNotDFADead:
     test ebx,sfDFAMatchWins
     jz @IsNotMatchWin
+     push ebx
      mov eax,esi
      sub eax,dword ptr StartOffset
      mov ebx,dword ptr MatchEnd
      mov dword ptr [ebx],eax
      mov dword ptr ResultValue,DFAMatch
+     pop ebx
     @IsNotMatchWin:
+    test ebx,sfDFAStart
+    jz @IsNotStartState
+     push ecx
+     push edx
+      dec ecx // because "dec ecx" comes after @BackToLoop first, but "inc esi" already directly after fetching the char byte
+      mov edx,esi
+      mov eax,self
+      mov eax,dword ptr [eax+TFLREDFA.Instance]
+      call TFLRE.SearchNextPossibleStart
+     pop edx
+     pop ecx
+     test eax,eax
+     js @Done
+      add esi,eax
+      sub ecx,eax
+      inc ecx // because "dec ecx" after @BackToLoop
+    @IsNotStartState:
     jmp @BackToLoop
 
    @HaveNoNextState:
     push ecx
-    push edx          
+    push edx
      mov ecx,eax // Char
      mov eax,self
      mov edx,ebx // State
@@ -7763,7 +7789,7 @@ asm
  pop ebx
 end;
 {$else}
-var Position:longint;
+var Position,Offset:longint;
     State,LastState:PFLREDFAState;
     LocalInput:pansichar;
     LocalByteMap:PFLREByteMap;
@@ -7776,17 +7802,19 @@ begin
  end else begin
   State:=DefaultStates[dskFastAnchored];
  end;
- for Position:=StartPosition to UntilExcludingPosition-1 do begin
+ Position:=StartPosition;
+ while Position<UntilExcludingPosition do begin
   LastState:=State;
   State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+  inc(Position);
   if not assigned(State) then begin
-   State:=FastProcessNextState(LastState,LocalInput[Position]);
+   State:=FastProcessNextState(LastState,LocalInput[Position-1]);
    if not assigned(State) then begin
     result:=DFAError;
     exit;
    end;
   end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead))<>0 then begin
+  if (State^.Flags and (sfDFAMatchWins or sfDFADead or sfDFAStart))<>0 then begin
    if (State^.Flags and sfDFADead)<>0 then begin
     if result<>DFAMatch then begin
      result:=DFAFail;
@@ -7794,8 +7822,15 @@ begin
     exit;
    end;
    if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchEnd:=Position;
+    MatchEnd:=Position-1;
     result:=DFAMatch;
+   end;
+   if (State^.Flags and sfDFAStart)<>0 then begin
+    Offset:=Instance.SearchNextPossibleStart(@LocalInput[Position],UntilExcludingPosition-Position);
+    if Offset<0 then begin
+     exit;
+    end;
+    inc(Position,Offset);
    end;
   end;
  end;
@@ -8344,6 +8379,9 @@ begin
   end;
 
   if UnanchoredStart then begin
+   if Instance.DFAFastBeginningSearch then begin
+    Flags:=Flags or sfDFAStart;
+   end;
    StartInstruction:=Instance.UnanchoredStartInstruction;
    inc(Start,sskUnanchored);
   end else begin
@@ -8366,7 +8404,7 @@ begin
 end;
 
 function TFLREDFA.SearchMatchFull(const StartPosition,UntilExcludingPosition:longint;out MatchEnd:longint;const UnanchoredStart:longbool):longint;
-var Position,LocalInputLength,Index:longint;
+var Position,LocalInputLength,Index,Offset:longint;
     State,LastState:PFLREDFAState;
     LocalInput:pansichar;
     Flags,CurrentChar:longword;
@@ -8388,18 +8426,20 @@ begin
   result:=DFAMatch;
  end;
 
- for Position:=StartPosition to UntilExcludingPosition-1 do begin
+ Position:=StartPosition;
+ while Position<UntilExcludingPosition do begin
   CurrentChar:=byte(ansichar(LocalInput[Position]));
+  inc(Position);
   LastState:=State;
   State:=State^.NextStates[LocalByteMap^[CurrentChar]];
   if not assigned(State) then begin
-   State:=RunStateOnByte(LastState,Position,CurrentChar);
+   State:=RunStateOnByte(LastState,Position-1,CurrentChar);
    if not assigned(State) then begin
     result:=DFAError;
     exit;
    end;
   end;
-  if (State^.Flags and (sfDFAMatchWins or sfDFADead or sfDFAFullMatch))<>0 then begin
+  if (State^.Flags and (sfDFAMatchWins or sfDFADead or sfDFAFullMatch or sfDFAStart))<>0 then begin
    if (State^.Flags and sfDFADead)<>0 then begin
     if result<>DFAMatch then begin
      result:=DFAFail;
@@ -8407,13 +8447,25 @@ begin
     exit;
    end;
    if (State^.Flags and sfDFAFullMatch)<>0 then begin
-    MatchEnd:=UntilExcludingPosition-1;
+    MatchEnd:=UntilExcludingPosition-2;
     result:=DFAMatch;
     exit;
    end;
    if (State^.Flags and sfDFAMatchWins)<>0 then begin
-    MatchEnd:=Position-1;
+    MatchEnd:=Position-2;
     result:=DFAMatch;
+   end;
+   if (State^.Flags and sfDFAStart)<>0 then begin
+    Offset:=Instance.SearchNextPossibleStart(@LocalInput[Position],UntilExcludingPosition-Position);
+    if Offset<0 then begin
+     exit;
+    end;
+    inc(Position,Offset);
+    State:=InitializeStartState(Position,UnanchoredStart);
+    if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
+     MatchEnd:=Position-1;
+     result:=DFAMatch;
+    end;
    end;
   end;
  end;
@@ -8938,6 +8990,7 @@ begin
  DFAReady:=false;
  DFANeedVerification:=false;
  DFAFast:=true;
+ DFAFastBeginningSearch:=false;
 
  BeginningJump:=false;
  BeginningSplit:=false;
@@ -9006,7 +9059,7 @@ begin
 
   BeginningWildcardLoop:=BeginningJump and BeginningSplit and BeginningWildcard;
 
-  DoUnanchoredStart:=((FixedStringLength>1) or (CountPrefixCharClasses>1)) and not BeginningAnchor;
+  HaveUnanchoredStart:=not BeginningAnchor;
 
  finally
  end;
@@ -13362,6 +13415,9 @@ begin
       inc(Count);
      end;
     end;
+    if CurrentPosition=0 then begin
+     DFAFastBeginningSearch:=(Count>0) and (Count=1);
+    end;
     if (Count>0) and (Count<=128) then begin
      inc(CountObviousPrefixCharClasses);
     end;
@@ -14203,10 +14259,81 @@ begin
  end;
 end;
 
-function TFLRE.SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
-var MatchBegin,MatchEnd:longint;
+function TFLRE.SearchNextPossibleStart(const Input:PAnsiChar;const InputLength:longint):longint; {$ifdef cpu386}register;{$endif}
 begin
- result:=false;
+ result:=0;
+ if FixedStringIsWholeRegExp or not BeginningAnchor then begin
+  if (CountPrefixCharClasses<=FixedStringLength) and not (rfIGNORECASE in Flags) then begin
+   case FixedStringLength of
+    1:begin
+     result:=PtrPosChar(FixedString[1],Input,InputLength,result);
+    end;
+    2..31:begin
+     result:=PtrPosPattern(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks,result);
+    end;
+    else begin
+     result:=PtrPosBoyerMoore(FixedString,Input,InputLength,FixedStringBoyerMooreSkip,FixedStringBoyerMooreNext,result);
+    end;
+   end;
+  end else if CountPrefixCharClasses>0 then begin
+   case CountPrefixCharClasses of
+    1:begin
+     while (result<InputLength) and not (PAnsiChar(Input)[result] in PrefixCharClasses[0]) do begin
+      inc(result);
+     end;
+    end;
+    else begin
+     result:=PtrPosPattern(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,result);
+    end;
+   end;
+  end;
+  if (result<0) or (result>=InputLength) then begin
+   result:=-1;
+   exit;
+  end;
+ end;
+end;
+
+function TFLRE.SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
+var MatchBegin,MatchEnd,Offset,Len:longint;
+begin
+
+ // Check the start position
+ if (StartPosition<0) and (StartPosition>=UntilExcludingPosition) then begin
+  result:=false;
+  exit;
+ end;
+
+ // First try to find the next possible match start with heuristic magic and so on
+ if CountPrefixCharClasses>0 then begin
+  Len:=UntilExcludingPosition-StartPosition;
+  if FixedStringIsWholeRegExp and not UnanchoredStart then begin
+   if Len>=FixedStringLength then begin
+    Len:=FixedStringLength;
+   end else begin
+    result:=false;
+    exit;
+   end;
+  end;
+  Offset:=SearchNextPossibleStart(@PAnsiChar(ThreadLocalStorageInstance.Input)[StartPosition],Len);
+  if Offset<0 then begin
+   result:=false;
+   exit;
+  end else begin
+   inc(StartPosition,Offset);
+   if (StartPosition<>0) and not UnanchoredStart then begin
+    result:=false;
+    exit;
+   end else if FixedStringIsWholeRegExp and (CountCaptures<2) then begin
+    Captures[0].Start:=StartPosition;
+    Captures[0].Length:=FixedStringLength;
+    result:=true;
+    exit;
+   end;
+  end;
+ end;
+
+ // Then try DFA
  if DFAReady then begin
   ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
   case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
@@ -14251,15 +14378,17 @@ begin
     exit;
    end;
    else {DFAError:}begin
-    // Internal error?
-{$ifdef debug}
-    Assert(false,'Internal error in DFA code');
-{$endif}
+    // Argh, a DFA internal error is happen => fallback to NFA
    end;
   end;
  end;
+
+ // Then the NFA stuff
  if OnePassNFAReady and not UnanchoredStart then begin
-  result:=ThreadLocalStorageInstance.OnePassNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition);
+  if ThreadLocalStorageInstance.OnePassNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition) then begin
+   result:=true;
+   exit;
+  end;
  end else begin
   if BitStateNFAReady then begin
    case ThreadLocalStorageInstance.BitStateNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
@@ -14275,8 +14404,14 @@ begin
     end;*)
    end;
   end;
-  result:=ThreadLocalStorageInstance.ParallelNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart);
+  if ThreadLocalStorageInstance.ParallelNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) then begin
+   result:=true;
+   exit;
+  end;
  end;
+
+ result:=false;
+
 end;
 
 function TFLRE.PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
@@ -14312,60 +14447,6 @@ begin
  end;
 end;
 
-function TFLRE.InternalPtrMatchNext(const ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
-var CurrentPosition:longint;
-begin
- result:=false;
- CurrentPosition:=StartPosition;
- if (CurrentPosition>=0) and (CurrentPosition<InputLength) then begin
-  repeat
-   if FixedStringIsWholeRegExp or not BeginningAnchor then begin
-    if (CountPrefixCharClasses<=FixedStringLength) and not (rfIGNORECASE in Flags) then begin
-     case FixedStringLength of
-      1:begin
-       CurrentPosition:=PtrPosChar(FixedString[1],Input,InputLength,CurrentPosition);
-      end;
-      2..31:begin
-       CurrentPosition:=PtrPosPattern(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks,CurrentPosition);
-      end;
-      else begin
-       CurrentPosition:=PtrPosBoyerMoore(FixedString,Input,InputLength,FixedStringBoyerMooreSkip,FixedStringBoyerMooreNext,CurrentPosition);
-      end;
-     end;
-     if (CurrentPosition<0) or (CurrentPosition>=InputLength) or (BeginningAnchor and (CurrentPosition<>0)) then begin
-      exit;
-     end;
-     if FixedStringIsWholeRegExp and (CountCaptures=1) and not DFANeedVerification then begin
-      Captures[0].Start:=CurrentPosition;
-      Captures[0].Length:=FixedStringLength;
-      result:=true;
-      break;
-     end;
-    end else if CountPrefixCharClasses>0 then begin
-     case CountPrefixCharClasses of
-      1:begin
-       while (CurrentPosition<InputLength) and not (PAnsiChar(Input)[CurrentPosition] in PrefixCharClasses[0]) do begin
-        inc(CurrentPosition);
-       end;
-      end;
-      else begin
-       CurrentPosition:=PtrPosPattern(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,CurrentPosition);
-      end;
-     end;
-     if (CurrentPosition<0) or (CurrentPosition>=InputLength) or (BeginningAnchor and (CurrentPosition<>0)) then begin
-      break;
-     end;
-    end;
-   end;
-   if SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,DoUnanchoredStart) then begin
-    result:=true;
-    break;
-   end;
-   inc(CurrentPosition);
-  until (CurrentPosition>=InputLength) or (BeginningWildcardLoop or BeginningAnchor or DoUnanchoredStart);
- end;
-end;
-
 function TFLRE.PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
 var ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
     Index,Count:longint;
@@ -14384,7 +14465,7 @@ begin
     Count:=CountCaptures;
    end;
    SetLength(Captures,Count);
-   result:=InternalPtrMatchNext(ThreadLocalStorageInstance,Input,InputLength,Captures,StartPosition);
+   result:=SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,HaveUnanchoredStart);
    if result and (rfMULTIMATCH in Flags) then begin
     for Index:=0 to CountMultiSubMatches-1 do begin
      Captures[Index+1].Start:=Index;
@@ -14429,7 +14510,7 @@ begin
     end;
     SetLength(MultiCaptures,16,Count);
     SetLength(MatchResult,Count);
-    while (CurrentPosition<InputLength) and (Limit<>0) and InternalPtrMatchNext(ThreadLocalStorageInstance,Input,InputLength,MatchResult,CurrentPosition) do begin
+    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,MatchResult,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
      Next:=CurrentPosition+1;
      CurrentPosition:=MatchResult[0].Start+MatchResult[0].Length;
      if CurrentPosition<Next then begin
@@ -14493,7 +14574,7 @@ begin
     ThreadLocalStorageInstance.Input:=Input;
     ThreadLocalStorageInstance.InputLength:=InputLength;
     SetLength(Captures,CountCaptures);
-    while (CurrentPosition<InputLength) and (Limit<>0) and InternalPtrMatchNext(ThreadLocalStorageInstance,Input,InputLength,Captures,CurrentPosition) do begin
+    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
      Next:=CurrentPosition+1;
      if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
       CurrentPosition:=Captures[0].Start+Captures[0].Length;
