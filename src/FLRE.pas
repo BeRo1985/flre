@@ -7656,6 +7656,8 @@ begin
   end;
  end;
 
+ HadReset:=false;
+
  // Dead state? If yes, ...
  if NewState.CountInstructions=0 then begin
   // ... drop it and take the dead state as the next state
@@ -7665,8 +7667,10 @@ begin
   result:=CacheState(@NewState);
  end;
 
- // Connect the last state to the new state with the current char
- State.NextStates[Instance.ByteMap[byte(ansichar(CurrentChar))]]:=result;
+ if not HadReset then begin
+  // Connect the last state to the new state with the current char
+  State.NextStates[Instance.ByteMap[byte(ansichar(CurrentChar))]]:=result;
+ end;
 
 end;
 

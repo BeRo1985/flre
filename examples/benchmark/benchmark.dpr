@@ -100,21 +100,21 @@ const BenchmarkCount=1;
 
 var i,j:integer;
     s:ansistring;
-    sl:TFileStream;
+    FileStream:TFileStream;
     FLREInstance:TFLRE;
-    t1,t2:int64;
+    StartTime,EndTime:int64;
     Captures:TFLREMultiCaptures;
     HighResolutionTimer:THighResolutionTimer;
 begin
  HighResolutionTimer:=THighResolutionTimer.Create;
  try
 
-  sl:=TFileStream.Create('mtent12.txt',fmOpenRead);
+  FileStream:=TFileStream.Create('mtent12.txt',fmOpenRead);
   try
-   SetLength(s,sl.Size);
-   sl.Read(s[1],sl.Size);
+   SetLength(s,FileStream.Size);
+   FileStream.Read(s[1],FileStream.Size);
   finally
-   sl.Free;
+   FileStream.Free;
   end;
 
   writeln(' ':50,'      Time     | Match count');
@@ -123,18 +123,18 @@ begin
   writeln('FLRE:');
   for i:=low(BenchmarkPatterns) to high(BenchmarkPatterns) do begin
    try
-    FLREInstance:=TFLRE.Create(BenchmarkPatterns[i],[{rfNAMED}]);
-//  FLREInstance.MaximalDFAStates:=65536;
+    FLREInstance:=TFLRE.Create(BenchmarkPatterns[i],[]);
+    FLREInstance.MaximalDFAStates:=65536;
     try
      write('/'+BenchmarkPatterns[i]+'/ : ':50,'Please wait... ');
-     t1:=HighResolutionTimer.GetTime;
+     StartTime:=HighResolutionTimer.GetTime;
      for j:=1 to BenchmarkCount do begin
       FLREInstance.MatchAll(s,Captures);
      end;
-     t2:=HighResolutionTimer.GetTime;
+     EndTime:=HighResolutionTimer.GetTime;
      write(#8#8#8#8#8#8#8#8#8#8#8#8#8#8#8);
-     writeln((HighResolutionTimer.ToMilliSeconds(t2-t1) div BenchmarkCount):11,' ms |',length(Captures):12);
-     //writeln(FLREInstance.DumpRegularExpression);
+     writeln((HighResolutionTimer.ToMicroSeconds(EndTime-StartTime) div BenchmarkCount)/1000.0:11:2,' ms |',length(Captures):12);
+//   writeln(FLREInstance.DumpRegularExpression);
     finally
      SetLength(Captures,0);
      FLREInstance.Free;
@@ -149,6 +149,9 @@ begin
  finally
   HighResolutionTimer.Free;
  end;
+ writeln;
+ writeln('Done!');
+ writeln;
 {$ifndef fpc}
  if DebugHook<>0 then begin
   readln;
