@@ -14568,7 +14568,7 @@ begin
    if (StartPosition<>0) and not UnanchoredStart then begin
     result:=false;
     exit;
-   end else if FixedStringIsWholeRegExp and (CountCaptures<2) then begin
+   end else if FixedStringIsWholeRegExp and (CountCaptures<2) and (CountPrefixCharClasses<=FixedStringLength) and not (rfIGNORECASE in Flags) then begin
     Captures[0].Start:=StartPosition;
     Captures[0].Length:=FixedStringLength;
     result:=true;
