@@ -895,6 +895,8 @@ type EFLRE=class(Exception);
 
        function SearchNextPossibleStart(const Input:PAnsiChar;const InputLength:longint):longint; {$ifdef cpu386}register;{$endif}
 
+       function SearchNextPossibleStartForDFA(const Input:PAnsiChar;const InputLength:longint):longint; {$ifdef cpu386}register;{$endif}
+
        function SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:longint;UnanchoredStart:boolean):boolean;
 
       public
@@ -3354,73 +3356,67 @@ begin
  end;
 end;
 
-function PtrPosPattern(PatternLength:longint;const Text:pansichar;TextLength:longint;const PatternBitMasks:TFLRECharPatternBitMasks;Position:longint=0):longint;
+function PtrPosPatternCharClass(const Text:pansichar;TextLength:longint;const PatternCharClass:TFLRECharClass;Position:longint=0):longint; {$ifdef cpu386}register{$endif}
+var Index:longint;
+begin
+ for Index:=Position to TextLength-1 do begin
+  if Text[Index] in PatternCharClass then begin
+   result:=Index;
+   exit;
+  end;
+ end;
+ result:=-1;
+end;
+
+function PtrPosPatternSBNDMQ1(PatternLength:longint;const Text:pansichar;TextLength:longint;const PatternBitMasks:TFLRECharPatternBitMasks;Position:longint=0):longint;
 var CheckPosition:longint;
     State:longword;
 begin
- if PatternLength>TextLength then begin
-  PatternLength:=TextLength;
+ inc(Position,PatternLength-1);
+ while Position<TextLength do begin
+  State:=PatternBitMasks[Text[Position]];
+  if State<>0 then begin
+   CheckPosition:=Position-PatternLength;
+   repeat
+    dec(Position);
+    if Position<0 then begin
+     break;
+    end;
+    State:=(State shr 1) and PatternBitMasks[Text[Position]];
+   until State=0;
+   if Position=CheckPosition then begin
+    result:=CheckPosition+1;
+    exit;
+   end;
+  end;
+  inc(Position,PatternLength);
  end;
- case PatternLength of
-  0:begin
-   // Nothing
-  end;
-  1:begin
-   // Naive single char class set search
-   while Position<TextLength do begin
-    if PatternBitMasks[Text[Position]]<>0 then begin
-     result:=Position;
-     exit;
-    end else begin
-     inc(Position);
+ result:=-1;
+end;
+
+function PtrPosPatternSBNDMQ2(PatternLength:longint;const Text:pansichar;TextLength:longint;const PatternBitMasks:TFLRECharPatternBitMasks;Position:longint=0):longint;
+var CheckPosition:longint;
+    State:longword;
+begin
+ inc(Position,PatternLength-2);
+ dec(TextLength);
+ while Position<TextLength do begin
+  State:=(PatternBitMasks[Text[Position+1]] shr 1) and PatternBitMasks[Text[Position]];
+  if State<>0 then begin
+   CheckPosition:=Position-(PatternLength-1);
+   repeat
+    dec(Position);
+    if Position<0 then begin
+     break;
     end;
+    State:=(State shr 1) and PatternBitMasks[Text[Position]];
+   until State=0;
+   if Position=CheckPosition then begin
+    result:=CheckPosition+1;
+    exit;
    end;
   end;
-  2:begin
-   // SBNDMQ1
-   inc(Position,PatternLength-1);
-   while Position<TextLength do begin
-    State:=PatternBitMasks[Text[Position]];
-    if State<>0 then begin
-     CheckPosition:=Position-PatternLength;
-     repeat
-      dec(Position);
-      if Position<0 then begin
-       break;
-      end;
-      State:=(State shr 1) and PatternBitMasks[Text[Position]];
-     until State=0;
-     if Position=CheckPosition then begin
-      result:=CheckPosition+1;
-      exit;
-     end;
-    end;
-    inc(Position,PatternLength);
-   end;
-  end;
-  else begin
-   // SBNDMQ2
-   inc(Position,PatternLength-2);
-   dec(TextLength);
-   while Position<TextLength do begin
-    State:=(PatternBitMasks[Text[Position+1]] shr 1) and PatternBitMasks[Text[Position]];
-    if State<>0 then begin
-     CheckPosition:=Position-(PatternLength-1);
-     repeat
-      dec(Position);
-      if Position<0 then begin
-       break;
-      end;
-      State:=(State shr 1) and PatternBitMasks[Text[Position]];
-     until State=0;
-     if Position=CheckPosition then begin
-      result:=CheckPosition+1;
-      exit;
-     end;
-    end;
-    inc(Position,PatternLength-1);
-   end;
-  end;
+  inc(Position,PatternLength-1);
  end;
  result:=-1;
 end;
@@ -7754,7 +7750,7 @@ asm
       mov edx,esi
       mov eax,self
       mov eax,dword ptr [eax+TFLREDFA.Instance]
-      call TFLRE.SearchNextPossibleStart
+      call TFLRE.SearchNextPossibleStartForDFA
      pop edx
      pop ecx
      test eax,eax
@@ -7826,7 +7822,7 @@ begin
     result:=DFAMatch;
    end;
    if (State^.Flags and sfDFAStart)<>0 then begin
-    Offset:=Instance.SearchNextPossibleStart(@LocalInput[Position],UntilExcludingPosition-Position);
+    Offset:=Instance.SearchNextPossibleStartForDFA(@LocalInput[Position],UntilExcludingPosition-Position);
     if Offset<0 then begin
      exit;
     end;
@@ -8528,7 +8524,7 @@ begin
    jmp SkipProcessNewStartState
  end;
  ProcessNewStartState:
-   Offset:=Instance.SearchNextPossibleStart(@LocalInput[Position],UntilExcludingPosition-Position);
+   Offset:=Instance.SearchNextPossibleStartForDFA(@LocalInput[Position],UntilExcludingPosition-Position);
    if Offset<0 then begin
     exit;
    end;
@@ -8570,7 +8566,7 @@ begin
     result:=DFAMatch;
    end;
    if (State^.Flags and sfDFAStart)<>0 then begin
-    Offset:=Instance.SearchNextPossibleStart(@LocalInput[Position],UntilExcludingPosition-Position);
+    Offset:=Instance.SearchNextPossibleStartForDFA(@LocalInput[Position],UntilExcludingPosition-Position);
     if Offset<0 then begin
      exit;
     end;
@@ -13634,10 +13630,11 @@ begin
    end;
 
    case CountPrefixCharClasses of
-    0..1:begin
+    0..2:begin
+     // For so short prefixes it would be overkill in the most cases, and SBNDMQ2 do need a prefix pattern of length 3 at least 
      DFAFastBeginningSearch:=false;
     end;
-    2..15:begin
+    3..15:begin
      DFAFastBeginningSearch:=AveragePrefixCharClassesVariance<(((CountPrefixCharClasses*128)+8) shr 4);
     end;
     else begin
@@ -14486,11 +14483,17 @@ begin
  if CountPrefixCharClasses>0 then begin
   if (CountPrefixCharClasses<=FixedStringLength) and not (rfIGNORECASE in Flags) then begin
    case FixedStringLength of
-    1:begin      
+    0:begin
+     result:=0;
+    end;
+    1:begin
      result:=PtrPosChar(FixedString[1],Input,InputLength,0);
     end;
-    2..31:begin
-     result:=PtrPosPattern(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks,0);
+    2:begin
+     result:=PtrPosPatternSBNDMQ1(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks,0);
+    end;
+    3..31:begin
+     result:=PtrPosPatternSBNDMQ2(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks,0);
     end;
     else begin
      result:=PtrPosBoyerMoore(FixedString,Input,InputLength,FixedStringBoyerMooreSkip,FixedStringBoyerMooreNext,0);
@@ -14498,22 +14501,40 @@ begin
    end;
   end else begin
    case CountPrefixCharClasses of
-    1:begin
+    0:begin
      result:=0;
-     while (result<InputLength) and not (PAnsiChar(Input)[result] in PrefixCharClasses[0]) do begin
-      inc(result);
-     end;
-     if result>=InputLength then begin
-      result:=-1;
-     end;
+    end;
+    1:begin
+     result:=PtrPosPatternCharClass(Input,InputLength,PrefixCharClasses[0],0);
+    end;
+    2:begin
+     result:=PtrPosPatternSBNDMQ1(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
     end;
     else begin
-     result:=PtrPosPattern(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
+     result:=PtrPosPatternSBNDMQ2(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
     end;
    end;
   end;
  end else begin
   result:=0;
+ end;
+end;
+
+function TFLRE.SearchNextPossibleStartForDFA(const Input:PAnsiChar;const InputLength:longint):longint; {$ifdef cpu386}register;{$endif}
+begin
+ case CountPrefixCharClasses of
+  0:begin
+   result:=0;
+  end;
+  1:begin
+   result:=PtrPosPatternCharClass(Input,InputLength,PrefixCharClasses[0],0);
+  end;
+  2:begin
+   result:=PtrPosPatternSBNDMQ1(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
+  end;
+  else begin
+   result:=PtrPosPatternSBNDMQ2(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
+  end;
  end;
 end;
 
