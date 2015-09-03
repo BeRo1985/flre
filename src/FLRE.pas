@@ -747,7 +747,6 @@ type EFLRE=class(Exception);
        constructor Create(AInstance:TFLRE);
        destructor Destroy; override;
        function GetSatisfyFlags(const Position:longint):longword;
-       function GetDFAStartFlags(const Position:longint):longword;
        function LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
        function BackReferenceAssertion(const CaptureStart,CaptureEnd,BackReferenceStart,BackReferenceEnd:longint;const IgnoreCase:boolean):boolean;
      end;
@@ -830,6 +829,9 @@ type EFLRE=class(Exception);
        BeginningAnchor:longbool;
        EndingAnchor:longbool;
        BeginningWildcardLoop:longbool;
+
+       HasWordBoundaries:longbool;
+       HasNewLineAssertions:longbool;
 
        HasLookAssertions:longbool;
        HasBackReferences:longbool;
@@ -8223,9 +8225,9 @@ begin
  StateToWorkQueue(State,Queues[0]);
 
  // Fetch flags
- NeedFlags:=State.Flags shr sfDFANeedShift;
+ NeedFlags:=(State.Flags and sfDFACacheMask) shr sfDFANeedShift;
  BeforeFlags:=State.Flags and sfEmptyAllFlags;
- OldBeforeFlags:=BeforeFlags;
+ OldBeforeFlags:=BeforeFlags and sfDFACacheMask;
  AfterFlags:=0;
 
  // Calculate flags
@@ -8253,6 +8255,11 @@ begin
   BeforeFlags:=BeforeFlags or (sfEmptyEndLine or sfEmptyEndText);
   AfterFlags:=AfterFlags or (sfEmptyBeginLine or sfEmptyBeginText);
  end;
+
+{if not Reversed then begin
+  writeln(' ',((State.Flags and sfDFALastWord)<>0)=IsWordChar,' ',(State.Flags and sfDFALastWord)<>0,' ',IsWordChar);
+ end;{}
+
  if ((State.Flags and sfDFALastWord)<>0)=IsWordChar then begin
   BeforeFlags:=BeforeFlags or sfEmptyNonWordBoundary;
  end else begin
@@ -8378,6 +8385,7 @@ begin
 
   if UnanchoredStart then begin
    if Instance.DFAFastBeginningSearch then begin
+
     Flags:=Flags or sfDFAStart;
    end;
    StartInstruction:=Instance.UnanchoredStartInstruction;
@@ -8543,6 +8551,7 @@ begin
   CurrentChar:=byte(ansichar(LocalInput[Position]));
   inc(Position);
   LastState:=State;
+//write(chr(CurrentChar),' ',LocalByteMap^[CurrentChar],' ');
   State:=State^.NextStates[LocalByteMap^[CurrentChar]];
   if not assigned(State) then begin
    State:=RunStateOnByte(LastState,Position-1,CurrentChar);
@@ -8550,6 +8559,8 @@ begin
     result:=DFAError;
     exit;
    end;
+{ end else begin
+   writeln(' cached');{}
   end;
   if (State^.Flags and (sfDFAMatchWins or sfDFADead or sfDFAFullMatch or sfDFAStart))<>0 then begin
    if (State^.Flags and sfDFADead)<>0 then begin
@@ -8565,6 +8576,7 @@ begin
    end;
    if (State^.Flags and sfDFAMatchWins)<>0 then begin
     MatchEnd:=Position-2;
+//  writeln('Match: ',LocalInput[Position-2],LocalInput[Position-1]);
     result:=DFAMatch;
    end;
    if (State^.Flags and sfDFAStart)<>0 then begin
@@ -8945,11 +8957,6 @@ begin
  end;
 end;
 
-function TFLREThreadLocalStorageInstance.GetDFAStartFlags(const Position:longint):longword;
-begin
- result:=GetSatisfyFlags(Position);
-end;
-
 function TFLREThreadLocalStorageInstance.LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
 var Index,LookAssertionStringLength,BasePosition:longint;
     LookAssertionString:ansistring;
@@ -9204,6 +9211,9 @@ begin
  BeginningWildCard:=false;
  BeginningAnchor:=false;
  EndingAnchor:=false;
+
+ HasWordBoundaries:=false;
+ HasNewLineAssertions:=false;
 
  HasLookAssertions:=false;
  HasBackReferences:=false;
@@ -12316,6 +12326,8 @@ begin
   DFANeedVerification:=false;
   BeginningAnchor:=false;
   EndingAnchor:=false;
+  HasWordBoundaries:=false;
+  HasNewLineAssertions:=false;
   HasLookAssertions:=false;
   HasBackReferences:=false;
   for Counter:=0 to Nodes.Count-1 do begin
@@ -12329,9 +12341,17 @@ begin
      DFAFast:=false;
      if (Node^.Value and sfEmptyBeginText)<>0 then begin
       BeginningAnchor:=true;
+      HasNewLineAssertions:=true;
      end;
      if (Node^.Value and sfEmptyEndText)<>0 then begin
       EndingAnchor:=true;
+      HasNewLineAssertions:=true;
+     end;
+     if (Node^.Value and (sfEmptyBeginLine or sfEmptyEndLine))<>0 then begin
+      HasNewLineAssertions:=true;
+     end;
+     if (Node^.Value and (sfEmptyWordBoundary or sfEmptyNonWordBoundary))<>0 then begin
+      HasWordBoundaries:=true;
      end;
     end;
     ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE:begin
@@ -13654,40 +13674,72 @@ end;
 
 procedure TFLRE.CompileByteMapForOnePassNFAAndDFA;
 var Node:PFLRENode;
-    i,j,ByteCount:longint;
+    i,ByteCount:longint;
+    CurrentChar:ansichar;
     CharSetMap:TFLRECharClass;
-    CharClass:TFLRECharClass;
-    c:ansichar;
+    CharClass,NodeCharClass:TFLRECharClass;
+    NewLines,Words:boolean;
 begin
+ NewLines:=false;
+ Words:=false;
  FillChar(ByteMap,SizeOf(TFLREByteMap),#0);
  FillChar(UnByteMap,SizeOf(TFLREByteMap),#0);
  ByteCount:=0;
  CharSetMap:=[];
+ CharClass:=[];
  for i:=0 to Nodes.Count-1 do begin
   Node:=Nodes[i];
   if assigned(Node) then begin
    case Node^.NodeType of
+    ntZEROWIDTH:begin
+     if (Node^.Value and (sfEmptyBeginLine or sfEmptyEndLine))<>0 then begin
+      NewLines:=true;
+     end;
+     if (Node^.Value and (sfEmptyWordBoundary or sfEmptyNonWordBoundary))<>0 then begin
+      Words:=true;
+     end;
+    end;
     ntCHAR:begin
-     CharClass:=GetCharClass(Node^.Value);
-     if CharClass<>AllCharClass then begin
-      for j:=0 to 255 do begin
-       c:=ansichar(byte(j));
-       if (c in CharClass) and not (c in CharSetMap) then begin
-        System.Include(CharSetMap,c);
-        ByteMap[byte(c)]:=ByteCount;
-        UnByteMap[ByteCount]:=byte(c);
-        inc(ByteCount);
-       end;
-      end;
+     NodeCharClass:=GetCharClass(Node^.Value);
+     if NodeCharClass<>AllCharClass then begin
+      CharClass:=CharClass+NodeCharClass;
      end;
     end;
    end;
   end;
  end;
+ if NewLines or Words then begin
+  if NewLines then begin
+   CharClass:=CharClass+[#$0a,#$0d];
+   if rfUTF8 in Flags then begin
+    CharClass:=CharClass+(([#$c2,#$85]{U+0085})+
+                          ([#$e2,#$80,#$a8]{U+2028 LINE SEPARATOR})+
+                          ([#$e2,#$80,#$a9]{U+2029 PARAGRAPH SEPARATOR}));
+   end else begin
+    CharClass:=CharClass+[#$85];
+   end;
+  end;
+  if Words then begin
+   CharClass:=CharClass+['a'..'z','A'..'Z','0'..'9','_'];
+   if rfUTF8 in Flags then begin
+    CharClass:=CharClass+[#$80..#$ff];
+   end;
+  end;
+ end;
+ if CharClass<>[] then begin
+  for CurrentChar:=#0 to #255 do begin
+   if (CurrentChar in CharClass) and not (CurrentChar in CharSetMap) then begin
+    System.Include(CharSetMap,CurrentChar);
+    ByteMap[byte(ansichar(CurrentChar))]:=ByteCount;
+    UnByteMap[ByteCount]:=byte(ansichar(CurrentChar));
+    inc(ByteCount);
+   end;
+  end;
+ end;
  if ByteCount<256 then begin
-  for i:=0 to 255 do begin
-   if ansichar(byte(i)) in CharSetMap then begin
-    inc(ByteMap[i]);
+  for CurrentChar:=#0 to #255 do begin
+   if CurrentChar in CharSetMap then begin
+    inc(ByteMap[byte(ansichar(CurrentChar))]);
    end;
   end;
   inc(ByteCount);
