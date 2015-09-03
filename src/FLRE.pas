@@ -14596,7 +14596,7 @@ begin
         result:=true;
         exit;
        end else begin
-        // Otherwise if we have group captures or if we do need verify the found, set the new start position *NFA algorithms
+        // Otherwise if we have group captures or if we do need verify the found, set the new start position for the *NFA algorithms
         StartPosition:=MatchBegin;
         UnanchoredStart:=false;
        end;
