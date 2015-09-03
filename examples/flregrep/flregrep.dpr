@@ -89,13 +89,32 @@ begin
  end;
 end;
 
+function GetFileList(const Filter:ansistring):TStringList;
+var SearchRec:TSearchRec;
+    r:longint;
+    Flags:longword;
+begin
+ result:=TStringList.Create;
+ try
+  Flags:=faAnyFile and not (faDirectory or faVolumeID);
+  r:=FindFirst(Filter,Flags,SearchRec);
+  while r=0 do begin
+   result.Add(AnsiString(SearchRec.Name));
+   R:=FindNext(SearchRec);
+  end;
+  FindClose(SearchRec);
+ except
+  FreeAndNil(result);
+ end;
+end;
+
 var FLREInstance:TFLRE;
     FileMappedStream:TBeRoFileMappedStream;
     MemoryViewSize,ToDo,SlidingOffset:int64;
     Memory:pointer;
     MultiCaptures:TFLREMultiCaptures;
     FileNameIndex,Count,Index,SubIndex,FirstNewLine,Mode,LastLineOffset,LastEndLineOffset,LineEndOffset,LineOffset,MaximumCount:longint;
-    Parameter,Argument,RegularExpression,FileName:ansistring;
+    Parameter,Argument,RegularExpression,Directory,FileName:ansistring;
     HasRegularExpression,HasFileName,SuppressErrorMessages,Quiet,LineBuffered,ByteOffset,OnlyMatching,PrintFileName:boolean;
     RegularExpressionFlags:TFLREFlags;
     SplitCharacter:ansichar;
@@ -211,8 +230,34 @@ begin
      RegularExpression:=Parameter;
      HasRegularExpression:=true;
     end else begin
-     FileNameList.Add(Parameter);
-     HasFileName:=true;
+     if Parameter='-' then begin
+      FileNameList.Add('-');
+      HasFileName:=true;
+     end else begin
+      if (pos('*',Parameter)>0) or (pos('?',Parameter)>0) then begin
+       Directory:=ExcludeTrailingPathDelimiter(ExtractFilePath(Parameter));
+       if length(Directory)<>0 then begin
+        Directory:=IncludeTrailingPathDelimiter(ExpandFileName(Directory));
+      {end else begin
+        Directory:=ExcludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)));
+        Directory:=IncludeTrailingPathDelimiter(ExpandFileName(Directory));
+      {}end;
+       StringList:=GetFileList(Directory+ExtractFileName(Parameter));
+       try
+        if assigned(StringList) and (StringList.Count>0) then begin
+         for FileNameIndex:=0 to StringList.Count-1 do begin
+          FileNameList.Add(Directory+StringList[FileNameIndex]);
+         end;
+         HasFileName:=true;
+        end;
+       finally
+        StringList.Free;
+       end;
+      end else begin
+       FileNameList.Add(Parameter);
+       HasFileName:=true;
+      end;
+     end;
     end;
    end;
   end;

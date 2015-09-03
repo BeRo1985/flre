@@ -100,7 +100,7 @@ Conditionals=
 DebugSourceDirs=
 UsePackages=0
 [Parameters]
-RunParams=Linux benchmark.txt
+RunParams=Linux *.txt
 HostApplication=
 Launcher=
 UseLauncher=0
