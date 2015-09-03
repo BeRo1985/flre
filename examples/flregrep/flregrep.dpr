@@ -175,6 +175,8 @@ begin
      HasRegularExpression:=true;
     end else if (Parameter='-i') or (Parameter='--ignore-case') then begin
      Include(RegularExpressionFlags,rfIGNORECASE);
+    end else if (Parameter='-u') or (Parameter='--utf8') or (Parameter='--utf-8') then begin
+     Include(RegularExpressionFlags,rfUTF8);
     end else if (Parameter='-s') or (Parameter='--no-messages') then begin
      SuppressErrorMessages:=true;
     end else if (Parameter='-z') or (Parameter='--null-data') then begin
@@ -215,6 +217,7 @@ begin
      writeln('      --help                display this help and exit');
      writeln;
      writeln('Output control:');
+     writeln('  -u, --utf8, --utf-8       search inside unicode UTF-8 encoding instead latin1');
      writeln('  -m, --max-count=NUM       stop after NUM matches');
      writeln('  -b, --byte-offset         print the byte offset with output lines');
      writeln('      --line-buffered       flush output on every line');
