@@ -310,7 +310,7 @@ begin
   exit;
  end;
  fCurrentViewSize:=fViewSize;
- if (fCurrentViewOffset+Bytes)>fSize then begin
+ if (fCurrentViewOffset+fCurrentViewSize)>fSize then begin
   fCurrentViewSize:=fSize-fCurrentViewOffset;
  end;
  if ReadOnly then begin
