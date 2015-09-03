@@ -7752,20 +7752,29 @@ asm
     @IsNotMatchWin:
     test ebx,sfDFAStart
     jz @IsNotStartState
-     push ecx
-     push edx
-      dec ecx // because "dec ecx" comes after @BackToLoop first, but "inc esi" already directly after fetching the char byte
-      mov edx,esi
-      mov eax,self
-      mov eax,dword ptr [eax+TFLREDFA.Instance]
-      call TFLRE.SearchNextPossibleStartForDFA
-     pop edx
-     pop ecx
-     test eax,eax
-     js @Done
-      add esi,eax
-      sub ecx,eax
-      inc ecx // because "dec ecx" after @BackToLoop
+     jecxz @IsStartStateSkip
+      movzx eax,byte ptr [esi]
+      movzx eax,byte ptr [edx+eax]
+      mov eax,dword ptr [edi+TFLREDFAState.NextStates+eax*4]
+      test eax,eax
+      jz @IsStartStateSkip
+      test dword ptr [eax+TFLREDFAState.Flags],sfDFAStart
+      jz @IsStartStateSkip
+       push ecx
+       push edx
+        dec ecx // because "dec ecx" comes after @BackToLoop first, but "inc esi" already directly after fetching the char byte
+        mov edx,esi
+        mov eax,self
+        mov eax,dword ptr [eax+TFLREDFA.Instance]
+        call TFLRE.SearchNextPossibleStartForDFA
+       pop edx
+       pop ecx
+       test eax,eax
+       js @Done
+        add esi,eax
+        sub ecx,eax
+        inc ecx // because "dec ecx" after @BackToLoop
+     @IsStartStateSkip:
     @IsNotStartState:
     jmp @BackToLoop
 
@@ -7794,7 +7803,7 @@ asm
 end;
 {$else}
 var Position,Offset:longint;
-    State,LastState:PFLREDFAState;
+    State,LastState,TemporaryTestState:PFLREDFAState;
     LocalInput:pansichar;
     LocalByteMap:PFLREByteMap;
 begin
@@ -7830,11 +7839,16 @@ begin
     result:=DFAMatch;
    end;
    if (State^.Flags and sfDFAStart)<>0 then begin
-    Offset:=Instance.SearchNextPossibleStartForDFA(@LocalInput[Position],UntilExcludingPosition-Position);
-    if Offset<0 then begin
-     exit;
+    if Position<UntilExcludingPosition then begin
+     TemporaryTestState:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
+     if assigned(TemporaryTestState) and ((TemporaryTestState^.Flags and sfDFAStart)<>0) then begin
+      Offset:=Instance.SearchNextPossibleStartForDFA(@LocalInput[Position],UntilExcludingPosition-Position);
+      if Offset<0 then begin
+       exit;
+      end;
+      inc(Position,Offset);
+     end;
     end;
-    inc(Position,Offset);
    end;
   end;
  end;
@@ -8423,7 +8437,7 @@ function TFLREDFA.SearchMatchFull(const StartPosition,UntilExcludingPosition:lon
 label ProcessNewStartState,SkipProcessNewStartState,NewStartState,ExitFunction;
 {$endif}
 var Position,LocalInputLength,Index,Offset:longint;
-    State,LastState:PFLREDFAState;
+    State,LastState,TemporaryTestState:PFLREDFAState;
     LocalInput:pansichar;
     Flags,CurrentChar:longword;
     LocalByteMap:PFLREDFAByteMap;
@@ -8543,16 +8557,21 @@ begin
    jmp SkipProcessNewStartState
  end;
  ProcessNewStartState:
-   Offset:=Instance.SearchNextPossibleStartForDFA(@LocalInput[Position],UntilExcludingPosition-Position);
-   if Offset<0 then begin
-    exit;
+  if Position<UntilExcludingPosition then begin
+   TemporaryTestState:=State^.NextStates[LocalByteMap^[byte(ansichar(LocalInput[Position]))]];
+   if assigned(TemporaryTestState) and ((TemporaryTestState^.Flags and sfDFAStart)<>0) then begin
+    Offset:=Instance.SearchNextPossibleStartForDFA(@LocalInput[Position],UntilExcludingPosition-Position);
+    if Offset<0 then begin
+     exit;
+    end;
+    inc(Position,Offset);
+    State:=InitializeStartState(Position,UnanchoredStart);
+    if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
+     MatchEnd:=Position-1;
+     result:=DFAMatch;
+    end;
    end;
-   inc(Position,Offset);
-   State:=InitializeStartState(Position,UnanchoredStart);
-   if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
-    MatchEnd:=Position-1;
-    result:=DFAMatch;
-   end;
+  end;
   goto NewStartState;
  SkipProcessNewStartState:
 {$else}
@@ -8589,15 +8608,20 @@ begin
     result:=DFAMatch;
    end;
    if (State^.Flags and sfDFAStart)<>0 then begin
-    Offset:=Instance.SearchNextPossibleStartForDFA(@LocalInput[Position],UntilExcludingPosition-Position);
-    if Offset<0 then begin
-     exit;
-    end;
-    inc(Position,Offset);
-    State:=InitializeStartState(Position,UnanchoredStart);
-    if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
-     MatchEnd:=Position-1;
-     result:=DFAMatch;
+    if Position<UntilExcludingPosition then begin
+     TemporaryTestState:=State^.NextStates[LocalByteMap^[byte(ansichar(LocalInput[Position]))]];
+     if assigned(TemporaryTestState) and ((TemporaryTestState^.Flags and sfDFAStart)<>0) then begin
+      Offset:=Instance.SearchNextPossibleStartForDFA(@LocalInput[Position],UntilExcludingPosition-Position);
+      if Offset<0 then begin
+       exit;
+      end;
+      inc(Position,Offset);
+      State:=InitializeStartState(Position,UnanchoredStart);
+      if assigned(State) and ((State^.Flags and sfDFAMatchWins)<>0) then begin
+       MatchEnd:=Position-1;
+       result:=DFAMatch;
+      end;
+     end;
     end;
    end;
   end;
