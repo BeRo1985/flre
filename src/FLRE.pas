@@ -3360,7 +3360,7 @@ begin
  end;
 end;
 
-function PtrPosPatternCharClass(const Text:pansichar;TextLength:longint;const PatternCharClass:TFLRECharClass;Position:longint=0):longint; {$ifdef cpu386}register{$endif}
+function PtrPosPatternCharClass(const Text:pansichar;TextLength:longint;const PatternCharClass:TFLRECharClass;Position:longint=0):longint; {$ifdef cpu386}register;{$endif}
 var Index:longint;
 begin
  for Index:=Position to TextLength-1 do begin
@@ -8462,9 +8462,8 @@ begin
  Position:=StartPosition;
 
 {$ifdef cpu386}
+ NewStartState:
  asm
-
-  NewStartState:
 
    pushad
 
