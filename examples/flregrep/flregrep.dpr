@@ -207,16 +207,16 @@ begin
    end;
   end;
  end;
- if not HasFileName then begin
-  FileName:='-';
-  HasFileName:=true;
- end;
  if not (HasRegularExpression or HasFileName) then begin
   if not Quiet then begin
    writeln('Usage: flregrep [OPTION]... PATTERN [FILE]');
    writeln('Try ''flregrep --help'' for more information.');
   end;
   halt(2);
+ end;
+ if not HasFileName then begin
+  FileName:='-';
+  HasFileName:=true;
  end;
  if not HasRegularExpression then begin
   if not (Quiet or SuppressErrorMessages) then begin
