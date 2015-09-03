@@ -13712,7 +13712,7 @@ begin
   if NewLines then begin
    CharClass:=CharClass+[#$0a,#$0d];
    if rfUTF8 in Flags then begin
-    CharClass:=CharClass+(([#$c2,#$85]{U+0085})+
+    CharClass:=CharClass+(([#$c2,#$85]{U+0085 NEXT LINE (NEL)})+
                           ([#$e2,#$80,#$a8]{U+2028 LINE SEPARATOR})+
                           ([#$e2,#$80,#$a9]{U+2029 PARAGRAPH SEPARATOR}));
    end else begin
