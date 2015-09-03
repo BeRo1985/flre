@@ -116,11 +116,12 @@ const FLREVersion=$00000002;
       carfMULTILINE=1 shl 2;
       carfFREESPACING=1 shl 3;
       carfNAMED=1 shl 4;
-      carfUNGREEDY=1 shl 5;
-      carfLONGEST=1 shl 6;
-      carfMULTIMATCH=1 shl 7;
-      carfUTF8=1 shl 8;
-      carfDELIMITERS=1 shl 9;
+      carfNOCAPTURES=1 shl 5;
+      carfUNGREEDY=1 shl 6;
+      carfLONGEST=1 shl 7;
+      carfMULTIMATCH=1 shl 8;
+      carfUTF8=1 shl 9;
+      carfDELIMITERS=1 shl 10;
 
 type EFLRE=class(Exception);
 
@@ -163,6 +164,7 @@ type EFLRE=class(Exception);
                 rfMULTILINE,
                 rfFREESPACING,
                 rfNAMED,
+                rfNOCAPTURES,
                 rfUNGREEDY,
                 rfLONGEST,
                 rfMULTIMATCH,
@@ -9137,7 +9139,7 @@ begin
      end else begin
       Include(Flags,rfNAMED);
      end;
-    end;
+    end;       
     's':begin
      if rfSINGLELINE in Flags then begin
       raise EFLRE.Create('Too many single-line regular expression modifier flags');
@@ -11347,7 +11349,7 @@ var SourcePosition,SourceLength:longint;
  function NewNumberedGroup:PFLRENode;
  var Value:longint;
  begin
-  if rfMULTIMATCH in Flags then begin
+  if ([rfNAMED,rfNOCAPTURES,rfMULTIMATCH]*Flags)<>[] then begin
    result:=ParseDisjunction;
   end else begin
    Value:=CountInternalCaptures;
@@ -11374,7 +11376,7 @@ var SourcePosition,SourceLength:longint;
  function NewNamedGroup(const Name:ansistring):PFLRENode;
  var Value:longint;
  begin
-  if rfMULTIMATCH in Flags then begin
+  if ([rfNOCAPTURES,rfMULTIMATCH]*Flags)<>[] then begin
    result:=ParseDisjunction;
   end else begin
    Value:=CountInternalCaptures;
@@ -11731,11 +11733,7 @@ var SourcePosition,SourceLength:longint;
          raise EFLRE.Create('Syntax error');
         end;
        end else begin
-        if rfNAMED in Flags then begin
-         result:=ParseDisjunction;
-        end else begin
-         result:=NewNumberedGroup;
-        end;
+        result:=NewNumberedGroup;
        end;
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]=')') then begin
         inc(SourcePosition);
@@ -15414,6 +15412,9 @@ begin
   end;
   if (Flags and carfNAMED)<>0 then begin
    Include(RealFlags,rfNAMED);
+  end;
+  if (Flags and carfNOCAPTURES)<>0 then begin
+   Include(RealFlags,rfNOCAPTURES);
   end;
   if (Flags and carfUNGREEDY)<>0 then begin
    Include(RealFlags,rfUNGREEDY);
