@@ -1,55 +1,139 @@
+(*
+** You do need the mtent12.txt from
+** http://www.gutenberg.org/files/3200/old/mtent12.zip for this benchmark
+**)
 program benchmark;
+{$ifdef fpc}
+ {$mode delphi}
+ {$ifdef cpui386}
+  {$define cpu386}
+ {$endif}
+ {$ifdef cpu386}
+  {$asmmode intel}
+ {$endif}
+ {$ifdef cpuamd64}
+  {$asmmode intel}
+ {$endif}
+ {$ifdef FPC_LITTLE_ENDIAN}
+  {$define LITTLE_ENDIAN}
+ {$else}
+  {$ifdef FPC_BIG_ENDIAN}
+   {$define BIG_ENDIAN}
+  {$endif}
+ {$endif}
+ {-$pic off}
+ {$define caninline}
+ {$ifdef FPC_HAS_TYPE_EXTENDED}
+  {$define HAS_TYPE_EXTENDED}
+ {$else}
+  {$undef HAS_TYPE_EXTENDED}
+ {$endif}
+ {$ifdef FPC_HAS_TYPE_DOUBLE}
+  {$define HAS_TYPE_DOUBLE}
+ {$else}
+  {$undef HAS_TYPE_DOUBLE}
+ {$endif}
+ {$ifdef FPC_HAS_TYPE_SINGLE}
+  {$define HAS_TYPE_SINGLE}
+ {$else}
+  {$undef HAS_TYPE_SINGLE}
+ {$endif}
+{$else}
+ {$realcompatibility off}
+ {$localsymbols on}
+ {$define LITTLE_ENDIAN}
+ {$ifndef cpu64}
+  {$define cpu32}
+ {$endif}
+ {$define HAS_TYPE_EXTENDED}
+ {$define HAS_TYPE_DOUBLE}
+ {$define HAS_TYPE_SINGLE}
+{$endif}
+{$ifdef win32}
+ {$define windows}
+{$endif}
+{$ifdef win64}
+ {$define windows}
+{$endif}
+{$ifdef wince}
+ {$define windows}
+{$endif}
+{$rangechecks off}
+{$extendedsyntax on}
+{$writeableconst on}
+{$hints off}
+{$booleval off}
+{$typedaddress off}
+{$stackframes off}
+{$varstringchecks on}
+{$typeinfo on}
+{$overflowchecks off}
+{$longstrings on}
+{$openstrings on}
 {$apptype console}
 
 uses
   SysUtils,
   Classes,
-  Windows,
   FLRE in '..\..\src\FLRE.pas',
-  FLREUnicode in '..\..\src\FLREUnicode.pas';
+  FLREUnicode in '..\..\src\FLREUnicode.pas',
+  BeRoHighResolutionTimer in '..\common\BeRoHighResolutionTimer.pas';
 
-// benchmark from http://lh3lh3.users.sourceforge.net/reb.shtml
-{const BenchmarkPatterns2:array[0..4] of ansistring=('installation',
-                                                    '(?:[a-zA-Z][a-zA-Z0-9]*)://(?:[^ /]+)(?:/[^ ]*)?',
-                                                    '(?:[^ @]+)@(?:[^ @]+)',
-                                                    '(?:[0-9][0-9]?)/(?:[0-9][0-9]?)/(?:[0-9][0-9](?:[0-9][0-9])?)',
-                                                    '(?:[a-zA-Z][a-zA-Z0-9]*)://(?:[^ /]+)(?:/[^ ]*)?|(?:[^ @]+)@(?:[^ @]+)');
- {}
-(*const BenchmarkPatterns:array[0..4] of ansistring=('Twain',
-                                                   'Huck[a-zA-Z]+',
-                                                   '[a-zA-Z]+ing',
+const BenchmarkCount=1;
+
+      BenchmarkPatterns:array[0..14] of ansistring=('Twain',
+                                                   '(?i)Twain',
+                                                   '[a-z]shing',
+                                                   'Huck[a-zA-Z]+|Saw[a-zA-Z]+',
+                                                   '\b\w+nn\b',
+                                                   '[a-q][^u-z]{13}x',
                                                    'Tom|Sawyer|Huckleberry|Finn',
-                                                   'Tom.{0,30}river|river.{0,30}Tom');
-*)
-const BenchmarkPatterns:array[0..4] of ansistring=('installation',
-                                                   '([a-zA-Z][a-zA-Z0-9]*)://([^ /]+)(/[^ ]*)?',
-                                                   '(?#Hallo)([^ @]+)@([^ @]+)',
-                                                   '([0-9][0-9]?)/([0-9][0-9]?)/([0-9][0-9]([0-9][0-9])?)',
-                                                   '([a-zA-Z][a-zA-Z0-9]*)://([^ /]+)(/[^ ]*)?|([^ @]+)@([^ @]+)');
+                                                   '(?i)Tom|Sawyer|Huckleberry|Finn',
+                                                   '.{0,2}(Tom|Sawyer|Huckleberry|Finn)',
+                                                   '.{2,4}(Tom|Sawyer|Huckleberry|Finn)',
+                                                   'Tom.{10,25}river|river.{10,25}Tom',
+                                                   '[a-zA-Z]+ing',
+                                                   '\s[a-zA-Z]{0,12}ing\s',
+                                                   '([A-Za-z]awyer|[A-Za-z]inn)\s',
+                                                   '["''][^"'']{0,30}[?!\.]["'']');
 
-var i,j,k,h:integer;
+
+var i,j:integer;
     s:ansistring;
-    sl:TStringList;
+    sl:TFileStream;
     FLREInstance:TFLRE;
-    t1,t2:longword;
+    t1,t2:int64;
     Captures:TFLREMultiCaptures;
-{   RegExp:TRegexEngine;
-    RegExprInstance:TRegExpr;{}
+    HighResolutionTimer:THighResolutionTimer;
 begin
- sl:=TStringList.Create;
+ HighResolutionTimer:=THighResolutionTimer.Create;
  try
-  sl.LoadFromFile('benchmark.txt');
-  s:=sl.Text;
-{}writeln('FLRE:');
+
+  sl:=TFileStream.Create('mtent12.txt',fmOpenRead);
+  try
+   SetLength(s,sl.Size);
+   sl.Read(s[1],sl.Size);
+  finally
+   sl.Free;
+  end;
+
+  writeln(' ':50,'      Time     | Match count');
+
+  writeln('==============================================================================');
+  writeln('FLRE:');
   for i:=low(BenchmarkPatterns) to high(BenchmarkPatterns) do begin
    try
-    FLREInstance:=TFLRE.Create(BenchmarkPatterns[i],[]);
+    FLREInstance:=TFLRE.Create(BenchmarkPatterns[i],[{rfNAMED}]);
+//  FLREInstance.MaximalDFAStates:=65536;
     try
-     write('/'+BenchmarkPatterns[i]+'/ : ':65);
-     t1:=GetTickCount;
-     FLREInstance.MatchAll(s,Captures);
-     t2:=GetTickCount;
-     writeln(t2-t1:5,' ms ',length(Captures));
+     write('/'+BenchmarkPatterns[i]+'/ : ':50,'Please wait... ');
+     t1:=HighResolutionTimer.GetTime;
+     for j:=1 to BenchmarkCount do begin
+      FLREInstance.MatchAll(s,Captures);
+     end;
+     t2:=HighResolutionTimer.GetTime;
+     write(#8#8#8#8#8#8#8#8#8#8#8#8#8#8#8);
+     writeln((HighResolutionTimer.ToMilliSeconds(t2-t1) div BenchmarkCount):11,' ms |',length(Captures):12);
      //writeln(FLREInstance.DumpRegularExpression);
     finally
      SetLength(Captures,0);
@@ -61,59 +145,15 @@ begin
     end;
    end;
   end;
-  writeln('');  {}
-{ writeln('regex.pp:');
-  for i:=low(BenchmarkPatterns) to high(BenchmarkPatterns) do begin
-   try
-    RegExp:=TRegexEngine.Create(BenchmarkPatterns[i]);
-    try
-     write('/'+BenchmarkPatterns[i]+'/ : ':65);
-     t1:=GetTickCount;
-     j:=0;
-     k:=0;
-     h:=0;
-     while RegExp.MatchString(s,j,k) do begin
-      inc(h);
-     end;
-     t2:=GetTickCount;
-     writeln(t2-t1:5,' ms ',h);
-    finally
-     RegExp.Free;
-    end;
-   except
-    on e:Exception do begin
-     writeln(e.Message);
-    end;
-   end;
-  end;
-  writeln('');
-{ writeln('RegExpr.pas:');
-  for i:=low(BenchmarkPatterns) to high(BenchmarkPatterns) do begin
-   try
-    RegExprInstance:=TRegExpr.Create;
-    RegExprInstance.Expression:=BenchmarkPatterns[i];
-    RegExprInstance.Compile;
-    try
-     t1:=GetTickCount;
-     RegExprInstance.Exec(s);
-     while RegExprInstance.ExecNext do begin
-     end;
-     t2:=GetTickCount;
-     writeln('/'+BenchmarkPatterns[i]+'/ : ':65,t2-t1:7,' ms');
-    finally
-     RegExprInstance.Free;
-    end;
-   except
-    on e:Exception do begin
-     writeln(e.Message);
-    end;
-   end;
-  end;{}
+
  finally
-  sl.Free;
+  HighResolutionTimer.Free;
  end;
- s:='';
- readln;
+{$ifndef fpc}
+ if DebugHook<>0 then begin
+  readln;
+ end;
+{$endif}
 end.
 
 
