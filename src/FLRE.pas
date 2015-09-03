@@ -8493,7 +8493,7 @@ begin
      @HaveNextState:
 
      mov ebx,dword ptr [edi+TFLREDFAState.Flags]
-     test ebx,sfDFAMatchWins or sfDFADead or sfDFAStart
+     test ebx,sfDFAMatchWins or sfDFADead or sfDFAFullMatch or sfDFAStart
      jnz @CheckFlags
 
     @BackToLoop:
@@ -8511,6 +8511,15 @@ begin
       popad
       jmp ExitFunction
      @IsNotDFADead:
+     test ebx,sfDFAFullMatch
+     jz @IsNotFullMatch
+      mov eax,dword ptr UntilExcludingPosition
+      dec eax
+      mov dword ptr MatchEnd,eax
+      mov dword ptr result,DFAMatch
+      popad
+      jmp ExitFunction
+     @IsNotFullMatch:
      test ebx,sfDFAMatchWins
      jz @IsNotMatchWin
       push ebx
@@ -8599,7 +8608,7 @@ begin
     exit;
    end;
    if (State^.Flags and sfDFAFullMatch)<>0 then begin
-    MatchEnd:=UntilExcludingPosition-2;
+    MatchEnd:=UntilExcludingPosition-1;
     result:=DFAMatch;
     exit;
    end;
@@ -8734,7 +8743,7 @@ begin
     @HaveNextState:
 
     mov ebx,dword ptr [edi+TFLREDFAState.Flags]
-    test ebx,sfDFAMatchWins or sfDFADead
+    test ebx,sfDFAMatchWins or sfDFADead or sfDFAFullMatch
     jnz @CheckFlags
 
    @BackToLoop:
@@ -8752,6 +8761,14 @@ begin
       popad
       jmp ExitFunction
     @IsNotDFADead:
+    test ebx,sfDFAFullMatch
+    jz @IsNotFullMatch
+     mov eax,dword ptr UntilExcludingPosition
+     mov dword ptr MatchEnd,eax
+     mov dword ptr result,DFAMatch
+     popad
+     jmp ExitFunction
+    @IsNotFullMatch:
     test ebx,sfDFAMatchWins
     jz @IsNotMatchWin
      lea eax,[esi+2]
@@ -8808,7 +8825,7 @@ begin
     exit;
    end;
    if (State^.Flags and sfDFAFullMatch)<>0 then begin
-    MatchEnd:=UntilExcludingPosition-1;
+    MatchEnd:=UntilExcludingPosition;
     result:=DFAMatch;
     exit;
    end;
