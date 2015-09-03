@@ -4974,7 +4974,6 @@ begin
 end;
 
 destructor TFLRECharClassHashMap.Destroy;
-var Counter:longint;
 begin
  Clear;
  SetLength(Entities,0);
@@ -4984,7 +4983,6 @@ begin
 end;
 
 procedure TFLRECharClassHashMap.Clear;
-var Counter:longint;
 begin
  RealSize:=0;
  LogSize:=0;
@@ -5348,9 +5346,8 @@ end;
 
 procedure TFLREUnicodeCharClass.AddRange(Lo,Hi:longword;IgnoreCase:boolean=false);
 var Range,TempRange:TFLREUnicodeCharClassRange;
-    c,cl,cu,rl,ru:longword;
+    c,cl,cu:longword;
     Temp,OtherTemp:TFLREUnicodeCharClass;
-    i:longint;
 begin
  if IgnoreCase then begin
   AddRange(Lo,Hi,false);
@@ -6520,7 +6517,7 @@ begin
 end;
 
 function TFLREParallelNFA.BackReferenceAssertion(const State:PFLREParallelNFAState;const CaptureSubMatch,BackReferenceSubMatch:longint;const IgnoreCase:boolean):boolean;
-var CaptureStart,CaptureEnd,CapturePosition,BackReferenceStart,BackReferenceEnd,BackReferencePosition:longint;
+var CaptureStart,CaptureEnd,BackReferenceStart,BackReferenceEnd:longint;
 begin
  result:=false;
  if (CaptureSubMatch>=0) and (BackReferenceSubMatch>=0) then begin
@@ -6652,7 +6649,6 @@ var LocalInputLength,CurrentPosition,Counter,ThreadIndex,CurrentLength,LastPosit
     CurrentThreadList,NewThreadList,TemporaryThreadList:PFLREParallelNFAThreadList;
     State,Matched,BestState:PFLREParallelNFAState;
     CurrentThread:PFLREParallelNFAThread;
-    Thread:TFLREParallelNFAThread;
     Instruction:PFLREInstruction;
     CurrentChar:longint;
     Capture:PFLRECapture;
@@ -6847,7 +6843,7 @@ end;
 
 function TFLREOnePassNFA.SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint):boolean;
 var State,Nodes:PFLREOnePassNFAState;
-    LocalInputLength,CurrentPosition,StateSize,CountSubMatches,Counter,Index:longint;
+    CurrentPosition,StateSize,CountSubMatches,Counter,Index:longint;
     LocalByteMap:PFLREByteMap;
     Done:boolean;
     NextMatchCondition,MatchCondition,Condition,NextIndex:longword;
@@ -6857,7 +6853,6 @@ begin
  CountSubMatches:=Instance.CountSubMatches;
 
  LocalInput:=ThreadLocalStorageInstance.Input;
- LocalInputLength:=ThreadLocalStorageInstance.InputLength;
 
  State:=Instance.OnePassNFAStart;
  Nodes:=Instance.OnePassNFANodes;
@@ -7013,8 +7008,6 @@ var LocalInputLength,BasePosition,Len:longint;
  var Job:PFLREBitStateNFAJob;
      Instruction:PFLREInstruction;
      Argument,i,LastPosition:longint;
-     CurrentChar,LocalFlags:longword;
-     InputIsUTF8:boolean;
  begin
   result:=false;
 
@@ -7185,7 +7178,7 @@ var LocalInputLength,BasePosition,Len:longint;
 
  end;
 var VisitedLength:longword;
-    Position,LastPosition,Counter,Index:longint;
+    Position,Counter,Index:longint;
     StartInstruction:PFLREInstruction;
 begin
  result:=BitStateNFAError;
@@ -7228,7 +7221,7 @@ begin
 end;
 
 constructor TFLREDFA.Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;const AReversed:boolean;const AMaximalDFAStates:longint);
-var Index,SubIndex:longint;
+var Index:longint;
     FLREDFAStateCreateTempDFAState:TFLREDFAState;
     DFAState:PFLREDFAState;
 begin
@@ -7988,7 +7981,7 @@ end;
 function TFLREDFA.WorkQueueToCachedState(const WorkQueue:TFLREDFAWorkQueue;Flags:longword):PFLREDFAState;
 var Index,CountInstructions,Count:longint;
     NeedFlags:longword;
-    SawMatch,SawMark,First:boolean;
+    SawMatch,SawMark:boolean;
     Instruction:PFLREInstruction;
     CurrentItem,EndItem,MarkItem:PPFLREInstruction;
 begin
@@ -8042,6 +8035,10 @@ begin
     end;
    end;
   end;
+ end;
+
+ // For suppress compiler variable-unused warning
+ if SawMark then begin
  end;
 
  if (CountInstructions>0) and (QueueInstructionArray[CountInstructions-1]=Mark) then begin
@@ -8177,7 +8174,7 @@ begin
 end;
 
 procedure TFLREDFA.ProcessWorkQueueOnByte(const OldWorkQueue,NewWorkQueue:TFLREDFAWorkQueue;CurrentChar,Flags:longword;var IsMatch:boolean);
-var Index,ID:longint;
+var Index:longint;
     Instruction:PFLREInstruction;
 begin
  NewWorkQueue.Clear;
@@ -8222,10 +8219,7 @@ begin
 end;
 
 function TFLREDFA.RunStateOnByte(State:PFLREDFAState;const Position:longint;const CurrentChar:longword):PFLREDFAState;
-var Counter:longint;
-    Instruction:PFLREInstruction;
-    NeedFlags,BeforeFlags,OldBeforeFlags,AfterFlags,Flags,UnicodeChar:longword;
-    BaseState:PFLREDFAState;
+var NeedFlags,BeforeFlags,OldBeforeFlags,AfterFlags,Flags,UnicodeChar:longword;
     IsMatch,IsWordChar:boolean;
     Queues:array[0..2] of TFLREDFAWorkQueue;
 begin
@@ -8327,7 +8321,7 @@ end;
 
 function TFLREDFA.InitializeStartState(const StartPosition:longint;const UnanchoredStart:boolean):PFLREDFAState;
 var LocalInputLength,Start,PreviousPosition,NextPosition:longint;
-    CurrentChar,PreviousChar,NextChar,Flags:longword;
+    PreviousChar,NextChar,Flags:longword;
     LocalInput:pansichar;
     StartInstruction:PFLREInstruction;
     StartState:PPFLREDFAState;
@@ -9350,7 +9344,6 @@ end;
 destructor TFLRE.Destroy;
 var Index:longint;
     NextCharClassAction:PFLREOnePassNFAStateCharClassAction;
-    Flags:longword;
     ThreadLocalStorageInstance,NextThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
 
@@ -9415,7 +9408,6 @@ begin
 end;
 
 function TFLRE.NewCharClass(const CharClass:TFLRECharClass):longint;
-var Counter:longint;
 begin
  result:=CharClassHashMap.GetValue(CharClass);
  if result<0 then begin
@@ -9597,7 +9589,6 @@ begin
 end;
 
 function TFLRE.Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
-var NodeTemp:PFLRENode;
 begin                                                    
  if assigned(NodeLeft) and assigned(NodeRight) then begin
   if (NodeLeft^.NodeType=ntZEROWIDTH) and (NodeRight^.NodeType=ntZEROWIDTH) then begin
@@ -9674,7 +9665,6 @@ end;
 function TFLRE.NewAlt(NodeLeft,NodeRight:PFLRENode):PFLRENode;
 var NodeEx,pl,pr:PPFLRENode;
     Node,l,r:PFLRENode;
-    c:TFLRECharClass;
 begin
  if assigned(NodeLeft) and assigned(NodeRight) then begin
   if (NodeLeft^.NodeType=ntCAT) and (NodeRight^.NodeType=ntCAT) then begin
@@ -9864,12 +9854,11 @@ function TFLRE.OptimizeNode(StartNodeEx:PPFLRENode):boolean;
   end;
  end;
 var NodeEx:PPFLRENode;
-    Node,SeedNode,TestNode,l,r,nl,nr,n,Prefix,Suffix,Alternative,TempNode:PFLRENode;
+    Node,SeedNode,TestNode,l,r,Prefix,Suffix,Alternative,TempNode:PFLRENode;
     pr,pl:PPFLRENode;
-    HasOptimizations,DoContinue,Optimized,Found:boolean;
-    NodeStack,NodeList,NodeListLeft,NodeListRight,Visited,TempNodeList,NewNodeList:TList;
+    HasOptimizations,DoContinue,Optimized:boolean;
+    NodeStack,NodeList,NodeListLeft,Visited,TempNodeList,NewNodeList:TList;
     NodeIndex,SubNodeIndex,NewNodeIndex:longint;
-    c:TFLRECharClass;
 begin
  result:=false;
  NodeStack:=TList.Create;
@@ -10703,7 +10692,6 @@ var SourcePosition,SourceLength:longint;
   procedure ProcessRange(Lo,Hi:longword);
   var i,m:longword;
       StrLo,StrHi:TString6Chars;
-      CurrentNode:PFLRENode;
   begin
    if Hi>$0010ffff then begin
     Hi:=$0010ffff;
@@ -10924,7 +10912,6 @@ var SourcePosition,SourceLength:longint;
  end;
  function ParseClassEscapeUnicodeProperty(const UnicodeCharClass:TFLREUnicodeCharClass;const CanBeAlreadyCanonicalized:boolean):boolean;
  var Identifier:ansistring;
-     i:longword;
      IgnoreCase,IsNegative:boolean;
      f,LastSourcePos,UntilSourcePos:longint;
  begin
@@ -11540,8 +11527,8 @@ var SourcePosition,SourceLength:longint;
  end;
  function ParseAtom:PFLRENode;
  var Value,Index:longint;
-     Negate,IsSingle,Done,IsNegative,First,Num:boolean;
-     StartChar,EndChar,UnicodeChar,LowerCaseUnicodeChar,UpperCaseUnicodeChar:longword;
+     Negate,Done,IsNegative:boolean;
+     UnicodeChar,LowerCaseUnicodeChar,UpperCaseUnicodeChar:longword;
      UnicodeCharClass:TFLREUnicodeCharClass;
      OldFlags:TFLREFlags;
      Name,TemporaryString:ansistring;
@@ -11573,8 +11560,6 @@ var SourcePosition,SourceLength:longint;
           '+','-','a'..'z':begin
            OldFlags:=Flags;
            IsNegative:=false;
-           First:=true;
-           Num:=false;
            while SourcePosition<=SourceLength do begin
             case Source[SourcePosition] of
              ')':begin
@@ -11583,12 +11568,10 @@ var SourcePosition,SourceLength:longint;
              '-':begin
               inc(SourcePosition);
               IsNegative:=true;
-              Num:=First;
              end;
              '+':begin
               inc(SourcePosition);
               IsNegative:=false;
-              Num:=First;
              end;
              'i':begin
               inc(SourcePosition);
@@ -12337,7 +12320,6 @@ var SourcePosition,SourceLength:longint;
   end;
  end;
 var Counter,SubCounter:longint;
-    CurrentChar:ansichar;
     Node,SubNode:PFLRENode;
 begin
  Source:=RegularExpression;
@@ -12461,7 +12443,7 @@ procedure TFLRE.Compile;
        TStackItems=array of TStackItem;
   var Stack:TStackItems;
       StackItem:PStackItem;
-      StackSize,Counter,Count,Argument,i0,i1,i2,Index{$ifndef UseOpcodeJMP},FromIndex,ToIndex,OutIndex{$endif},Flags:longint;
+      StackSize,Count,Argument,i0,i1,Index{$ifndef UseOpcodeJMP},FromIndex,ToIndex,OutIndex{$endif},Flags:longint;
       CurrentChar,SingleChar:ansichar;
       CharClass:TFLRECharClass;
   begin
@@ -12565,11 +12547,11 @@ procedure TFLRE.Compile;
           Instructions[i1].Next:=pointer(ptrint(CountInstructions));
 {$else}
           for Index:=FromIndex to ToIndex do begin
-           if ptrint(Instructions[Index].Next)=OutIndex then begin
-            Instructions[Index].Next:=pointer(ptrint(CountInstructions));
+           if ptruint(Instructions[Index].Next)=ptruint(OutIndex) then begin
+            Instructions[Index].Next:=pointer(ptruint(CountInstructions));
            end;
-           if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
-            Instructions[Index].OtherNext:=pointer(ptrint(CountInstructions));
+           if ptruint(Instructions[Index].OtherNext)=ptruint(OutIndex) then begin
+            Instructions[Index].OtherNext:=pointer(ptruint(CountInstructions));
            end;
           end;
 {$endif}
@@ -12826,11 +12808,11 @@ procedure TFLRE.Compile;
           end;
 {$ifndef UseOpcodeJMP}
           for Index:=FromIndex to ToIndex do begin
-           if ptrint(Instructions[Index].Next)=OutIndex then begin
-            Instructions[Index].Next:=pointer(ptrint(i0));
+           if ptruint(Instructions[Index].Next)=ptruint(OutIndex) then begin
+            Instructions[Index].Next:=pointer(ptruint(i0));
            end;
-           if ptrint(Instructions[Index].OtherNext)=OutIndex then begin
-            Instructions[Index].OtherNext:=pointer(ptrint(i0));
+           if ptruint(Instructions[Index].OtherNext)=ptruint(OutIndex) then begin
+            Instructions[Index].OtherNext:=pointer(ptruint(i0));
            end;
           end;
 {$endif}
@@ -13084,13 +13066,13 @@ procedure TFLRE.Compile;
    SetLength(Instructions,CountInstructions);
    for Counter:=0 to CountInstructions-1 do begin
     Instruction:=@Instructions[Counter];
-    if Instruction^.Next<>pointer(ptrint(-1)) then begin
-     Instruction^.Next:=@Instructions[ptrint(Instruction^.Next)];
+    if Instruction^.Next<>pointer(ptruint(ptrint(-1))) then begin
+     Instruction^.Next:=@Instructions[ptruint(Instruction^.Next)];
     end else begin
      Instruction^.Next:=nil;
     end;
-    if Instruction^.OtherNext<>pointer(ptrint(-1)) then begin
-     Instruction^.OtherNext:=@Instructions[ptrint(Instruction^.OtherNext)];
+    if Instruction^.OtherNext<>pointer(ptruint(ptrint(-1))) then begin
+     Instruction^.OtherNext:=@Instructions[ptruint(Instruction^.OtherNext)];
     end else begin
      Instruction^.OtherNext:=nil;
     end;
@@ -13165,8 +13147,7 @@ var LowRangeString,HighRangeString:ansistring;
   end;
  end;
  procedure ThreadPass(Instruction:PFLREInstruction;Index:longint);
- var CharClass:TFLRECharClass;
-     CurrentChar:ansichar;
+ var CurrentChar:ansichar;
  begin
   while assigned(Instruction) do begin
    case Instruction^.IDandOpcode and $ff of
@@ -14192,7 +14173,6 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
      Counter,SubCounter,IndexCounter,Count:longint;
      CharClass:TFLRECharClass;
      SingleChar,CurrentChar:ansichar;
-     CharValue:longword;
      OK,ParentLoop:boolean;
  begin
   result:=nil;
@@ -16100,8 +16080,7 @@ end;
 
 function FLREReplaceAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const ResultString:PPointer;const ResultStringLength:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
 var s:ansistring;
-    Len,Index,SubIndex:longint;
-    p:plongint;
+    Len:longint;
 begin
  result:=0;
  if assigned(Error) and assigned(Error^) then begin
