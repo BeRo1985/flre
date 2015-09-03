@@ -114,10 +114,10 @@ var FLREInstance:TFLRE;
     Memory:pointer;
     MultiCaptures:TFLREMultiCaptures;
     FileNameIndex,Count,Index,SubIndex,FirstNewLine,Mode,LastLineOffset,LastEndLineOffset,LineEndOffset,LineOffset,MaximumCount:longint;
-    Parameter,Argument,RegularExpression,Directory,FileName:ansistring;
-    HasRegularExpression,HasFileName,SuppressErrorMessages,Quiet,LineBuffered,ByteOffset,OnlyMatching,PrintFileName:boolean;
+    Parameter,Argument,RegularExpression,Directory,FileName,MemoryString:ansistring;
+    HasRegularExpression,HasFileName,SuppressErrorMessages,Quiet,LineBuffered,ByteOffset,OnlyMatching,PrintFileName,IsStdIn:boolean;
     RegularExpressionFlags:TFLREFlags;
-    SplitCharacter:ansichar;
+    SplitCharacter,BufferChar:ansichar;
     HighResolutionTimer:THighResolutionTimer;
     StartTime,EndTime:int64;
     FileNameList,StringList:TStringList;
@@ -291,22 +291,46 @@ begin
     PrintFileName:=FileNameList.Count>1;
     for FileNameIndex:=0 to FileNameList.Count-1 do begin
      FileName:=FileNameList[FileNameIndex];
-     FileMappedStream:=TBeRoFileMappedStream.Create(FileName,fmOpenRead);
+     if FileName='-' then begin
+      IsStdIn:=true;
+      FileMappedStream:=nil;
+     end else begin
+      IsStdIn:=false;
+      FileMappedStream:=TBeRoFileMappedStream.Create(FileName,fmOpenRead);
+     end;
      try
       HighResolutionTimer:=THighResolutionTimer.Create;
       try
        Count:=0;
+       SlidingOffset:=0;
        StartTime:=HighResolutionTimer.GetTime;
-       while FileMappedStream.Position<FileMappedStream.Size do begin
-        SlidingOffset:=FileMappedStream.Position;
-        ToDo:=FileMappedStream.Size-SlidingOffset;
-        Memory:=FileMappedStream.Memory;
-        MemoryViewSize:=FileMappedStream.MemoryViewSize;
-        if ToDo>MemoryViewSize then begin
+       while (assigned(FileMappedStream) and (FileMappedStream.Position<FileMappedStream.Size)) or (IsStdIn and not eof(Input)) do begin
+        if assigned(FileMappedStream) then begin
+         SlidingOffset:=FileMappedStream.Position;
+         ToDo:=FileMappedStream.Size-SlidingOffset;
+         Memory:=FileMappedStream.Memory;
+         MemoryViewSize:=FileMappedStream.MemoryViewSize;
+         if ToDo>MemoryViewSize then begin
+          ToDo:=MemoryViewSize;
+         end;
+         if ToDo=0 then begin
+          break;
+         end;
+        end else begin
+         MemoryString:='';
+         while not eof(Input) do begin
+          Read(Input,BufferChar);
+          MemoryString:=MemoryString+BufferChar;
+          if BufferChar=SplitCharacter then begin
+           break;
+          end;
+         end;
+         MemoryViewSize:=length(MemoryString);
          ToDo:=MemoryViewSize;
-        end;
-        if ToDo=0 then begin
-         break;
+         if ToDo=0 then begin
+          break;
+         end;
+         Memory:=@MemoryString[1];
         end;
         LastLineOffset:=-1;
         LastEndLineOffset:=-1;
@@ -414,7 +438,12 @@ begin
          end;
 
         end;
-        FileMappedStream.Seek(ToDo,soCurrent);
+        if assigned(FileMappedStream) then begin
+         FileMappedStream.Seek(ToDo,soCurrent);
+        end;
+        if IsStdIn then begin
+         inc(SlidingOffset,length(MemoryString));
+        end;
        end;
        EndTime:=HighResolutionTimer.GetTime;
        case Mode of
