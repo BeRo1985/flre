@@ -27,3 +27,5 @@ For a more complete engine with more features including backreferences and unico
 
 IRC: #flre on freenode
 
+How-to-compile-the-code-examples youtube videos: [https://youtu.be/rVdwOqo6rGQ](https://youtu.be/rVdwOqo6rGQ) and [https://youtu.be/rVdwOqo6rGQ](https://youtu.be/QrXyF9Bzbxw)
+
