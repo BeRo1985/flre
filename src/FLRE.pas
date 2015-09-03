@@ -7752,7 +7752,8 @@ asm
     @IsNotMatchWin:
     test ebx,sfDFAStart
     jz @IsNotStartState
-     jecxz @IsStartStateSkip
+     cmp ecx,2
+     jb @IsStartStateSkip
       movzx eax,byte ptr [esi]
       movzx eax,byte ptr [edx+eax]
       mov eax,dword ptr [edi+TFLREDFAState.NextStates+eax*4]
