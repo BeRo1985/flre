@@ -94,9 +94,9 @@ var FLREInstance:TFLRE;
     MemoryViewSize,ToDo,SlidingOffset:int64;
     Memory:pointer;
     MultiCaptures:TFLREMultiCaptures;
-    Count,Index,SubIndex,FirstNewLine,Mode,LastLineOffset,LastEndLineOffset,LineEndOffset,LineOffset:longint;
+    Count,Index,SubIndex,FirstNewLine,Mode,LastLineOffset,LastEndLineOffset,LineEndOffset,LineOffset,MaximumCount:longint;
     Parameter,Argument,RegularExpression,FileName:ansistring;
-    HasRegularExpression,HasFileName,SuppressErrorMessages:longbool;
+    HasRegularExpression,HasFileName,SuppressErrorMessages,Quiet,LineBuffered,ByteOffset,OnlyMatching:boolean;
     RegularExpressionFlags:TFLREFlags;
     SplitCharacter:ansichar;
     HighResolutionTimer:THighResolutionTimer;
@@ -107,10 +107,15 @@ begin
  HasRegularExpression:=false;
  HasFileName:=false;
  SuppressErrorMessages:=false;
+ Quiet:=false;
+ LineBuffered:=false;
+ ByteOffset:=false;
+ OnlyMatching:=false;
  RegularExpressionFlags:=[];
  SplitCharacter:=#10;
  Mode:=mNORMAL;
  Index:=1;
+ MaximumCount:=-1;
  while Index<=ParamCount do begin
   Parameter:=ParamStr(Index);
   inc(Index);
@@ -148,8 +153,49 @@ begin
     SplitCharacter:=#0;
    end else if (Parameter='-c') or (Parameter='--count') then begin
     Mode:=mCOUNT;
-   end else if (Parameter='-b') or (Parameter='--benchmark') then begin
+   end else if (Parameter='-t') or (Parameter='--timing') or (Parameter='--benchmark') then begin
     Mode:=mBENCHMARK;
+   end else if (Parameter='-q') or (Parameter='--quiet') or (Parameter='--silent') then begin
+    Quiet:=true;
+   end else if (Parameter='--line-buffered') then begin
+    LineBuffered:=true;
+   end else if (Parameter='-b') or (Parameter='--byte-offset') then begin
+    ByteOffset:=true;
+   end else if (Parameter='-o') or (Parameter='--only-matching') then begin
+    OnlyMatching:=true;
+   end else if (Parameter='-m') or (Parameter='--max-count') then begin
+    if Index<=ParamCount then begin
+     MaximumCount:=StrToIntDef(ParamStr(Index),-1);
+     inc(Index);
+    end else begin
+     MaximumCount:=StrToIntDef(Argument,-1);
+    end;
+   end else if (Parameter='-h') or (Parameter='--help') then begin
+    writeln('Usage: flregrep [OPTION]... PATTERN [FILE]');
+    writeln('Search for PATTERN in FILE or standard input.');
+    writeln('PATTERN is a regular expression');
+    writeln('Example: flregrep -i ''hello world'' menu.c');
+    writeln;
+    writeln('Regexp selection and interpretation:');
+    writeln('  -e, --regexp=PATTERN      use PATTERN for matching');
+    writeln('  -i, --ignore-case         ignore case distinctions');
+    writeln('  -z, --null-data           a data line ends in 0 byte, not newline');
+    writeln;
+    writeln('Miscellaneous:');
+    writeln('  -f, --file=FILE           search in FILE');
+    writeln('  -s, --no-messages         suppress error messages');
+    writeln('      --help                display this help and exit');
+    writeln;
+    writeln('Output control:');
+    writeln('  -m, --max-count=NUM       stop after NUM matches');
+    writeln('  -b, --byte-offset         print the byte offset with output lines');
+    writeln('      --line-buffered       flush output on every line');
+    writeln('  -o, --only-matching       show only the part of a line matching PATTERN');
+    writeln('  -q, --quiet, --silent     suppress all normal output');
+    writeln('  -c, --count               print only a count of all found matches');
+    writeln('  -t, --timing, --benchmark timing benchmark');
+    writeln;
+    halt(0);
    end;
   end else if length(Parameter)>0 then begin
    if not HasRegularExpression then begin
@@ -165,14 +211,21 @@ begin
   FileName:='-';
   HasFileName:=true;
  end;
+ if not (HasRegularExpression or HasFileName) then begin
+  if not Quiet then begin
+   writeln('Usage: flregrep [OPTION]... PATTERN [FILE]');
+   writeln('Try ''flregrep --help'' for more information.');
+  end;
+  halt(2);
+ end;
  if not HasRegularExpression then begin
-  if not SuppressErrorMessages then begin
+  if not (Quiet or SuppressErrorMessages) then begin
    writeln('flregrep: missing regular expression');
   end;
   halt(2);
  end;
  if not HasFileName then begin
-  if not SuppressErrorMessages then begin
+  if not (Quiet or SuppressErrorMessages) then begin
    writeln('flregrep: missing file name');
   end;
   halt(2);
@@ -219,44 +272,75 @@ begin
         end;
        end;
       end;
-      if FLREInstance.PtrMatchAll(Memory,ToDo,MultiCaptures) then begin
+      if FLREInstance.PtrMatchAll(Memory,ToDo,MultiCaptures,0,MaximumCount) then begin
 
        case Mode of
         mNORMAL:begin
-         for Index:=0 to length(MultiCaptures)-1 do begin
-          if LastEndLineOffset<MultiCaptures[Index,0].Start then begin
-           LineOffset:=0;
-           for SubIndex:=MultiCaptures[Index,0].Start downto 0 do begin
-            if PAnsiChar(Memory)[SubIndex]=SplitCharacter then begin
-             LineOffset:=SubIndex+1;
-             break;
+         if Quiet then begin
+          halt(1);
+         end else begin
+          if OnlyMatching then begin
+           for Index:=0 to length(MultiCaptures)-1 do begin
+            if ByteOffset then begin
+             write(Output,'[',MultiCaptures[Index,0].Start+SlidingOffset,',',MultiCaptures[Index,0].Length,']: ');
+            end;
+            write(Output,PtrCopy(PAnsiChar(Memory),MultiCaptures[Index,0].Start,MultiCaptures[Index,0].Length));
+            writeln(Output);
+            if LineBuffered then begin
+             Flush(Output);
             end;
            end;
-           if LastLineOffset<>LineOffset then begin
-            LastLineOffset:=LineOffset;
-            LineEndOffset:=ToDo-1;
-            for SubIndex:=LineOffset to ToDo-1 do begin
-             if PAnsiChar(Memory)[SubIndex]=SplitCharacter then begin
-              LineEndOffset:=SubIndex-1;
-              LastEndLineOffset:=LineEndOffset;
-              break;
+          end else begin
+           for Index:=0 to length(MultiCaptures)-1 do begin
+            if LastEndLineOffset<MultiCaptures[Index,0].Start then begin
+             LineOffset:=0;
+             for SubIndex:=MultiCaptures[Index,0].Start downto 0 do begin
+              if PAnsiChar(Memory)[SubIndex]=SplitCharacter then begin
+               LineOffset:=SubIndex+1;
+               break;
+              end;
+             end;
+             if LastLineOffset<>LineOffset then begin
+              LastLineOffset:=LineOffset;
+              LineEndOffset:=ToDo-1;
+              for SubIndex:=LineOffset to ToDo-1 do begin
+               if PAnsiChar(Memory)[SubIndex]=SplitCharacter then begin
+                LineEndOffset:=SubIndex-1;
+                LastEndLineOffset:=LineEndOffset;
+                break;
+               end;
+              end;
+              if ByteOffset then begin
+               write(Output,'[',LineOffset+SlidingOffset,']: ');
+              end;
+              writeln(Output,PtrCopy(PAnsiChar(Memory),LineOffset,(LineEndOffset-LineOffset)+1));
+              if LineBuffered then begin
+               Flush(Output);
+              end;
              end;
             end;
-            writeln(PtrCopy(PAnsiChar(Memory),LineOffset,(LineEndOffset-LineOffset)+1));
            end;
           end;
          end;
         end;
        end;
 
-       // Adjust start offsets
+{      // Adjust start offsets
        for Index:=0 to length(MultiCaptures)-1 do begin
         for SubIndex:=0 to length(MultiCaptures[Index])-1 do begin
          inc(MultiCaptures[Index,SubIndex].Start,SlidingOffset);
         end;
-       end;
+       end;}
 
        inc(Count,length(MultiCaptures));
+
+       if MaximumCount>=0 then begin
+        if Count>MaximumCount then begin
+         dec(Count,MaximumCount);
+        end else begin
+         break;
+        end;
+       end;
 
       end;
       FileMappedStream.Seek(ToDo,soCurrent);
@@ -264,10 +348,18 @@ begin
      EndTime:=HighResolutionTimer.GetTime;
      case Mode of
       mCOUNT:begin
-       writeln(Count);
+       if Quiet then begin
+        halt(Count);
+       end else begin
+        writeln(Count);
+       end;
       end;
       mBENCHMARK:begin
-       writeln(Count,' founds in ',HighResolutionTimer.ToMicroseconds(EndTime-StartTime)/1000.0:1:4,' milliseconds');
+       if Quiet then begin
+        halt(HighResolutionTimer.ToMilliseconds(EndTime-StartTime));
+       end else begin
+        writeln(Count,' founds in ',HighResolutionTimer.ToMicroseconds(EndTime-StartTime)/1000.0:1:4,' milliseconds');
+       end;
       end;
      end;
     finally
@@ -281,7 +373,7 @@ begin
   end;
  except
   on e:Exception do begin
-   if not SuppressErrorMessages then begin
+   if not (Quiet or SuppressErrorMessages) then begin
     writeln('flregrep[',e.ClassName,']: ',e.Message);
    end;
    halt(2);
