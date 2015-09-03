@@ -7971,14 +7971,14 @@ end;
 {$endif}
 
 function TFLREDFA.WorkQueueToCachedState(const WorkQueue:TFLREDFAWorkQueue;Flags:longword):PFLREDFAState;
-var Index,n,Count:Longint;
+var Index,CountInstructions,Count:longint;
     NeedFlags:longword;
     SawMatch,SawMark,First:boolean;
     Instruction:PFLREInstruction;
     CurrentItem,EndItem,MarkItem:PPFLREInstruction;
 begin
 
- n:=0;
+ CountInstructions:=0;
  NeedFlags:=0;
  SawMatch:=false;
  SawMark:=false;
@@ -7993,13 +7993,13 @@ begin
    break;
   end;
   if WorkQueue.IsMark(Instruction) then begin
-   if (n>0) and (QueueInstructionArray[n-1]<>Mark) then begin
+   if (CountInstructions>0) and (QueueInstructionArray[CountInstructions-1]<>Mark) then begin
     SawMark:=true;
-    if (n+1)>length(QueueInstructionArray) then begin
-     SetLength(QueueInstructionArray,(n+1)*2);
+    if (CountInstructions+1)>length(QueueInstructionArray) then begin
+     SetLength(QueueInstructionArray,(CountInstructions+1)*2);
     end;
-    QueueInstructionArray[n]:=Mark;
-    inc(n);
+    QueueInstructionArray[CountInstructions]:=Mark;
+    inc(CountInstructions);
    end;
    continue;
   end;
@@ -8014,11 +8014,11 @@ begin
       exit;
      end;
     end;{}
-    if (n+1)>length(QueueInstructionArray) then begin
-     SetLength(QueueInstructionArray,(n+1)*2);
+    if (CountInstructions+1)>length(QueueInstructionArray) then begin
+     SetLength(QueueInstructionArray,(CountInstructions+1)*2);
     end;
-    QueueInstructionArray[n]:=Instruction;
-    inc(n);
+    QueueInstructionArray[CountInstructions]:=Instruction;
+    inc(CountInstructions);
     if (Instruction^.IDandOpcode and $ff)=opZEROWIDTH then begin
      NeedFlags:=NeedFlags or longword(Instruction^.Value);
     end;
@@ -8029,8 +8029,8 @@ begin
   end;
  end;
 
- if (n>0) and (QueueInstructionArray[n-1]=Mark) then begin
-  dec(n);
+ if (CountInstructions>0) and (QueueInstructionArray[CountInstructions-1]=Mark) then begin
+  dec(CountInstructions);
  end;
 
  // Drop flags if no zero-width instructions are there, to save unneeded cached states
@@ -8039,17 +8039,16 @@ begin
  end;
 
  // Dead state? If yes, ...
- if (n=0) and (Flags=0) then begin
+ if (CountInstructions=0) and (Flags=0) then begin
   // ... drop it and take the dead state as the next state
   result:=DefaultStates[dskDead];
   exit;
  end;
 
- if MatchMode=mmLongestMatch then begin
+ if (MatchMode=mmLongestMatch) and (CountInstructions>0) then begin
   // Sort in longest match mode to reduce the number of distinct sets which must be stored
   CurrentItem:=@QueueInstructionArray[0];
-  EndItem:=CurrentItem;
-  inc(EndItem,n);
+  EndItem:=@QueueInstructionArray[CountInstructions];
   while PtrUInt(pointer(CurrentItem))<PtrUInt(pointer(EndItem)) do begin
    MarkItem:=CurrentItem;
    Count:=0;
@@ -8066,8 +8065,14 @@ begin
  end;
 
  NewState.Flags:=Flags or (NeedFlags shl sfDFANeedShift);
- NewState.Instructions:=copy(QueueInstructionArray,0,n);
- NewState.CountInstructions:=n;
+ if CountInstructions>0 then begin
+  SetLength(NewState.Instructions,CountInstructions);
+  Move(QueueInstructionArray[0],NewState.Instructions[0],CountInstructions*SizeOf(PFLREInstruction));
+  NewState.CountInstructions:=CountInstructions;
+ end else begin
+  NewState.Instructions:=nil;
+  NewState.CountInstructions:=0;
+ end;
 
  result:=CacheState(@NewState);
 
