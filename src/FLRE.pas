@@ -592,7 +592,7 @@ type EFLRE=class(Exception);
        function StateAllocate(const Count:longint;const SubMatchesBitmap:longword):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        function StateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        procedure StateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
-       function StateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+       function StateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState;  {$ifndef cpu386}{$ifdef caninline}inline;{$endif}{$endif}
        function BackReferenceAssertion(const State:PFLREParallelNFAState;const CaptureSubMatch,BackReferenceSubMatch:longint;const IgnoreCase:boolean):boolean;
        procedure AddThread(const ThreadList:PFLREParallelNFAThreadList;Instruction:PFLREInstruction;State:PFLREParallelNFAState;const Position:longint);
        function SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:longint;const UnanchoredStart:boolean):boolean;
@@ -6449,7 +6449,7 @@ begin
  end;
 end;
 
-function TFLREParallelNFA.StateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+function TFLREParallelNFA.StateUpdate(const State:PFLREParallelNFAState;const Index,Position:longint):PFLREParallelNFAState; {$ifndef cpu386}{$ifdef caninline}inline;{$endif}{$endif}
 var Counter:longint;
     SubMatchesBitmap:longword;
 begin
