@@ -64,6 +64,11 @@ unit FLRE;
  {$else}
   {$undef HAS_TYPE_SINGLE}
  {$endif}
+ {$if declared(RawByteString)}
+  {$define HAS_TYPE_RAWBYTESTRING}
+ {$else}
+  {$undef HAS_TYPE_RAWBYTESTRING}
+ {$ifend}
 {$else}
  {$realcompatibility off}
  {$localsymbols on}
@@ -74,9 +79,13 @@ unit FLRE;
  {$define HAS_TYPE_EXTENDED}
  {$define HAS_TYPE_DOUBLE}
  {$ifdef conditionalexpressions}
-  {$if declared(RawByteString)} 
+  {$if declared(RawByteString)}
    {$define HAS_TYPE_RAWBYTESTRING}
+  {$else}
+   {$undef HAS_TYPE_RAWBYTESTRING}
   {$ifend}
+ {$else}
+  {$undef HAS_TYPE_RAWBYTESTRING}
  {$endif}
 {$endif}
 {$ifdef win32}
@@ -105,7 +114,7 @@ unit FLRE;
 
 interface
 
-uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$endif}SysUtils,Classes,FLREUnicode;
+uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$endif}SysUtils,Classes;
 
 const FLREVersion=$00000002;
 
@@ -964,6 +973,8 @@ function FLREReplaceAll(const Instance:pointer;const Input:pointer;const InputLe
 procedure InitializeFLRE;
 
 implementation
+
+uses FLREUnicode;
 
 const MaxGeneration=int64($4000000000000000);
 

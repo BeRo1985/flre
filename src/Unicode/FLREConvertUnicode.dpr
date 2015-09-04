@@ -1,4 +1,3 @@
-program FLREConvertUnicode;
 (**********************************************************
 ** FLRE Regular Expression Library                        *
 ***********************************************************
@@ -14,22 +13,97 @@ program FLREConvertUnicode;
 ** MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 **
 *)
+program FLREConvertUnicode;
 {$ifdef fpc}
  {$mode delphi}
+ {$ifdef cpui386}
+  {$define cpu386}
+ {$endif}
+ {$ifdef cpu386}
+  {$asmmode intel}
+ {$endif}
+ {$ifdef cpuamd64}
+  {$asmmode intel}
+ {$endif}
+ {$ifdef FPC_LITTLE_ENDIAN}
+  {$define LITTLE_ENDIAN}
+ {$else}
+  {$ifdef FPC_BIG_ENDIAN}
+   {$define BIG_ENDIAN}
+  {$endif}
+ {$endif}
+ {-$pic off}
+ {$define caninline}
+ {$ifdef FPC_HAS_TYPE_EXTENDED}
+  {$define HAS_TYPE_EXTENDED}
+ {$else}
+  {$undef HAS_TYPE_EXTENDED}
+ {$endif}
+ {$ifdef FPC_HAS_TYPE_DOUBLE}
+  {$define HAS_TYPE_DOUBLE}
+ {$else}
+  {$undef HAS_TYPE_DOUBLE}
+ {$endif}
+ {$ifdef FPC_HAS_TYPE_SINGLE}
+  {$define HAS_TYPE_SINGLE}
+ {$else}
+  {$undef HAS_TYPE_SINGLE}
+ {$endif}
+ {$if declared(RawByteString)}
+  {$define HAS_TYPE_RAWBYTESTRING}
+ {$else}
+  {$undef HAS_TYPE_RAWBYTESTRING}
+ {$ifend}
+{$else}
+ {$realcompatibility off}
+ {$localsymbols on}
+ {$define LITTLE_ENDIAN}
+ {$ifndef cpu64}
+  {$define cpu32}
+ {$endif}
+ {$define HAS_TYPE_EXTENDED}
+ {$define HAS_TYPE_DOUBLE}
+ {$ifdef conditionalexpressions}
+  {$if declared(RawByteString)}
+   {$define HAS_TYPE_RAWBYTESTRING}
+  {$else}
+   {$undef HAS_TYPE_RAWBYTESTRING}
+  {$ifend}
+ {$else}
+  {$undef HAS_TYPE_RAWBYTESTRING}
+ {$endif}
 {$endif}
 {$ifdef win32}
- {$apptype console}
+ {$define windows}
 {$endif}
 {$ifdef win64}
- {$apptype console}
+ {$define windows}
 {$endif}
+{$ifdef wince}
+ {$define windows}
+{$endif}
+{$rangechecks off}
+{$extendedsyntax on}
+{$writeableconst on}
+{$hints off}
+{$booleval off}
+{$typedaddress off}
+{$stackframes off}
+{$varstringchecks on}
+{$typeinfo on}
+{$overflowchecks off}
+{$longstrings on}
+{$openstrings on}
+
 uses SysUtils,Classes;
 
 const MaxUnicodeChar=$10ffff;
       CountUnicodeChars=$110000;
 
-type TFLREUnicodeDWords=array[0..MaxUnicodeChar] of longint;
+type TFLRERawByteString={$ifdef HAS_TYPE_RAWBYTESTRING}RawByteString{$else}AnsiString{$endif};
 
+     TFLREUnicodeDWords=array[0..MaxUnicodeChar] of longint;
+     
 var FLREUnicodeCategories:TFLREUnicodeDWords;
     FLREUnicodeScripts:TFLREUnicodeDWords;
     FLREUnicodeLowerCaseDeltas:TFLREUnicodeDWords;
@@ -39,7 +113,7 @@ var FLREUnicodeCategories:TFLREUnicodeDWords;
     FLREScripts:TStringList;
     OutputList:TStringList;
 
-function GetUntilSplitter(const Splitter:ansistring;var s:ansistring):ansistring;
+function GetUntilSplitter(const Splitter:TFLRERawByteString;var s:TFLRERawByteString):TFLRERawByteString;
 var i:longint;
 begin
  i:=pos(Splitter,s);
@@ -55,19 +129,19 @@ end;
 
 procedure ParseBlocks;
 type TFLREUnicodeBlock=record
-      Name:ansistring;
+      Name:TFLRERawByteString;
       FromChar,ToChar:longword;
      end;
 var List:TStringList;
     i,j,k,FromChar,ToChar,Count:longint;
-    s,p:ansistring;
+    s,p:TFLRERawByteString;
     Blocks:array of TFLREUnicodeBlock;
 begin
  Blocks:=nil;
  try
   Count:=0;
   OutputList.Add('type TFLREUnicodeBlock=record');
-  OutputList.Add('      Name:{$ifdef conditionalexpressions}{$if declared(RawByteString)}RawByteString{$else}AnsiString{$ifend}{$else}ansistring{$endif};');
+  OutputList.Add('      Name:TFLRERawByteString;');
   OutputList.Add('      FromChar,ToChar:longword;');
   OutputList.Add('     end;');
   List:=TStringList.Create;
@@ -134,7 +208,7 @@ end;
 procedure ParseDerivedGeneralCategory;
 var List:TStringList;
     i,j,ci,FromChar,ToChar,CurrentChar:longint;
-    s,p:ansistring;
+    s,p:TFLRERawByteString;
 begin
  List:=TStringList.Create;
  try
@@ -178,7 +252,7 @@ end;
 procedure ParseScripts;
 var List:TStringList;
     i,j,si,FromChar,ToChar,CurrentChar:longint;
-    s,p:ansistring;
+    s,p:TFLRERawByteString;
 begin
  List:=TStringList.Create;
  try
@@ -222,7 +296,7 @@ end;
 procedure ParseUnicodeData;
 var List:TStringList;
     i,j,ci,OtherChar,CurrentChar:longint;
-    s,cs:ansistring;
+    s,cs:TFLRERawByteString;
 begin
  List:=TStringList.Create;
  try
@@ -298,7 +372,7 @@ begin
  end;
 end;
 
-procedure PackTable(const Table:array of longint;Level:integer;const Name:ansistring);
+procedure PackTable(const Table:array of longint;Level:integer;const Name:TFLRERawByteString);
 type TBlock=array of longint;
      TBlocks=array of TBlock;
      TIndices=array of longint;
@@ -309,7 +383,7 @@ var BestBlockSize,BlockSize,CountBlocks,CountIndices,Index,BlockPosition,Bytes,B
     BestBlocks:TBlocks;
     BestIndices:TIndices;
     OK:boolean;
-    s:ansistring;
+    s:TFLRERawByteString;
 begin
  if Level<2 then begin
   Block:=nil;
@@ -524,9 +598,11 @@ begin
     OutputList.Add('{$endif}');
     OutputList.Add('interface');
     OutputList.Add('');
+    OutputList.Add('uses FLRE;');
+    OutputList.Add('');
     ParseBlocks;
     begin
-     OutputList.Add('const FLREUnicodeCategoryIDs:array[0..'+IntToStr(FLRECategories.Count-1)+'] of ansistring=(');
+     OutputList.Add('const FLREUnicodeCategoryIDs:array[0..'+IntToStr(FLRECategories.Count-1)+'] of TFLRERawByteString=(');
      for i:=0 to FLRECategories.Count-1 do begin
       if (i+1)<FLRECategories.Count then begin
        OutputList.Add(''''+FLRECategories[i]+''',');
@@ -572,7 +648,7 @@ begin
      OutputList.Add('');
     end;
     begin
-     OutputList.Add('const FLREUnicodeScriptIDs:array[0..'+IntToStr(FLREScripts.Count-1)+'] of ansistring=(');
+     OutputList.Add('const FLREUnicodeScriptIDs:array[0..'+IntToStr(FLREScripts.Count-1)+'] of TFLRERawByteString=(');
      for i:=0 to FLREScripts.Count-1 do begin
       if (i+1)<FLREScripts.Count then begin
        OutputList.Add(''''+FLREScripts[i]+''',');

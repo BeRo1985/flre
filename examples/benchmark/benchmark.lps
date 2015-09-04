@@ -21,8 +21,8 @@
         <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <WindowIndex Value="1"/>
-        <TopLine Value="64"/>
-        <CursorPos X="35" Y="76"/>
+        <TopLine Value="955"/>
+        <CursorPos Y="978"/>
         <UsageCount Value="21"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
@@ -30,7 +30,11 @@
       <Unit2>
         <Filename Value="..\..\src\FLREUnicode.pas"/>
         <IsPartOfProject Value="True"/>
+        <EditorIndex Value="2"/>
+        <WindowIndex Value="1"/>
+        <CursorPos Y="7"/>
         <UsageCount Value="21"/>
+        <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit2>
       <Unit3>
@@ -40,7 +44,7 @@
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit3>
     </Units>
-    <JumpHistory Count="2" HistoryIndex="1">
+    <JumpHistory Count="3" HistoryIndex="2">
       <Position1>
         <Filename Value="..\..\src\FLRE.pas"/>
       </Position1>
@@ -48,6 +52,10 @@
         <Filename Value="..\..\src\FLRE.pas"/>
         <Caret Line="6452" Column="31" TopLine="6446"/>
       </Position2>
+      <Position3>
+        <Filename Value="..\..\src\FLRE.pas"/>
+        <Caret Line="117" TopLine="106"/>
+      </Position3>
     </JumpHistory>
   </ProjectSession>
 </CONFIG>

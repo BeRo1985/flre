@@ -4,8 +4,10 @@ unit FLREUnicode;
 {$endif}
 interface
 
+uses FLRE;
+
 type TFLREUnicodeBlock=record
-      Name:{$ifdef conditionalexpressions}{$if declared(RawByteString)}RawByteString{$else}AnsiString{$ifend}{$else}ansistring{$endif};
+      Name:TFLRERawByteString;
       FromChar,ToChar:longword;
      end;
 const FLREUnicodeBlockCount=262;
