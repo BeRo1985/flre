@@ -8,47 +8,41 @@
       <Unit0>
         <Filename Value="benchmark.dpr"/>
         <IsPartOfProject Value="True"/>
-        <IsVisibleTab Value="True"/>
-        <EditorIndex Value="0"/>
         <WindowIndex Value="1"/>
-        <TopLine Value="85"/>
-        <CursorPos X="1" Y="103"/>
-        <UsageCount Value="20"/>
+        <TopLine Value="106"/>
+        <CursorPos X="58" Y="94"/>
+        <UsageCount Value="21"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit0>
       <Unit1>
         <Filename Value="..\..\src\FLRE.pas"/>
         <IsPartOfProject Value="True"/>
-        <UnitName Value="FLRE"/>
+        <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <WindowIndex Value="1"/>
-        <TopLine Value="582"/>
-        <CursorPos X="8" Y="604"/>
-        <UsageCount Value="20"/>
+        <TopLine Value="64"/>
+        <CursorPos X="35" Y="76"/>
+        <UsageCount Value="21"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit1>
       <Unit2>
         <Filename Value="..\..\src\FLREUnicode.pas"/>
         <IsPartOfProject Value="True"/>
-        <UsageCount Value="20"/>
+        <UsageCount Value="21"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit2>
       <Unit3>
         <Filename Value="..\common\BeRoHighResolutionTimer.pas"/>
         <IsPartOfProject Value="True"/>
-        <UsageCount Value="20"/>
+        <UsageCount Value="21"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
       </Unit3>
     </Units>
-    <General>
-      <ActiveWindowIndexAtStart Value="0"/>
-    </General>
     <JumpHistory Count="2" HistoryIndex="1">
       <Position1>
         <Filename Value="..\..\src\FLRE.pas"/>
-        <Caret Line="1" Column="1" TopLine="1"/>
       </Position1>
       <Position2>
         <Filename Value="..\..\src\FLRE.pas"/>
@@ -56,5 +50,4 @@
       </Position2>
     </JumpHistory>
   </ProjectSession>
-  <EditorMacros Count="0"/>
 </CONFIG>

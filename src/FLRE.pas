@@ -73,7 +73,11 @@ unit FLRE;
  {$endif}
  {$define HAS_TYPE_EXTENDED}
  {$define HAS_TYPE_DOUBLE}
- {$define HAS_TYPE_SINGLE}
+ {$ifdef conditionalexpressions}
+  {$if declared(RawByteString)} 
+   {$define HAS_TYPE_RAWBYTESTRING}
+  {$ifend}
+ {$endif}
 {$endif}
 {$ifdef win32}
  {$define windows}
@@ -128,6 +132,8 @@ type EFLRE=class(Exception);
      PFLREQWord=^TFLREQWord;
      PFLREPtrUInt=^TFLREPtrUInt;
      PFLREPtrInt=^TFLREPtrInt;
+
+     TFLRERawByteString={$ifdef HAS_TYPE_RAWBYTESTRING}RawByteString{$else}AnsiString{$endif};
 
 {$ifdef fpc}
      TFLREQWord=qword;
@@ -193,10 +199,10 @@ type EFLRE=class(Exception);
       Left:PFLRENode;
       Right:PFLRENode;
       Index:longint;
-      Name:ansistring;
+      Name:TFLRERawByteString;
      end;
 
-     TFLRELookAssertionString=ansistring;
+     TFLRELookAssertionString=TFLRERawByteString;
 
      TFLRELookAssertionStrings=array of TFLRELookAssertionString;
 
@@ -476,7 +482,7 @@ type EFLRE=class(Exception);
 
      PFLREStringIntegerPairHashMapEntity=^TFLREStringIntegerPairHashMapEntity;
      TFLREStringIntegerPairHashMapEntity=record
-      Key:ansistring;
+      Key:TFLRERawByteString;
       Value:TFLREStringIntegerPairHashMapData;
      end;
 
@@ -486,11 +492,11 @@ type EFLRE=class(Exception);
 
      TFLREStringIntegerPairHashMap=class
       private
-       function FindCell(const Key:ansistring):longword;
+       function FindCell(const Key:TFLRERawByteString):longword;
        procedure Resize;
       protected
-       function GetValue(const Key:ansistring):TFLREStringIntegerPairHashMapData;
-       procedure SetValue(const Key:ansistring;const Value:TFLREStringIntegerPairHashMapData);
+       function GetValue(const Key:TFLRERawByteString):TFLREStringIntegerPairHashMapData;
+       procedure SetValue(const Key:TFLRERawByteString;const Value:TFLREStringIntegerPairHashMapData);
       public
        RealSize:longint;
        LogSize:longint;
@@ -501,10 +507,10 @@ type EFLRE=class(Exception);
        constructor Create;
        destructor Destroy; override;
        procedure Clear;
-       function Add(const Key:ansistring;Value:TFLREStringIntegerPairHashMapData):PFLREStringIntegerPairHashMapEntity;
-       function Get(const Key:ansistring;CreateIfNotExist:boolean=false):PFLREStringIntegerPairHashMapEntity;
-       function Delete(const Key:ansistring):boolean;
-       property Values[const Key:ansistring]:TFLREStringIntegerPairHashMapData read GetValue write SetValue; default;
+       function Add(const Key:TFLRERawByteString;Value:TFLREStringIntegerPairHashMapData):PFLREStringIntegerPairHashMapEntity;
+       function Get(const Key:TFLRERawByteString;CreateIfNotExist:boolean=false):PFLREStringIntegerPairHashMapEntity;
+       function Delete(const Key:TFLRERawByteString):boolean;
+       property Values[const Key:TFLRERawByteString]:TFLREStringIntegerPairHashMapData read GetValue write SetValue; default;
      end;
 
      TFLRECharClassHashMapData=int64;
@@ -562,15 +568,15 @@ type EFLRE=class(Exception);
       public
        Operation:TFLREPrefilterNodeOperation;
        Subs:TFLREPrefilterNodeList;
-       Atom:ansistring;
+       Atom:TFLRERawByteString;
        Exact:boolean;
        constructor Create;
        destructor Destroy; override;
        function Clone:TFLREPrefilterNode;
-       function Expression:ansistring;
-       function ShortExpression:ansistring;
-       function SQLBooleanFullTextExpression:ansistring;
-       function SQLExpression(const Field:ansistring):ansistring;
+       function Expression:TFLRERawByteString;
+       function ShortExpression:TFLRERawByteString;
+       function SQLBooleanFullTextExpression:TFLRERawByteString;
+       function SQLExpression(const Field:TFLRERawByteString):TFLRERawByteString;
      end;
 
      TFLREThreadLocalStorageInstance=class;
@@ -754,7 +760,7 @@ type EFLRE=class(Exception);
      TFLRE=class
       private
 
-       RegularExpression:ansistring;
+       RegularExpression:TFLRERawByteString;
 
        Flags:TFLREFlags;
 
@@ -792,7 +798,7 @@ type EFLRE=class(Exception);
        LookAssertionStrings:TFLRELookAssertionStrings;
        CountLookAssertionStrings:longint;
 
-       FixedString:ansistring;
+       FixedString:TFLRERawByteString;
        FixedStringIsWholeRegExp:longbool;
        FixedStringLength:longint;
        FixedStringPatternBitMasks:TFLRECharPatternBitMasks;
@@ -848,8 +854,8 @@ type EFLRE=class(Exception);
        ThreadLocalStorageInstances:TFLREThreadLocalStorageInstance;
        FreeThreadLocalStorageInstances:TFLREThreadLocalStorageInstance;
 
-       RangeLow:ansistring;
-       RangeHigh:ansistring;
+       RangeLow:TFLRERawByteString;
+       RangeHigh:TFLRERawByteString;
        HasRange:boolean;
 
        PrefilterRootNode:TFLREPrefilterNode;
@@ -907,28 +913,28 @@ type EFLRE=class(Exception);
 
        MaximalDFAStates:longint;
 
-       constructor Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[rfDELIMITERS]); overload;
-       constructor Create(const ARegularExpressions:array of ansistring;const AFlags:TFLREFlags=[]); overload;
+       constructor Create(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]); overload;
+       constructor Create(const ARegularExpressions:array of TFLRERawByteString;const AFlags:TFLREFlags=[]); overload;
        destructor Destroy; override;
 
        function PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchAll(const Input:pointer;const InputLength:longint;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
-       function PtrReplaceAll(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
+       function PtrReplaceAll(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
 
-       function Match(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
-       function MatchNext(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
-       function MatchAll(const Input:ansistring;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
-       function ReplaceAll(const Input,Replacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
+       function Match(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+       function MatchNext(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+       function MatchAll(const Input:TFLRERawByteString;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function ReplaceAll(const Input,Replacement:TFLRERawByteString;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
 
-       function GetRange(var LowRange,HighRange:ansistring):boolean;
+       function GetRange(var LowRange,HighRange:TFLRERawByteString):boolean;
 
-       function DumpRegularExpression:ansistring;
+       function DumpRegularExpression:TFLRERawByteString;
 
-       function GetPrefilterExpression:ansistring;
-       function GetPrefilterShortExpression:ansistring;
-       function GetPrefilterSQLBooleanFullTextExpression:ansistring;
-       function GetPrefilterSQLExpression(Field:ansistring):ansistring;
+       function GetPrefilterExpression:TFLRERawByteString;
+       function GetPrefilterShortExpression:TFLRERawByteString;
+       function GetPrefilterSQLBooleanFullTextExpression:TFLRERawByteString;
+       function GetPrefilterSQLExpression(Field:TFLRERawByteString):TFLRERawByteString;
 
       published
 
@@ -1936,7 +1942,7 @@ begin
  result:=longword(longint(longint(c)+UnicodeGetTitleCaseDeltaFromTable(c)));
 end;
 
-function UTF32CharToUTF8(CharValue:longword):ansistring;
+function UTF32CharToUTF8(CharValue:longword):TFLRERawByteString;
 var Data:array[0..{$ifdef FLREStrictUTF8}3{$else}5{$endif}] of ansichar;
     ResultLen:longint;
 begin
@@ -2021,7 +2027,7 @@ begin
  end;
 end;
 
-function FLREIsUTF8(const s:ansistring):boolean;
+function FLREIsUTF8(const s:TFLRERawByteString):boolean;
 var CodeUnit,CodePoints:longint;
     State:longword;
 begin
@@ -2042,7 +2048,7 @@ begin
  result:=(State=ucACCEPT) and (length(s)<>CodePoints);
 end;
 
-function UTF8Validate(const s:ansistring):boolean;
+function UTF8Validate(const s:TFLRERawByteString):boolean;
 var CodeUnit:longint;
     State:longword;
 begin
@@ -2057,7 +2063,7 @@ begin
  result:=State=ucACCEPT;
 end;
 
-function UTF8Get(const s:ansistring):longint;
+function UTF8Get(const s:TFLRERawByteString):longint;
 var CodeUnit,CodePoints:longint;
     State:longword;
 begin
@@ -2115,7 +2121,7 @@ begin
  end;
 end;
 
-procedure UTF8SafeInc(const s:ansistring;var CodeUnit:longint);
+procedure UTF8SafeInc(const s:TFLRERawByteString;var CodeUnit:longint);
 var Len:longint;
     StartCodeUnit,State:longword;
 begin
@@ -2155,7 +2161,7 @@ begin
  end;
 end;
 
-procedure UTF8Inc(const s:ansistring;var CodeUnit:longint);
+procedure UTF8Inc(const s:TFLRERawByteString;var CodeUnit:longint);
 begin
  if (CodeUnit>0) and (CodeUnit<=length(s)) then begin
   inc(CodeUnit,UTF8CharSteps[s[CodeUnit]]);
@@ -2169,7 +2175,7 @@ begin
  end;
 end;
 
-procedure UTF8Dec(const s:ansistring;var CodeUnit:longint);
+procedure UTF8Dec(const s:TFLRERawByteString;var CodeUnit:longint);
 begin
  if (CodeUnit>=1) and (CodeUnit<=(length(s)+1)) then begin
   dec(CodeUnit);
@@ -2197,7 +2203,7 @@ begin
  end;
 end;
 
-procedure UTF8Delete(var s:ansistring;CodeUnit:longint);
+procedure UTF8Delete(var s:TFLRERawByteString;CodeUnit:longint);
 begin
  if (CodeUnit>=1) and (CodeUnit<=length(s)) then begin
   Delete(s,CodeUnit,1);
@@ -2207,7 +2213,7 @@ begin
  end;
 end;
 
-function UTF8Length(const s:ansistring):longint; {$ifdef cpu386} assembler; register;
+function UTF8Length(const s:TFLRERawByteString):longint; {$ifdef cpu386} assembler; register;
 asm
  test eax,eax
  jz @End
@@ -2244,7 +2250,7 @@ begin
 end;
 {$endif}
 
-function UTF8PtrLength(const s:ansistring;Len:longint):longint;
+function UTF8PtrLength(const s:TFLRERawByteString;Len:longint):longint;
 {$ifdef cpu386} assembler; register;
 asm
  test eax,eax
@@ -2282,7 +2288,7 @@ begin
 end;
 {$endif}
 
-function UTF8LengthEx(const s:ansistring):longint;
+function UTF8LengthEx(const s:TFLRERawByteString):longint;
 var State:longword;
     CodeUnit:longint;
 begin
@@ -2305,7 +2311,7 @@ begin
  end;
 end;
 
-function UTF8GetCodePoint(const s:ansistring;CodeUnit:longint):longint;
+function UTF8GetCodePoint(const s:TFLRERawByteString;CodeUnit:longint):longint;
 var CurrentCodeUnit,Len:longint;
 begin
  if CodeUnit<1 then begin
@@ -2334,7 +2340,7 @@ begin
  end;
 end;
 
-function UTF8GetCodeUnit(const s:ansistring;CodePoint:longint):longint;
+function UTF8GetCodeUnit(const s:TFLRERawByteString;CodePoint:longint):longint;
 var CurrentCodePoint,Len:longint;
 begin
  if CodePoint<0 then begin
@@ -2350,7 +2356,7 @@ begin
  end;
 end;
 
-function UTF8PtrGetCodeUnit(const s:ansistring;Len,CodePoint:longint):longint;
+function UTF8PtrGetCodeUnit(const s:TFLRERawByteString;Len,CodePoint:longint):longint;
 var CurrentCodePoint:longint;
 begin
  result:=-1;
@@ -2365,7 +2371,7 @@ begin
  end;
 end;
 
-function UTF8CodeUnitGetChar(const s:ansistring;CodeUnit:longint):longword;
+function UTF8CodeUnitGetChar(const s:TFLRERawByteString;CodeUnit:longint):longword;
 var Value,CharClass,State:longword;
 begin
  result:=0;
@@ -2442,7 +2448,7 @@ begin
  end;
 end;
 
-function UTF8CodeUnitGetCharAndInc(const s:ansistring;var CodeUnit:longint):longword;
+function UTF8CodeUnitGetCharAndInc(const s:TFLRERawByteString;var CodeUnit:longint):longword;
 var Len:longint;
     Value,CharClass,State:longword;
 begin
@@ -2496,7 +2502,7 @@ begin
  end;
 end;
 
-function UTF8CodeUnitGetCharFallback(const s:ansistring;CodeUnit:longint):longword;
+function UTF8CodeUnitGetCharFallback(const s:TFLRERawByteString;CodeUnit:longint):longword;
 var Len:longint;
     StartCodeUnit,Value,CharClass,State:longword;
 begin
@@ -2525,7 +2531,7 @@ begin
  end;
 end;
 
-function UTF8CodeUnitGetCharAndIncFallback(const s:ansistring;var CodeUnit:longint):longword;
+function UTF8CodeUnitGetCharAndIncFallback(const s:TFLRERawByteString;var CodeUnit:longint):longword;
 var Len:longint;
     StartCodeUnit,Value,CharClass,State:longword;
 begin
@@ -2583,12 +2589,12 @@ begin
  end;
 end;
 
-function UTF8CodePointGetChar(const s:ansistring;CodePoint:longint;Fallback:boolean=false):longword;
+function UTF8CodePointGetChar(const s:TFLRERawByteString;CodePoint:longint;Fallback:boolean=false):longword;
 begin
  result:=UTF8CodeUnitGetChar(s,UTF8GetCodeUnit(s,CodePoint));
 end;
 
-function UTF8GetCharLen(const s:ansistring;i:longint):longword;
+function UTF8GetCharLen(const s:TFLRERawByteString;i:longint):longword;
 begin
  if (i>0) and (i<=length(s)) then begin
   result:=UTF8CharSteps[s[i]];
@@ -2597,7 +2603,7 @@ begin
  end;
 end;
 
-function UTF8Pos(const FindStr,InStr:ansistring):longint;
+function UTF8Pos(const FindStr,InStr:TFLRERawByteString):longint;
 var i,j,l:longint;
     ok:boolean;
 begin
@@ -2623,7 +2629,7 @@ begin
  end;
 end;
 
-function UTF8Copy(const Str:ansistring;Start,Len:longint):ansistring;
+function UTF8Copy(const Str:TFLRERawByteString;Start,Len:longint):TFLRERawByteString;
 var CodeUnit:longint;
 begin
  result:='';
@@ -2644,7 +2650,7 @@ begin
  end;
 end;
 
-function UTF8UpperCase(const Str:ansistring):ansistring;
+function UTF8UpperCase(const Str:TFLRERawByteString):TFLRERawByteString;
 var CodeUnit,Len,ResultLen:longint;
     StartCodeUnit,Value,CharClass,State,CharValue:longword;
     Data:pansichar;
@@ -2740,7 +2746,7 @@ begin
  end;
 end;
 
-function UTF8LowerCase(const Str:ansistring):ansistring;
+function UTF8LowerCase(const Str:TFLRERawByteString):TFLRERawByteString;
 var CodeUnit,Len,ResultLen:longint;
     StartCodeUnit,Value,CharClass,State,CharValue:longword;
     Data:pansichar;
@@ -2836,7 +2842,7 @@ begin
  end;
 end;
 
-function UTF8Trim(const Str:ansistring):ansistring;
+function UTF8Trim(const Str:TFLRERawByteString):TFLRERawByteString;
 var i,j:longint;
 begin
  i:=1;
@@ -2858,7 +2864,7 @@ begin
  end;
 end;
 
-function UTF8Correct(const Str:ansistring):ansistring;
+function UTF8Correct(const Str:TFLRERawByteString):TFLRERawByteString;
 var CodeUnit,Len,ResultLen:longint;
     StartCodeUnit,Value,CharClass,State,CharValue:longword;
     Data:pansichar;
@@ -2952,7 +2958,7 @@ begin
  end;
 end;
 
-function UTF8FromLatin1(const Str:ansistring):ansistring;
+function UTF8FromLatin1(const Str:TFLRERawByteString):TFLRERawByteString;
 var CodeUnit:longint;
 begin
  if UTF8Validate(Str) then begin
@@ -2965,7 +2971,7 @@ begin
  end;
 end;
 
-function UTF8LevenshteinDistance(const s,t:ansistring):longint;
+function UTF8LevenshteinDistance(const s,t:TFLRERawByteString):longint;
 var d:array of array of longint;
     n,m,i,j,ci,cj,oi,oj,Deletion,Insertion,Substitution:longint;
     si,tj:longword;
@@ -3046,7 +3052,7 @@ begin
  end;
 end;
 
-function UTF8DamerauLevenshteinDistance(const s,t:ansistring):longint;
+function UTF8DamerauLevenshteinDistance(const s,t:TFLRERawByteString):longint;
 var d:array of array of longint;
     n,m,i,j,ci,cj,oi,oj,Cost,Deletion,Insertion,Substitution,Transposition,Value:longint;
     si,tj,lsi,ltj:longword;
@@ -3139,7 +3145,7 @@ begin
  end;
 end;
 
-function FLREStringLength(const s:ansistring):longint;
+function FLREStringLength(const s:TFLRERawByteString):longint;
 begin
  if FLREIsUTF8(s) then begin
   result:=UTF8Length(s);
@@ -3329,7 +3335,7 @@ begin
  end;
 end;
 
-function PtrPosBoyerMoore(const Pattern:ansistring;const Text:pansichar;const TextLength:longint;const Skip:TFLRECharPatternBitMasks;const Next:TFLREBoyerMooreNext;Position:longint=0):longint;
+function PtrPosBoyerMoore(const Pattern:TFLRERawByteString;const Text:pansichar;const TextLength:longint;const Skip:TFLRECharPatternBitMasks;const Next:TFLREBoyerMooreNext;Position:longint=0):longint;
 var PatternPosition,BadSkip,GoodSkip,PatternLength:longint;
 begin
  PatternLength:=length(Pattern);
@@ -3425,7 +3431,7 @@ begin
  result:=-1;
 end;
 
-function PtrCopy(const Src:PAnsiChar;From,Len:longint):ansistring;
+function PtrCopy(const Src:PAnsiChar;From,Len:longint):TFLRERawByteString;
 begin
  SetLength(result,Len);
  if Len>0 then begin
@@ -3433,7 +3439,7 @@ begin
  end;
 end;
 
-function HashString(const Str:ansistring):longword;
+function HashString(const Str:TFLRERawByteString):longword;
 {$ifdef cpuarm}
 var b:pansichar;
     len,h,i:longword;
@@ -3661,7 +3667,7 @@ begin
 end;
 {$endif}
 
-function UTF8RangeToRegEx(Lo,Hi:longword):ansistring;
+function UTF8RangeToRegEx(Lo,Hi:longword):TFLRERawByteString;
 type TString6Chars=array[0..6] of ansichar;
 const Seq0010ffff:array[0..6,0..4,0..1] of longint=((($00,$7f),(-1,-1),(-1,-1),(-1,-1),(-1,-1)),        // 00-7F
                                                     (($c2,$df),($80,$bf),(-1,-1),(-1,-1),(-1,-1)),      // C2-DF 80-BF
@@ -3671,7 +3677,7 @@ const Seq0010ffff:array[0..6,0..4,0..1] of longint=((($00,$7f),(-1,-1),(-1,-1),(
                                                     (($f1,$f3),($80,$bf),($80,$bf),($80,$bf),(-1,-1)),  // F1-F3 80-BF 80-BF 80-BF
                                                     (($f4,$f4),($80,$bf),($80,$bf),($80,$bf),(-1,-1))); // F4-F4 80-8F 80-BF 80-BF
       HexChars:array[$0..$f] of ansichar='0123456789ABCDEF';
-var OutputCharSequence:ansistring;
+var OutputCharSequence:TFLRERawByteString;
  function ToString(CharValue:longword):TString6Chars;
  begin
   case CharValue of
@@ -4814,7 +4820,7 @@ begin
  Resize;
 end;
 
-function TFLREStringIntegerPairHashMap.FindCell(const Key:ansistring):longword;
+function TFLREStringIntegerPairHashMap.FindCell(const Key:TFLRERawByteString):longword;
 var HashCode,Mask,Step:longword;
     Entity:longint;
 begin
@@ -4885,7 +4891,7 @@ begin
  SetLength(OldEntityToCellIndex,0);
 end;
 
-function TFLREStringIntegerPairHashMap.Add(const Key:ansistring;Value:TFLREStringIntegerPairHashMapData):PFLREStringIntegerPairHashMapEntity;
+function TFLREStringIntegerPairHashMap.Add(const Key:TFLRERawByteString;Value:TFLREStringIntegerPairHashMapData):PFLREStringIntegerPairHashMapEntity;
 var Entity:longint;
     Cell:longword;
 begin
@@ -4913,7 +4919,7 @@ begin
  end;
 end;
 
-function TFLREStringIntegerPairHashMap.Get(const Key:ansistring;CreateIfNotExist:boolean=false):PFLREStringIntegerPairHashMapEntity;
+function TFLREStringIntegerPairHashMap.Get(const Key:TFLRERawByteString;CreateIfNotExist:boolean=false):PFLREStringIntegerPairHashMapEntity;
 var Entity:longint;
     Cell:longword;
 begin
@@ -4927,7 +4933,7 @@ begin
  end;
 end;
 
-function TFLREStringIntegerPairHashMap.Delete(const Key:ansistring):boolean;
+function TFLREStringIntegerPairHashMap.Delete(const Key:TFLRERawByteString):boolean;
 var Entity:longint;
     Cell:longword;
 begin
@@ -4943,7 +4949,7 @@ begin
  end;
 end;
 
-function TFLREStringIntegerPairHashMap.GetValue(const Key:ansistring):TFLREStringIntegerPairHashMapData;
+function TFLREStringIntegerPairHashMap.GetValue(const Key:TFLRERawByteString):TFLREStringIntegerPairHashMapData;
 var Entity:longint;
     Cell:longword;
 begin
@@ -4956,7 +4962,7 @@ begin
  end;
 end;
 
-procedure TFLREStringIntegerPairHashMap.SetValue(const Key:ansistring;const Value:TFLREStringIntegerPairHashMapData);
+procedure TFLREStringIntegerPairHashMap.SetValue(const Key:TFLRERawByteString;const Value:TFLREStringIntegerPairHashMapData);
 begin
  Add(Key,Value);
 end;
@@ -6031,9 +6037,9 @@ begin
  end;
 end;
 
-function TFLREPrefilterNode.Expression:ansistring;
+function TFLREPrefilterNode.Expression:TFLRERawByteString;
 var Counter:longint;
-    s:ansistring;
+    s:TFLRERawByteString;
 begin
  result:='';
  case Operation of
@@ -6108,9 +6114,9 @@ begin
  end;
 end;
 
-function TFLREPrefilterNode.ShortExpression:ansistring;
+function TFLREPrefilterNode.ShortExpression:TFLRERawByteString;
 var Counter:longint;
-    s:ansistring;
+    s:TFLRERawByteString;
 begin
  result:='';
  case Operation of
@@ -6178,9 +6184,9 @@ begin
  end;
 end;
 
-function TFLREPrefilterNode.SQLBooleanFullTextExpression:ansistring;
+function TFLREPrefilterNode.SQLBooleanFullTextExpression:TFLRERawByteString;
 var Counter:longint;
-    s:ansistring;
+    s:TFLRERawByteString;
 begin
  result:='';
  case Operation of
@@ -6270,9 +6276,9 @@ begin
  end;
 end;
 
-function TFLREPrefilterNode.SQLExpression(const Field:ansistring):ansistring;
+function TFLREPrefilterNode.SQLExpression(const Field:TFLRERawByteString):TFLRERawByteString;
 var Counter:longint;
-    s:ansistring;
+    s:TFLRERawByteString;
 begin
  result:='';
  case Operation of
@@ -9003,7 +9009,7 @@ end;
 
 function TFLREThreadLocalStorageInstance.LookAssertion(const Position,WhichLookAssertionString:longint;const LookBehind,Negative:boolean):boolean;
 var Index,LookAssertionStringLength,BasePosition:longint;
-    LookAssertionString:ansistring;
+    LookAssertionString:TFLRERawByteString;
 begin
  LookAssertionString:=Instance.LookAssertionStrings[WhichLookAssertionString];
  LookAssertionStringLength:=length(LookAssertionString);
@@ -9089,10 +9095,10 @@ begin
  end;
 end;
 
-constructor TFLRE.Create(const ARegularExpression:ansistring;const AFlags:TFLREFlags=[rfDELIMITERS]);
+constructor TFLRE.Create(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]);
 var StartDelimiter,EndDelimiter:ansichar;
     Index,SubIndex:longint;
-    FlagsStr:ansistring;
+    FlagsStr:TFLRERawByteString;
 begin
  inherited Create;
 
@@ -9327,9 +9333,9 @@ begin
 
 end;
 
-constructor TFLRE.Create(const ARegularExpressions:array of ansistring;const AFlags:TFLREFlags=[]);
+constructor TFLRE.Create(const ARegularExpressions:array of TFLRERawByteString;const AFlags:TFLREFlags=[]);
 var Index:longint;
-    RegularExpressions:ansistring;
+    RegularExpressions:TFLRERawByteString;
 begin
  RegularExpressions:='';
  for Index:=0 to length(ARegularExpressions)-1 do begin
@@ -10280,7 +10286,7 @@ end;
 
 procedure TFLRE.Parse;
 var SourcePosition,SourceLength:longint;
-    Source:ansistring;
+    Source:TFLRERawByteString;
     GroupIndexIntegerStack:TFLREIntegerList;
     GroupNameStringStack:TStringList;
  function Hex2Value(const c:ansichar):longword;
@@ -10301,7 +10307,7 @@ var SourcePosition,SourceLength:longint;
   end;
  end;
  function ParseDisjunction:PFLRENode; forward;
- procedure GetCharClassPerName(const Name:ansistring;const UnicodeCharClass:TFLREUnicodeCharClass;const IgnoreCase:boolean);
+ procedure GetCharClassPerName(const Name:TFLRERawByteString;const UnicodeCharClass:TFLREUnicodeCharClass;const IgnoreCase:boolean);
  var i:longint;
      f:int64;
  begin
@@ -10554,7 +10560,7 @@ var SourcePosition,SourceLength:longint;
  end;
  function NewUnicodeChar(UnicodeChar:longword):PFLRENode;
  var Index:longint;
-     TemporaryString:ansistring;
+     TemporaryString:TFLRERawByteString;
      TemporaryNode:PFLRENode;
  begin
   result:=nil;
@@ -10858,7 +10864,7 @@ var SourcePosition,SourceLength:longint;
   result:=true;
  end;
  function ParseClassPOSIXCharacterClass(const UnicodeCharClass:TFLREUnicodeCharClass;const CanBeAlreadyCanonicalized:boolean):boolean;
- var Name:ansistring;
+ var Name:TFLRERawByteString;
      Negate,IgnoreCase:boolean;
  begin
   result:=false;
@@ -10911,7 +10917,7 @@ var SourcePosition,SourceLength:longint;
   result:=true;
  end;
  function ParseClassEscapeUnicodeProperty(const UnicodeCharClass:TFLREUnicodeCharClass;const CanBeAlreadyCanonicalized:boolean):boolean;
- var Identifier:ansistring;
+ var Identifier:TFLRERawByteString;
      IgnoreCase,IsNegative:boolean;
      f,LastSourcePos,UntilSourcePos:longint;
  begin
@@ -11420,7 +11426,7 @@ var SourcePosition,SourceLength:longint;
    end;
   end;
  end;
- function NewNamedGroup(const Name:ansistring):PFLRENode;
+ function NewNamedGroup(const Name:TFLRERawByteString):PFLRENode;
  var Value:longint;
  begin
   if ([rfNOCAPTURES,rfMULTIMATCH]*Flags)<>[] then begin
@@ -11472,7 +11478,7 @@ var SourcePosition,SourceLength:longint;
    result^.Group:=Group;
   end;
  end;
- function NewBackReferencePerName(const Name:ansistring):PFLRENode;
+ function NewBackReferencePerName(const Name:TFLRERawByteString):PFLRENode;
  var Start,Index,Value:longint;
      Minus:boolean;
  begin
@@ -11531,7 +11537,7 @@ var SourcePosition,SourceLength:longint;
      UnicodeChar,LowerCaseUnicodeChar,UpperCaseUnicodeChar:longword;
      UnicodeCharClass:TFLREUnicodeCharClass;
      OldFlags:TFLREFlags;
-     Name,TemporaryString:ansistring;
+     Name,TemporaryString:TFLRERawByteString;
      TemporaryNode:PFLRENode;
      TerminateChar:ansichar;
  begin
@@ -13111,9 +13117,9 @@ begin
 end;
 
 procedure TFLRE.CompileRange;
-var LowRangeString,HighRangeString:ansistring;
+var LowRangeString,HighRangeString:TFLRERawByteString;
     LastIndex,LastMatchIndex,RangeStringLength:longint;
- function AddChars(Index:longint;const Str:ansistring):longint;
+ function AddChars(Index:longint;const Str:TFLRERawByteString):longint;
  var Len,Counter,NewLen:longint;
  begin
   Len:=length(Str);
@@ -13273,7 +13279,7 @@ type TStackItem=record
 var Node:PFLRENode;
     Argument:ptrint;
     StackPointer,Counter:longint;
-    NodeStrings:array of ansistring;
+    NodeStrings:array of TFLRERawByteString;
     Stack:array of TStackItem;
     Stop,First,IsSingle:boolean;
     SingleChar,CurrentChar:ansichar;
@@ -14876,7 +14882,7 @@ begin
  end;
 end;
 
-function TFLRE.PtrReplaceAll(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):ansistring;
+function TFLRE.PtrReplaceAll(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
 var CurrentPosition,Next,LastPosition,i,j,e:longint;
     Captures:TFLRECaptures;
     SimpleReplacement:boolean;
@@ -14958,7 +14964,7 @@ begin
              inc(i);
             end;
             '_':begin
-             result:=result+AnsiString(PAnsiChar(Input));
+             result:=result+TFLRERawByteString(PAnsiChar(Input));
              inc(i);
             end;
             '-':begin
@@ -15108,7 +15114,7 @@ begin
  end;
 end;
 
-function TFLRE.Match(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+function TFLRE.Match(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
 var Counter:longint;
 begin
  result:=PtrMatch(pansichar(@Input[1]),length(Input),Captures,StartPosition-1);
@@ -15122,7 +15128,7 @@ begin
  end;
 end;
 
-function TFLRE.MatchNext(const Input:ansistring;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+function TFLRE.MatchNext(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
 var Counter:longint;
 begin
  result:=PtrMatchNext(pansichar(@Input[1]),length(Input),Captures,StartPosition-1);
@@ -15136,7 +15142,7 @@ begin
  end;
 end;
 
-function TFLRE.MatchAll(const Input:ansistring;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+function TFLRE.MatchAll(const Input:TFLRERawByteString;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
 var Counter,SubCounter:longint;
 begin
  result:=PtrMatchAll(pansichar(@Input[1]),length(Input),MultiCaptures,StartPosition-1,Limit);
@@ -15152,12 +15158,12 @@ begin
  end;
 end;
 
-function TFLRE.ReplaceAll(const Input,Replacement:ansistring;const StartPosition:longint=1;Limit:longint=-1):ansistring;
+function TFLRE.ReplaceAll(const Input,Replacement:TFLRERawByteString;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
 begin
  result:=PtrReplaceAll(pansichar(@Input[1]),length(Input),pansichar(@Replacement[1]),length(Replacement),StartPosition-1,Limit);
 end;
 
-function TFLRE.GetRange(var LowRange,HighRange:ansistring):boolean;
+function TFLRE.GetRange(var LowRange,HighRange:TFLRERawByteString):boolean;
 begin
  result:=false;
  ParallelLockEnter(@ParallelLock);
@@ -15175,9 +15181,9 @@ begin
  end;
 end;
 
-function TFLRE.DumpRegularExpression:ansistring;
+function TFLRE.DumpRegularExpression:TFLRERawByteString;
 var CharClass:TFLRECharClass;
- function ProcessNode(Node:PFLRENode;ParentPrecedence:longint):ansistring;
+ function ProcessNode(Node:PFLRENode;ParentPrecedence:longint):TFLRERawByteString;
  const HexChars:array[$0..$f] of ansichar='0123456789abcdef';
  var Count,Counter,LowChar,HighChar:longint;
      SingleChar,CurrentChar:ansichar;
@@ -15366,7 +15372,7 @@ begin
  result:=ProcessNode(AnchoredRootNode,npTopLevel);
 end;
 
-function TFLRE.GetPrefilterExpression:ansistring;
+function TFLRE.GetPrefilterExpression:TFLRERawByteString;
 begin
  result:='';
  ParallelLockEnter(@ParallelLock);
@@ -15387,7 +15393,7 @@ begin
  end;
 end;
 
-function TFLRE.GetPrefilterShortExpression:ansistring;
+function TFLRE.GetPrefilterShortExpression:TFLRERawByteString;
 begin
  result:='';
  ParallelLockEnter(@ParallelLock);
@@ -15411,7 +15417,7 @@ begin
  end;
 end;
 
-function TFLRE.GetPrefilterSQLBooleanFullTextExpression:ansistring;
+function TFLRE.GetPrefilterSQLBooleanFullTextExpression:TFLRERawByteString;
 begin
  result:='';
  ParallelLockEnter(@ParallelLock);
@@ -15432,7 +15438,7 @@ begin
  end;
 end;
 
-function TFLRE.GetPrefilterSQLExpression(Field:ansistring):ansistring;
+function TFLRE.GetPrefilterSQLExpression(Field:TFLRERawByteString):TFLRERawByteString;
 begin
  result:='';
  ParallelLockEnter(@ParallelLock);
@@ -15456,7 +15462,7 @@ begin
  end;
 end;
 
-const FLREGetVersionStringData:ansistring=FLREVersionString+#0;
+const FLREGetVersionStringData:TFLRERawByteString=FLREVersionString+#0;
 
 function FLREGetVersion:longword; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 begin
@@ -15470,7 +15476,7 @@ end;
 
 function FLRECreate(const RegularExpression:PAnsiChar;const RegularExpressionLength:longint;const Flags:longword;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 var RealFlags:TFLREFlags;
-    s:ansistring;
+    s:TFLRERawByteString;
     Len:longint;
 begin
  result:=nil;
@@ -15514,7 +15520,7 @@ begin
    Include(RealFlags,rfDELIMITERS);
   end;
   try
-   TFLRE(result):=TFLRE.Create(AnsiString(PtrCopy(RegularExpression,0,RegularExpressionLength)),RealFlags);
+   TFLRE(result):=TFLRE.Create(TFLRERawByteString(PtrCopy(RegularExpression,0,RegularExpressionLength)),RealFlags);
   except
    FreeAndNil(TFLRE(result));
    raise;
@@ -15522,7 +15528,7 @@ begin
  except
   on e:Exception do begin
    if assigned(Error) then begin
-    s:=AnsiString(e.Message);
+    s:=TFLRERawByteString(e.Message);
     Len:=length(s);
     if Len>0 then begin
      GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -15566,7 +15572,7 @@ begin
 end;
 
 function FLREDumpRegularExpression(const Instance:pointer;const RegularExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
-var s:ansistring;
+var s:TFLRERawByteString;
     Len:longint;
 begin
  result:=0;
@@ -15600,7 +15606,7 @@ begin
   except
    on e:Exception do begin
     if assigned(Error) then begin
-     s:=AnsiString(e.Message);
+     s:=TFLRERawByteString(e.Message);
      Len:=length(s);
      if Len>0 then begin
       GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -15618,7 +15624,7 @@ begin
 end;
 
 function FLREGetPrefilterExpression(const Instance:pointer;const Expression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
-var s:ansistring;
+var s:TFLRERawByteString;
     Len:longint;
 begin
  result:=0;
@@ -15652,7 +15658,7 @@ begin
   except
    on e:Exception do begin
     if assigned(Error) then begin
-     s:=AnsiString(e.Message);
+     s:=TFLRERawByteString(e.Message);
      Len:=length(s);
      if Len>0 then begin
       GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -15670,7 +15676,7 @@ begin
 end;
 
 function FLREGetPrefilterShortExpression(const Instance:pointer;const ShortExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
-var s:ansistring;
+var s:TFLRERawByteString;
     Len:longint;
 begin
  result:=0;
@@ -15704,7 +15710,7 @@ begin
   except
    on e:Exception do begin
     if assigned(Error) then begin
-     s:=AnsiString(e.Message);
+     s:=TFLRERawByteString(e.Message);
      Len:=length(s);
      if Len>0 then begin
       GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -15722,7 +15728,7 @@ begin
 end;
 
 function FLREGetPrefilterSQLBooleanFullTextExpression(const Instance:pointer;const SQLBooleanFullTextExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
-var s:ansistring;
+var s:TFLRERawByteString;
     Len:longint;
 begin
  result:=0;
@@ -15752,7 +15758,7 @@ begin
   except
    on e:Exception do begin
     if assigned(Error) then begin
-     s:=AnsiString(e.Message);
+     s:=TFLRERawByteString(e.Message);
      Len:=length(s);
      if Len>0 then begin
       GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -15770,7 +15776,7 @@ begin
 end;
 
 function FLREGetPrefilterSQLExpression(const Instance:pointer;const Field:pansichar;SQLExpression,Error:ppansichar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
-var s:ansistring;
+var s:TFLRERawByteString;
     Len:longint;
 begin
  result:=0;
@@ -15804,7 +15810,7 @@ begin
   except
    on e:Exception do begin
     if assigned(Error) then begin
-     s:=AnsiString(e.Message);
+     s:=TFLRERawByteString(e.Message);
      Len:=length(s);
      if Len>0 then begin
       GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -15822,7 +15828,7 @@ begin
 end;
 
 function FLREGetRange(const Instance:pointer;const LowRange,HighRange:PPAnsiChar;const LowRangeLength,HighRangeLength:PLongint;const Error:PPAnsiChar):longint; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
-var LocalLowRange,LocalHighRange:ansistring;
+var LocalLowRange,LocalHighRange:TFLRERawByteString;
 begin
  LocalLowRange:='';
  LocalHighRange:='';
@@ -15853,7 +15859,7 @@ end;
 function FLREMatch(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const MaxCaptures:longint;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
 type PLongints=^TLongints;
      TLongints=array[0..65535] of longint;
-var s:ansistring;
+var s:TFLRERawByteString;
     Len,Index:longint;
     LocalCaptures:TFLRECaptures;
 begin
@@ -15905,7 +15911,7 @@ begin
   except
    on e:Exception do begin
     if assigned(Error) then begin
-     s:=AnsiString(e.Message);
+     s:=TFLRERawByteString(e.Message);
      Len:=length(s);
      if Len>0 then begin
       GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -15925,7 +15931,7 @@ end;
 function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLength:longint;const Captures:PPointer;const MaxCaptures:longint;const CountCaptures:PLongint;const StartPosition:longint;const Error:PPAnsiChar):longint;
 type PLongints=^TLongints;
      TLongints=array[0..65535] of longint;
-var s:ansistring;
+var s:TFLRERawByteString;
     Len,Index:longint;
     LocalCaptures:TFLRECaptures;
 begin
@@ -15977,7 +15983,7 @@ begin
   except
    on e:Exception do begin
     if assigned(Error) then begin
-     s:=AnsiString(e.Message);
+     s:=TFLRERawByteString(e.Message);
      Len:=length(s);
      if Len>0 then begin
       GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -15995,7 +16001,7 @@ begin
 end;
 
 function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const MultiCaptures:PPointer;const MaxMultiCaptures:longint;const CountMultiCaptures,CountCaptures:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
-var s:ansistring;
+var s:TFLRERawByteString;
     Len,Index,SubIndex:longint;
     LocalMultiCaptures:TFLREMultiCaptures;
     p:plongint;
@@ -16061,7 +16067,7 @@ begin
   except
    on e:Exception do begin
     if assigned(Error) then begin
-     s:=AnsiString(e.Message);
+     s:=TFLRERawByteString(e.Message);
      Len:=length(s);
      if Len>0 then begin
       GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -16079,7 +16085,7 @@ begin
 end;
 
 function FLREReplaceAll(const Instance:pointer;const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const ResultString:PPointer;const ResultStringLength:PLongint;const StartPosition,Limit:longint;const Error:PPAnsiChar):longint;
-var s:ansistring;
+var s:TFLRERawByteString;
     Len:longint;
 begin
  result:=0;
@@ -16116,7 +16122,7 @@ begin
   except
    on e:Exception do begin
     if assigned(Error) then begin
-     s:=AnsiString(e.Message);
+     s:=TFLRERawByteString(e.Message);
      Len:=length(s);
      if Len>0 then begin
       GetMem(Error^,(Len+1)*SizeOf(AnsiChar));
@@ -16134,7 +16140,7 @@ begin
 end;
 
 procedure InitializeFLRE;
-const FLRESignature:ansistring=' FLRE - yet another efficient, principled regular expression library - Version '+FLREVersionString+' - Copyright (C) 2015, Benjamin ''BeRo'' Rosseaux - benjamin@rosseaux.com - http://www.rosseaux.com ';
+const FLRESignature:TFLRERawByteString=' FLRE - yet another efficient, principled regular expression library - Version '+FLREVersionString+' - Copyright (C) 2015, Benjamin ''BeRo'' Rosseaux - benjamin@rosseaux.com - http://www.rosseaux.com ';
  procedure InitializeUTF8DFA;
  type TAnsiCharSet=set of ansichar;
 {$ifdef FLREStrictUTF8}
@@ -16445,7 +16451,7 @@ const FLRESignature:ansistring=' FLRE - yet another efficient, principled regula
  procedure InitializeUnicode;
  var i,l,h,cl,cu:longword;
      Count:longint;
-     s:ansistring;
+     s:TFLRERawByteString;
   procedure AddRange(Table,FirstChar,LastChar:longword);
   begin
    if (Count+1)>length(UnicodeCharRangeClasses[Table]) then begin
@@ -16894,7 +16900,7 @@ const FLRESignature:ansistring=' FLRE - yet another efficient, principled regula
     UnicodeScriptHashMap.SetValue(UTF8Correct(s),i);
     UnicodeScriptHashMap.SetValue(UTF8Correct('In'+s),i);
     UnicodeScriptHashMap.SetValue(UTF8Correct('Is'+s),i);
-    s:=AnsiString(StringReplace(String(s),'_','',[rfREPLACEALL]));
+    s:=TFLRERawByteString(StringReplace(String(s),'_','',[rfREPLACEALL]));
     UnicodeScriptHashMap.SetValue(UTF8Correct(s),i);
     UnicodeScriptHashMap.SetValue(UTF8Correct('In'+s),i);
     UnicodeScriptHashMap.SetValue(UTF8Correct('Is'+s),i);
@@ -16903,11 +16909,11 @@ const FLRESignature:ansistring=' FLRE - yet another efficient, principled regula
   begin
    UnicodeBlockHashMap:=TFLREStringIntegerPairHashMap.Create;
    for i:=FLREUnicodeScriptCommon to FLREUnicodeBlockCount-1 do begin
-    s:=AnsiString(StringReplace(String(FLREUnicodeBlocks[i].Name),' ','_',[rfREPLACEALL]));
+    s:=TFLRERawByteString(StringReplace(String(FLREUnicodeBlocks[i].Name),' ','_',[rfREPLACEALL]));
     UnicodeBlockHashMap.SetValue(UTF8Correct(s),i);
     UnicodeBlockHashMap.SetValue(UTF8Correct('In'+s),i);
     UnicodeBlockHashMap.SetValue(UTF8Correct('Is'+s),i);
-    s:=AnsiString(StringReplace(String(s),'_','',[rfREPLACEALL]));
+    s:=TFLRERawByteString(StringReplace(String(s),'_','',[rfREPLACEALL]));
     UnicodeBlockHashMap.SetValue(UTF8Correct(s),i);
     UnicodeBlockHashMap.SetValue(UTF8Correct('In'+s),i);
     UnicodeBlockHashMap.SetValue(UTF8Correct('Is'+s),i);

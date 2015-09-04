@@ -102,7 +102,7 @@ function IsDebuggerPresent:boolean; stdcall; external 'kernel32.dll' name 'IsDeb
 {$endif}
 
 var i,j:integer;
-    s:ansistring;
+    s:TFLRERawByteString;
     FileStream:TFileStream;
     FLREInstance:TFLRE;
     StartTime,EndTime:int64;

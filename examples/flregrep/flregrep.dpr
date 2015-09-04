@@ -89,7 +89,7 @@ begin
  end;
 end;
 
-function GetFileList(const Filter:ansistring):TStringList;
+function GetFileList(const Filter:string):TStringList;
 var SearchRec:TSearchRec;
     r:longint;
     Flags:longword;
@@ -118,7 +118,8 @@ var FLREInstance:TFLRE;
     Memory:pointer;
     MultiCaptures:TFLREMultiCaptures;
     FileNameIndex,Count,Index,SubIndex,FirstNewLine,Mode,LastLineOffset,LastEndLineOffset,LineEndOffset,LineOffset,MaximumCount:longint;
-    Parameter,Argument,RegularExpression,Directory,FileName,MemoryString:ansistring;
+    Parameter,Argument,RegularExpression,Directory,FileName:string;
+    MemoryString:TFLRERawByteString;
     HasRegularExpression,HasFileName,SuppressErrorMessages,Quiet,LineBuffered,ByteOffset,OnlyMatching,PrintFileName,IsStdIn:boolean;
     RegularExpressionFlags:TFLREFlags;
     SplitCharacter,BufferChar:ansichar;

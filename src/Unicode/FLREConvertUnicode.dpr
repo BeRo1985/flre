@@ -67,7 +67,7 @@ begin
  try
   Count:=0;
   OutputList.Add('type TFLREUnicodeBlock=record');
-  OutputList.Add('      Name:ansistring;');
+  OutputList.Add('      Name:{$ifdef conditionalexpressions}{$if declared(RawByteString)}RawByteString{$else}AnsiString{$ifend}{$else}ansistring{$endif};');
   OutputList.Add('      FromChar,ToChar:longword;');
   OutputList.Add('     end;');
   List:=TStringList.Create;
