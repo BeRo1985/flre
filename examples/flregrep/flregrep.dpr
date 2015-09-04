@@ -108,6 +108,10 @@ begin
  end;
 end;
 
+{$ifdef windows}
+function IsDebuggerPresent:boolean; stdcall; external 'kernel32.dll' name 'IsDebuggerPresent';
+{$endif}
+
 var FLREInstance:TFLRE;
     FileMappedStream:TBeRoFileMappedStream;
     MemoryViewSize,ToDo,SlidingOffset:int64;
@@ -492,7 +496,11 @@ begin
  finally
   FileNameList.Free;
  end;
-{$ifndef fpc}
+{$ifdef fpc}
+ if IsDebuggerPresent then begin
+  readln;
+ end;
+{$else}
  if DebugHook<>0 then begin
   readln;
  end;

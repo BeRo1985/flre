@@ -8,10 +8,11 @@
       <Unit0>
         <Filename Value="benchmark.dpr"/>
         <IsPartOfProject Value="True"/>
+        <IsVisibleTab Value="True"/>
         <EditorIndex Value="0"/>
         <WindowIndex Value="1"/>
-        <TopLine Value="1"/>
-        <CursorPos X="84" Y="18"/>
+        <TopLine Value="85"/>
+        <CursorPos X="1" Y="103"/>
         <UsageCount Value="20"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
@@ -20,11 +21,10 @@
         <Filename Value="..\..\src\FLRE.pas"/>
         <IsPartOfProject Value="True"/>
         <UnitName Value="FLRE"/>
-        <IsVisibleTab Value="True"/>
         <EditorIndex Value="1"/>
         <WindowIndex Value="1"/>
-        <TopLine Value="6446"/>
-        <CursorPos X="55" Y="6464"/>
+        <TopLine Value="582"/>
+        <CursorPos X="8" Y="604"/>
         <UsageCount Value="20"/>
         <Loaded Value="True"/>
         <DefaultSyntaxHighlighter Value="Delphi"/>
@@ -45,13 +45,16 @@
     <General>
       <ActiveWindowIndexAtStart Value="0"/>
     </General>
-    <JumpHistory Count="1" HistoryIndex="0">
+    <JumpHistory Count="2" HistoryIndex="1">
       <Position1>
         <Filename Value="..\..\src\FLRE.pas"/>
         <Caret Line="1" Column="1" TopLine="1"/>
       </Position1>
+      <Position2>
+        <Filename Value="..\..\src\FLRE.pas"/>
+        <Caret Line="6452" Column="31" TopLine="6446"/>
+      </Position2>
     </JumpHistory>
   </ProjectSession>
-  <SkipCheckLCLInterfaces Value="True"/>
   <EditorMacros Count="0"/>
 </CONFIG>

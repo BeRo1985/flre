@@ -97,6 +97,9 @@ const BenchmarkCount=1;
                                                    '([A-Za-z]awyer|[A-Za-z]inn)\s',
                                                    '["''][^"'']{0,30}[?!\.]["'']');
 
+{$ifdef windows}
+function IsDebuggerPresent:boolean; stdcall; external 'kernel32.dll' name 'IsDebuggerPresent';
+{$endif}
 
 var i,j:integer;
     s:ansistring;
@@ -152,7 +155,11 @@ begin
  writeln;
  writeln('Done!');
  writeln;
-{$ifndef fpc}
+{$ifdef fpc}
+ if IsDebuggerPresent then begin
+  readln;
+ end;
+{$else}
  if DebugHook<>0 then begin
   readln;
  end;
