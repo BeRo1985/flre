@@ -76,6 +76,11 @@ unit FLRE;
  {$else}
   {$undef HAS_TYPE_RAWBYTESTRING}
  {$ifend}
+ {$if declared(UTF8String)}
+  {$define HAS_TYPE_UTF8STRING}
+ {$else}
+  {$undef HAS_TYPE_UTF8STRING}
+ {$ifend}
 {$else}
  {$realcompatibility off}
  {$localsymbols on}
@@ -100,8 +105,14 @@ unit FLRE;
   {$else}
    {$undef HAS_TYPE_RAWBYTESTRING}
   {$ifend}
+  {$if declared(UTF8String)}
+   {$define HAS_TYPE_UTF8STRING}
+  {$else}
+   {$undef HAS_TYPE_UTF8STRING}
+  {$ifend}
  {$else}
   {$undef HAS_TYPE_RAWBYTESTRING}
+  {$undef HAS_TYPE_UTF8STRING}
  {$endif}
 {$endif}
 {$ifdef win32}
@@ -132,9 +143,9 @@ interface
 
 uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$endif}SysUtils,Classes;
 
-const FLREVersion=$00000002;
+const FLREVersion=$00000003;
 
-      FLREVersionString='1.00.2015.08.29.05.05.0000';
+      FLREVersionString='1.00.2015.09.04.07.53.0000';
 
       MaxPrefixCharClasses=32;
 
@@ -159,6 +170,8 @@ type EFLRE=class(Exception);
      PFLREPtrInt=^TFLREPtrInt;
 
      TFLRERawByteString={$ifdef HAS_TYPE_RAWBYTESTRING}RawByteString{$else}AnsiString{$endif};
+
+     TFLREUTF8String={$ifdef HAS_TYPE_UTF8STRING}UTF8String{$else}AnsiString{$endif};
 
 {$ifdef fpc}
      TFLREQWord=qword;
@@ -951,6 +964,11 @@ type EFLRE=class(Exception);
        function MatchNext(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchAll(const Input:TFLRERawByteString;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function ReplaceAll(const Input,Replacement:TFLRERawByteString;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
+
+       function UTF8Match(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+       function UTF8MatchNext(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+       function UTF8MatchAll(const Input:TFLREUTF8String;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function UTF8ReplaceAll(const Input,Replacement:TFLREUTF8String;const StartPosition:longint=1;Limit:longint=-1):TFLREUTF8String;
 
        function GetRange(var LowRange,HighRange:TFLRERawByteString):boolean;
 
@@ -15186,6 +15204,55 @@ begin
 end;
 
 function TFLRE.ReplaceAll(const Input,Replacement:TFLRERawByteString;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
+begin
+ result:=PtrReplaceAll(pansichar(@Input[1]),length(Input),pansichar(@Replacement[1]),length(Replacement),StartPosition-1,Limit);
+end;
+
+function TFLRE.UTF8Match(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+var Counter:longint;
+begin
+ result:=PtrMatch(pansichar(@Input[1]),length(Input),Captures,StartPosition-1);
+ for Counter:=0 to length(Captures)-1 do begin
+  if Captures[Counter].Length>0 then begin
+   inc(Captures[Counter].Start);
+  end;
+  if (rfMULTIMATCH in Flags) and (Counter=0) then begin
+   break;
+  end;
+ end;
+end;
+
+function TFLRE.UTF8MatchNext(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
+var Counter:longint;
+begin
+ result:=PtrMatchNext(pansichar(@Input[1]),length(Input),Captures,StartPosition-1);
+ for Counter:=0 to length(Captures)-1 do begin
+  if Captures[Counter].Length>0 then begin
+   inc(Captures[Counter].Start);
+  end;
+  if (rfMULTIMATCH in Flags) and (Counter=0) then begin
+   break;
+  end;
+ end;
+end;
+
+function TFLRE.UTF8MatchAll(const Input:TFLREUTF8String;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+var Counter,SubCounter:longint;
+begin
+ result:=PtrMatchAll(pansichar(@Input[1]),length(Input),MultiCaptures,StartPosition-1,Limit);
+ for Counter:=0 to length(MultiCaptures)-1 do begin
+  for SubCounter:=0 to length(MultiCaptures[Counter])-1 do begin
+   if MultiCaptures[Counter,SubCounter].Length>0 then begin
+    inc(MultiCaptures[Counter,SubCounter].Start);
+   end;
+   if (rfMULTIMATCH in Flags) and (SubCounter=0) then begin
+    break;
+   end;
+  end;
+ end;
+end;
+
+function TFLRE.UTF8ReplaceAll(const Input,Replacement:TFLREUTF8String;const StartPosition:longint=1;Limit:longint=-1):TFLREUTF8String;
 begin
  result:=PtrReplaceAll(pansichar(@Input[1]),length(Input),pansichar(@Replacement[1]),length(Replacement),StartPosition-1,Limit);
 end;
