@@ -34,10 +34,17 @@ unit FLRE;
  {$ifdef cpui386}
   {$define cpu386}
  {$endif}
+ {$ifdef cpuamd64}
+  {$define cpux86_64}
+ {$endif}
  {$ifdef cpu386}
+  {$define cpux86}
+  {$define cpu32}
   {$asmmode intel}
  {$endif}
- {$ifdef cpuamd64}
+ {$ifdef cpux86_64}
+  {$define cpux64}
+  {$define cpu64}
   {$asmmode intel}
  {$endif}
  {$ifdef FPC_LITTLE_ENDIAN}
@@ -75,6 +82,15 @@ unit FLRE;
  {$define LITTLE_ENDIAN}
  {$ifndef cpu64}
   {$define cpu32}
+ {$endif}
+ {$ifdef cpux64}
+  {$define cpux86_64}
+  {$define cpu64}
+ {$else}
+  {$ifdef cpu386}
+   {$define cpux86}
+   {$define cpu32}
+  {$endif}
  {$endif}
  {$define HAS_TYPE_EXTENDED}
  {$define HAS_TYPE_DOUBLE}
@@ -1580,7 +1596,7 @@ begin
  end;
 end;
 
-{$ifdef cpuamd64}
+{$ifdef cpux64}
 function InterlockedCompareExchange128Ex(Target,NewValue,Comperand:pointer):boolean; assembler; register;
 asm
  push rbx
@@ -1751,7 +1767,7 @@ asm
  pop ebx
 end;
 {$else}
-{$ifdef cpuamd64} assembler; register;
+{$ifdef cpux64} assembler; register;
 {$define HasDCAS}
 asm
  push rbx
@@ -1800,7 +1816,7 @@ asm
   jmp @TryAgain
  @End:          
 end;
-{$else}{$ifdef cpuamd64}assembler; register; {$ifdef fpc}nostackframe;{$endif}
+{$else}{$ifdef cpux64}assembler; register; {$ifdef fpc}nostackframe;{$endif}
 asm
  xor rdx,rdx
  not rdx
@@ -1837,7 +1853,7 @@ asm
  xor edx,edx
  lock xchg dword ptr [eax],edx // xchg doesn't need lock actually (see IA-32 Intel® Architecture Software Developer’s Manual Volume 3A: System Programming Guide, Part 1, 7.1.2.1), but sure is sure and it does no harm on the performance
 end;
-{$else}{$ifdef cpuamd64}assembler; register; {$ifdef fpc}nostackframe;{$endif}
+{$else}{$ifdef cpux64}assembler; register; {$ifdef fpc}nostackframe;{$endif}
 asm
  xor rax,rax
 {$ifdef windows}
@@ -3181,7 +3197,7 @@ asm
  pop esi
 end;
 {$else}
-{$ifdef cpuamd64}assembler; register; {$ifdef fpc}nostackframe;{$endif}
+{$ifdef cpux64}assembler; register; {$ifdef fpc}nostackframe;{$endif}
 asm
 {$ifdef win64}
  mov eax,dword ptr [rcx]
@@ -3889,7 +3905,7 @@ begin
 {$ifdef cpu386}
  Alignment:=16;
 {$else}
-{$ifdef cpuamd64}
+{$ifdef cpux64}
  Alignment:=16;
 {$else}
 {$ifdef cpuarm}
@@ -4406,7 +4422,7 @@ end;
 
 procedure TFLREIntegerList.SetCapacity(NewCapacity:longint);
 begin
- if (NewCapacity>=0) and (NewCapacity<MaxListSize) then begin
+ if NewCapacity>=0 then begin
   ReallocMem(List,NewCapacity*sizeof(longint));
   Allocated:=NewCapacity;
  end;
@@ -4414,7 +4430,7 @@ end;
 
 procedure TFLREIntegerList.SetCount(NewCount:longint);
 begin
- if (NewCount>=0) and (NewCount<MaxListSize) then begin
+ if NewCount>=0 then begin
   if NewCount<CountItems then begin
    CountItems:=NewCount;
   end else if NewCount>CountItems then begin
@@ -11423,7 +11439,7 @@ var SourcePosition,SourceLength:longint;
    end;
    CapturesToSubMatchesMap[CountCaptures]:=Value;
    inc(CountCaptures);
-   NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
+   NamedGroupStringIntegerPairHashMap.Add(TFLRERawByteString(IntToStr(Value)),Value);
    if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
     NamedGroupStringList.Add(IntToStr(Value));
    end else begin
@@ -11451,19 +11467,19 @@ var SourcePosition,SourceLength:longint;
    CapturesToSubMatchesMap[CountCaptures]:=Value;
    inc(CountCaptures);
    NamedGroupStringIntegerPairHashMap.Add(Name,Value);
-   if NamedGroupStringList.IndexOf(Name)<0 then begin
-    NamedGroupStringList.Add(Name);
+   if NamedGroupStringList.IndexOf(String(Name))<0 then begin
+    NamedGroupStringList.Add(String(Name));
    end else begin
     raise EFLRE.Create('Duplicate named group');
    end;
-   NamedGroupStringIntegerPairHashMap.Add(IntToStr(Value),Value);
+   NamedGroupStringIntegerPairHashMap.Add(TFLRERawByteString(IntToStr(Value)),Value);
    if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
     NamedGroupStringList.Add(IntToStr(Value));
    end else begin
     raise EFLRE.Create('Duplicate named group');
    end;
    GroupIndexIntegerStack.Add(Value);
-   GroupNameStringStack.Add(Name);
+   GroupNameStringStack.Add(String(Name));
    try
     result:=NewNode(ntPAREN,ParseDisjunction,nil,Value);
    finally
@@ -11527,7 +11543,7 @@ var SourcePosition,SourceLength:longint;
     result:=NewBackReferencePerIndex(Value);
    end;
   end else begin
-   if (NamedGroupStringList.IndexOf(Name)<0) or (GroupNameStringStack.IndexOf(Name)>=0) then begin
+   if (NamedGroupStringList.IndexOf(String(Name))<0) or (GroupNameStringStack.IndexOf(String(Name))>=0) then begin
     raise EFLRE.Create('Syntax error');
    end else begin
     Value:=CountInternalCaptures;
@@ -15374,7 +15390,7 @@ var CharClass:TFLRECharClass;
      result:=result+'(?='+LookAssertionStrings[Node^.Value]+')';
     end;
     ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
-     result:=result+'\g{'+IntToStr(Node^.Value shr 1)+'}';
+     result:=result+'\g{'+TFLRERawByteString(IntToStr(Node^.Value shr 1))+'}';
     end;
    end;
   end;
