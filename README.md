@@ -6,6 +6,8 @@ It implements the many of the most common Perl and POSIX features, except **irre
 
 FLRE is licensed under the LGPL v2.1 with static-linking-exception.
 
+And as a side note, the experimental support for lookahead assertions and back references may be removed later again, if it is recognized later that these capabilities are not effective or not issue-free without backtracking, because FLRE is primarly a backtracking-free regular expression engine.
+
 The secret of FLRE speed is that FLRE uses multiple subengines with automatic selection:
 
 * **Fixed string search** for pure static literal string regexs, SBNDMQ2 (a shift-and/shift-or variant with boyer-moore-style skipping) for short strings shorter than 32 chars, and boyer-moore for strings longer than or equal 32 chars.
