@@ -480,9 +480,9 @@ type EFLRE=class(Exception);
 
      TFLREMultiCaptures=array of TFLRECaptures;
 
-     TFLREExtractions=array of TFLRERawByteString;
+     TFLREStrings=array of TFLRERawByteString;
 
-     TFLREMultiExtractions=array of TFLREExtractions;
+     TFLREMultiStrings=array of TFLREStrings;
 
      TFLREPrefixCharClasses=array[0..MaxPrefixCharClasses-1] of TFLRECharClass;
 
@@ -962,7 +962,7 @@ type EFLRE=class(Exception);
        function PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchAll(const Input:pointer;const InputLength:longint;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
-       function PtrExtractAll(const Input:pointer;const InputLength:longint;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=0;Limit:longint=-1):boolean;
+       function PtrExtractAll(const Input:pointer;const InputLength:longint;var MultiExtractions:TFLREMultiStrings;const StartPosition:longint=0;Limit:longint=-1):boolean;
        function PtrReplaceAll(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
        function PtrTest(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):boolean;
        function PtrFind(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):longint;
@@ -970,7 +970,7 @@ type EFLRE=class(Exception);
        function Match(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchNext(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchAll(const Input:TFLRERawByteString;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
-       function ExtractAll(const Input:TFLRERawByteString;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function ExtractAll(const Input:TFLRERawByteString;var MultiExtractions:TFLREMultiStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function ReplaceAll(const Input,Replacement:TFLRERawByteString;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
        function Test(const Input:TFLRERawByteString;const StartPosition:longint=1):boolean;
        function Find(const Input:TFLRERawByteString;const StartPosition:longint=1):longint;
@@ -978,7 +978,7 @@ type EFLRE=class(Exception);
        function UTF8Match(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function UTF8MatchNext(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function UTF8MatchAll(const Input:TFLREUTF8String;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
-       function UTF8ExtractAll(const Input:TFLREUTF8String;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function UTF8ExtractAll(const Input:TFLREUTF8String;var MultiExtractions:TFLREMultiStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function UTF8ReplaceAll(const Input,Replacement:TFLREUTF8String;const StartPosition:longint=1;Limit:longint=-1):TFLREUTF8String;
        function UTF8Test(const Input:TFLREUTF8String;const StartPosition:longint=1):boolean;
        function UTF8Find(const Input:TFLREUTF8String;const StartPosition:longint=1):longint;
@@ -14940,7 +14940,7 @@ begin
  end;
 end;
 
-function TFLRE.PtrExtractAll(const Input:pointer;const InputLength:longint;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=0;Limit:longint=-1):boolean;
+function TFLRE.PtrExtractAll(const Input:pointer;const InputLength:longint;var MultiExtractions:TFLREMultiStrings;const StartPosition:longint=0;Limit:longint=-1):boolean;
 var CurrentPosition,CountMultiExtractions,Next,Index,Count:longint;
     MatchResult:TFLRECaptures;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
@@ -15338,7 +15338,7 @@ begin
  end;
 end;
 
-function TFLRE.ExtractAll(const Input:TFLRERawByteString;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=1;Limit:longint=-1):boolean;
+function TFLRE.ExtractAll(const Input:TFLRERawByteString;var MultiExtractions:TFLREMultiStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
 begin
  result:=PtrExtractAll(pansichar(@Input[1]),length(Input),MultiExtractions,StartPosition-1,Limit);
 end;
@@ -15402,7 +15402,7 @@ begin
  end;
 end;
 
-function TFLRE.UTF8ExtractAll(const Input:TFLREUTF8String;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=1;Limit:longint=-1):boolean;
+function TFLRE.UTF8ExtractAll(const Input:TFLREUTF8String;var MultiExtractions:TFLREMultiStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
 begin
  result:=PtrExtractAll(pansichar(@Input[1]),length(Input),MultiExtractions,StartPosition-1,Limit);
 end;
