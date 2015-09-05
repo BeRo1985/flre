@@ -480,6 +480,10 @@ type EFLRE=class(Exception);
 
      TFLREMultiCaptures=array of TFLRECaptures;
 
+     TFLREExtractions=array of TFLRERawByteString;
+
+     TFLREMultiExtractions=array of TFLREExtractions;
+
      TFLREPrefixCharClasses=array[0..MaxPrefixCharClasses-1] of TFLRECharClass;
 
      PFLREIntegerArray=^TFLREIntegerArray;
@@ -958,17 +962,26 @@ type EFLRE=class(Exception);
        function PtrMatch(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchNext(const Input:pointer;const InputLength:longint;var Captures:TFLRECaptures;const StartPosition:longint=0):boolean;
        function PtrMatchAll(const Input:pointer;const InputLength:longint;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=0;Limit:longint=-1):boolean;
+       function PtrExtractAll(const Input:pointer;const InputLength:longint;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=0;Limit:longint=-1):boolean;
        function PtrReplaceAll(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
+       function PtrTest(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):boolean;
+       function PtrFind(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):longint;
 
        function Match(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchNext(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function MatchAll(const Input:TFLRERawByteString;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function ExtractAll(const Input:TFLRERawByteString;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function ReplaceAll(const Input,Replacement:TFLRERawByteString;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
+       function Test(const Input:TFLRERawByteString;const StartPosition:longint=1):boolean;
+       function Find(const Input:TFLRERawByteString;const StartPosition:longint=1):longint;
 
        function UTF8Match(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function UTF8MatchNext(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
        function UTF8MatchAll(const Input:TFLREUTF8String;var MultiCaptures:TFLREMultiCaptures;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function UTF8ExtractAll(const Input:TFLREUTF8String;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function UTF8ReplaceAll(const Input,Replacement:TFLREUTF8String;const StartPosition:longint=1;Limit:longint=-1):TFLREUTF8String;
+       function UTF8Test(const Input:TFLREUTF8String;const StartPosition:longint=1):boolean;
+       function UTF8Find(const Input:TFLREUTF8String;const StartPosition:longint=1):longint;
 
        function GetRange(var LowRange,HighRange:TFLRERawByteString):boolean;
 
@@ -14927,6 +14940,66 @@ begin
  end;
 end;
 
+function TFLRE.PtrExtractAll(const Input:pointer;const InputLength:longint;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=0;Limit:longint=-1):boolean;
+var CurrentPosition,CountMultiExtractions,Next,Index,Count:longint;
+    MatchResult:TFLRECaptures;
+    ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+begin
+ result:=false;
+ if rfMULTIMATCH in Flags then begin
+  raise EFLRE.Create('ExtractAll unsupported in multi match mode');
+ end;
+ MatchResult:=nil;
+ CountMultiExtractions:=0;
+ SetLength(MultiExtractions,0);
+ CurrentPosition:=StartPosition;
+ if CurrentPosition>=0 then begin
+  try
+   ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+   try
+    ThreadLocalStorageInstance.Input:=Input;
+    ThreadLocalStorageInstance.InputLength:=InputLength;
+    if rfMULTIMATCH in Flags then begin
+     for Index:=0 to CountMultiSubMatches-1 do begin
+      ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
+     end;
+     Count:=CountMultiSubMatches+1;
+    end else begin
+     Count:=CountCaptures;
+    end;
+    SetLength(MultiExtractions,16,Count);
+    SetLength(MatchResult,Count);
+    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,MatchResult,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
+     Next:=CurrentPosition+1;
+     CurrentPosition:=MatchResult[0].Start+MatchResult[0].Length;
+     if CurrentPosition<Next then begin
+      CurrentPosition:=Next;
+     end;
+     if CountMultiExtractions>=length(MultiExtractions) then begin
+      SetLength(MultiExtractions,(CountMultiExtractions+1)*2);
+      for Index:=CountMultiExtractions to length(MultiExtractions)-1 do begin
+       SetLength(MultiExtractions[Index],Count);
+      end;
+     end;
+     for Index:=0 to CountMultiSubMatches-1 do begin
+      MultiExtractions[CountMultiExtractions,Index]:=PtrCopy(Input,MatchResult[Index].Start,MatchResult[Index].Length);
+     end;
+     inc(CountMultiExtractions);
+     if Limit>0 then begin
+      dec(Limit);
+     end;
+    end;
+    result:=CountMultiExtractions>0;
+   finally
+    ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
+   end;
+  finally
+   SetLength(MatchResult,0);
+   SetLength(MultiExtractions,CountMultiExtractions);
+  end;
+ end;
+end;
+
 function TFLRE.PtrReplaceAll(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
 var CurrentPosition,Next,LastPosition,i,j,e:longint;
     Captures:TFLRECaptures;
@@ -15159,6 +15232,68 @@ begin
  end;
 end;
 
+function TFLRE.PtrTest(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):boolean;
+var ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+    Index,Count:longint;
+    Captures:TFLRECaptures;
+begin
+ ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+ try
+  ThreadLocalStorageInstance.Input:=Input;
+  ThreadLocalStorageInstance.InputLength:=InputLength;
+  Captures:=nil;
+  try
+   if rfMULTIMATCH in Flags then begin
+    for Index:=0 to CountMultiSubMatches-1 do begin
+     ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
+    end;
+    Count:=CountMultiSubMatches+1;
+   end else begin
+    Count:=CountCaptures;
+   end;
+   SetLength(Captures,Count);
+   result:=SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,false);
+  finally
+   SetLength(Captures,0);
+  end;
+ finally
+  ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
+ end;
+end;
+
+function TFLRE.PtrFind(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):longint;
+var ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+    Index,Count:longint;
+    Captures:TFLRECaptures;
+begin
+ ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+ try
+  ThreadLocalStorageInstance.Input:=Input;
+  ThreadLocalStorageInstance.InputLength:=InputLength;
+  Captures:=nil;
+  try
+   if rfMULTIMATCH in Flags then begin
+    for Index:=0 to CountMultiSubMatches-1 do begin
+     ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
+    end;
+    Count:=CountMultiSubMatches+1;
+   end else begin
+    Count:=CountCaptures;
+   end;
+   SetLength(Captures,Count);
+   if SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,true) then begin
+    result:=Captures[0].Start;
+   end else begin
+    result:=-1;
+   end;
+  finally
+   SetLength(Captures,0);
+  end;
+ finally
+  ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
+ end;
+end;
+
 function TFLRE.Match(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
 var Counter:longint;
 begin
@@ -15203,9 +15338,24 @@ begin
  end;
 end;
 
+function TFLRE.ExtractAll(const Input:TFLRERawByteString;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=1;Limit:longint=-1):boolean;
+begin
+ result:=PtrExtractAll(pansichar(@Input[1]),length(Input),MultiExtractions,StartPosition-1,Limit);
+end;
+
 function TFLRE.ReplaceAll(const Input,Replacement:TFLRERawByteString;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
 begin
  result:=PtrReplaceAll(pansichar(@Input[1]),length(Input),pansichar(@Replacement[1]),length(Replacement),StartPosition-1,Limit);
+end;
+
+function TFLRE.Test(const Input:TFLRERawByteString;const StartPosition:longint=1):boolean;
+begin
+ result:=PtrTest(pansichar(@Input[1]),length(Input),StartPosition-1);
+end;
+
+function TFLRE.Find(const Input:TFLRERawByteString;const StartPosition:longint=1):longint;
+begin
+ result:=PtrFind(pansichar(@Input[1]),length(Input),StartPosition-1)+1;
 end;
 
 function TFLRE.UTF8Match(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
@@ -15252,9 +15402,24 @@ begin
  end;
 end;
 
+function TFLRE.UTF8ExtractAll(const Input:TFLREUTF8String;var MultiExtractions:TFLREMultiExtractions;const StartPosition:longint=1;Limit:longint=-1):boolean;
+begin
+ result:=PtrExtractAll(pansichar(@Input[1]),length(Input),MultiExtractions,StartPosition-1,Limit);
+end;
+
 function TFLRE.UTF8ReplaceAll(const Input,Replacement:TFLREUTF8String;const StartPosition:longint=1;Limit:longint=-1):TFLREUTF8String;
 begin
  result:=PtrReplaceAll(pansichar(@Input[1]),length(Input),pansichar(@Replacement[1]),length(Replacement),StartPosition-1,Limit);
+end;
+
+function TFLRE.UTF8Test(const Input:TFLREUTF8String;const StartPosition:longint=1):boolean;
+begin
+ result:=PtrTest(pansichar(@Input[1]),length(Input),StartPosition-1);
+end;
+
+function TFLRE.UTF8Find(const Input:TFLREUTF8String;const StartPosition:longint=1):longint;
+begin
+ result:=PtrFind(pansichar(@Input[1]),length(Input),StartPosition-1)+1;
 end;
 
 function TFLRE.GetRange(var LowRange,HighRange:TFLRERawByteString):boolean;
