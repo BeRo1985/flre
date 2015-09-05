@@ -143,9 +143,9 @@ interface
 
 uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$endif}SysUtils,Classes;
 
-const FLREVersion=$00000003;
+const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.09.04.07.53.0000';
+      FLREVersionString='1.00.2015.09.05.17.45.0000';
 
       MaxPrefixCharClasses=32;
 
