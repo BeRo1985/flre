@@ -1007,6 +1007,53 @@ type EFLRE=class(Exception);
 
      end;
 
+     TFLRECacheHashMapData=TFLRE;
+
+     PFLRECacheHashMapEntity=^TFLRECacheHashMapEntity;
+     TFLRECacheHashMapEntity=record
+      Key:TFLRERawByteString;
+      Value:TFLRECacheHashMapData;
+     end;
+
+     TFLRECacheHashMapEntities=array of TFLRECacheHashMapEntity;
+
+     TFLRECacheHashMapEntityIndices=array of longint;
+
+     TFLRECacheHashMap=class
+      private
+       function FindCell(const Key:TFLRERawByteString):longword;
+       procedure Resize;
+      protected
+       function GetValue(const Key:TFLRERawByteString):TFLRECacheHashMapData;
+       procedure SetValue(const Key:TFLRERawByteString;const Value:TFLRECacheHashMapData);
+      public
+       RealSize:longint;
+       LogSize:longint;
+       Size:longint;
+       Entities:TFLRECacheHashMapEntities;
+       EntityToCellIndex:TFLRECacheHashMapEntityIndices;
+       CellToEntityIndex:TFLRECacheHashMapEntityIndices;
+       constructor Create;
+       destructor Destroy; override;
+       procedure Clear;
+       function Add(const Key:TFLRERawByteString;Value:TFLRECacheHashMapData):PFLRECacheHashMapEntity;
+       function Get(const Key:TFLRERawByteString;CreateIfNotExist:boolean=false):PFLRECacheHashMapEntity;
+       function Delete(const Key:TFLRERawByteString):boolean;
+       property Values[const Key:TFLRERawByteString]:TFLRECacheHashMapData read GetValue write SetValue; default;
+     end;
+
+     TFLRECache=class
+      private
+       List:TList;
+       HashMap:TFLRECacheHashMap;
+      public
+       constructor Create;
+       destructor Destroy; override;
+       procedure Clear;
+       function Get(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]):TFLRE; overload;
+       function Get(const ARegularExpressions:array of TFLRERawByteString;const AFlags:TFLREFlags=[]):TFLRE; overload;
+     end;
+
 function FLREGetVersion:longword; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetVersionString:PAnsiChar; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLRECreate(const RegularExpression:PAnsiChar;const RegularExpressionLength:longint;const Flags:longword;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
@@ -15874,6 +15921,249 @@ begin
  end;
  if length(result)=0 then begin
   result:='('+Field+' LIKE "%")';
+ end;
+end;
+
+constructor TFLRECacheHashMap.Create;
+begin
+ inherited Create;
+ RealSize:=0;
+ LogSize:=0;
+ Size:=0;
+ Entities:=nil;
+ EntityToCellIndex:=nil;
+ CellToEntityIndex:=nil;
+ Resize;
+end;
+
+destructor TFLRECacheHashMap.Destroy;
+var Counter:longint;
+begin
+ Clear;
+ for Counter:=0 to length(Entities)-1 do begin
+  Entities[Counter].Key:='';
+ end;
+ SetLength(Entities,0);
+ SetLength(EntityToCellIndex,0);
+ SetLength(CellToEntityIndex,0);
+ inherited Destroy;
+end;
+
+procedure TFLRECacheHashMap.Clear;
+var Counter:longint;
+begin
+ for Counter:=0 to length(Entities)-1 do begin
+  Entities[Counter].Key:='';
+ end;
+ RealSize:=0;
+ LogSize:=0;
+ Size:=0;
+ SetLength(Entities,0);
+ SetLength(EntityToCellIndex,0);
+ SetLength(CellToEntityIndex,0);
+ Resize;
+end;
+
+function TFLRECacheHashMap.FindCell(const Key:TFLRERawByteString):longword;
+var HashCode,Mask,Step:longword;
+    Entity:longint;
+begin
+ HashCode:=HashString(Key);
+ Mask:=(2 shl LogSize)-1;
+ Step:=((HashCode shl 1)+1) and Mask;
+ if LogSize<>0 then begin
+  result:=HashCode shr (32-LogSize);
+ end else begin
+  result:=0;
+ end;
+ repeat
+  Entity:=CellToEntityIndex[result];
+  if (Entity=ENT_EMPTY) or ((Entity<>ENT_DELETED) and (Entities[Entity].Key=Key)) then begin
+   exit;
+  end;
+  result:=(result+Step) and Mask;
+ until false;
+end;
+
+procedure TFLRECacheHashMap.Resize;
+var NewLogSize,NewSize,Cell,Entity,Counter:longint;
+    OldEntities:TFLRECacheHashMapEntities;
+    OldCellToEntityIndex:TFLRECacheHashMapEntityIndices;
+    OldEntityToCellIndex:TFLRECacheHashMapEntityIndices;
+begin
+ NewLogSize:=0;
+ NewSize:=RealSize;
+ while NewSize<>0 do begin
+  NewSize:=NewSize shr 1;
+  inc(NewLogSize);
+ end;
+ if NewLogSize<1 then begin
+  NewLogSize:=1;
+ end;
+ Size:=0;
+ RealSize:=0;
+ LogSize:=NewLogSize;
+ OldEntities:=Entities;
+ OldCellToEntityIndex:=CellToEntityIndex;
+ OldEntityToCellIndex:=EntityToCellIndex;
+ Entities:=nil;
+ CellToEntityIndex:=nil;
+ EntityToCellIndex:=nil;
+ SetLength(Entities,2 shl LogSize);
+ SetLength(CellToEntityIndex,2 shl LogSize);
+ SetLength(EntityToCellIndex,2 shl LogSize);
+ for Counter:=0 to length(CellToEntityIndex)-1 do begin
+  CellToEntityIndex[Counter]:=ENT_EMPTY;
+ end;
+ for Counter:=0 to length(EntityToCellIndex)-1 do begin
+  EntityToCellIndex[Counter]:=CELL_EMPTY;
+ end;
+ for Counter:=0 to length(OldEntityToCellIndex)-1 do begin
+  Cell:=OldEntityToCellIndex[Counter];
+  if Cell>=0 then begin
+   Entity:=OldCellToEntityIndex[Cell];
+   if Entity>=0 then begin
+    Add(OldEntities[Counter].Key,OldEntities[Counter].Value);
+   end;
+  end;
+ end;
+ for Counter:=0 to length(OldEntities)-1 do begin
+  OldEntities[Counter].Key:='';
+ end;
+ SetLength(OldEntities,0);
+ SetLength(OldCellToEntityIndex,0);
+ SetLength(OldEntityToCellIndex,0);
+end;
+
+function TFLRECacheHashMap.Add(const Key:TFLRERawByteString;Value:TFLRECacheHashMapData):PFLRECacheHashMapEntity;
+var Entity:longint;
+    Cell:longword;
+begin
+ result:=nil;
+ while RealSize>=(1 shl LogSize) do begin
+  Resize;
+ end;
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  result:=@Entities[Entity];
+  result^.Key:=Key;
+  result^.Value:=Value;
+  exit;
+ end;
+ Entity:=Size;
+ inc(Size);
+ if Entity<(2 shl LogSize) then begin
+  CellToEntityIndex[Cell]:=Entity;
+  EntityToCellIndex[Entity]:=Cell;
+  inc(RealSize);
+  result:=@Entities[Entity];
+  result^.Key:=Key;
+  result^.Value:=Value;
+ end;
+end;
+
+function TFLRECacheHashMap.Get(const Key:TFLRERawByteString;CreateIfNotExist:boolean=false):PFLRECacheHashMapEntity;
+var Entity:longint;
+    Cell:longword;
+begin
+ result:=nil;
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  result:=@Entities[Entity];
+ end else if CreateIfNotExist then begin
+  result:=Add(Key,nil);
+ end;
+end;
+
+function TFLRECacheHashMap.Delete(const Key:TFLRERawByteString):boolean;
+var Entity:longint;
+    Cell:longword;
+begin
+ result:=false;
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  Entities[Entity].Key:='';
+  Entities[Entity].Value:=nil;
+  EntityToCellIndex[Entity]:=CELL_DELETED;
+  CellToEntityIndex[Cell]:=ENT_DELETED;
+  result:=true;
+ end;
+end;
+
+function TFLRECacheHashMap.GetValue(const Key:TFLRERawByteString):TFLRECacheHashMapData;
+var Entity:longint;
+    Cell:longword;
+begin
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  result:=Entities[Entity].Value;
+ end else begin
+  result:=nil;
+ end;
+end;
+
+procedure TFLRECacheHashMap.SetValue(const Key:TFLRERawByteString;const Value:TFLRECacheHashMapData);
+begin
+ Add(Key,Value);
+end;         
+
+constructor TFLRECache.Create;
+begin
+ inherited Create;
+ List:=TList.Create;
+ HashMap:=TFLRECacheHashMap.Create;
+end;
+
+destructor TFLRECache.Destroy;
+var Index:longint;
+begin
+ for Index:=0 to List.Count-1 do begin
+  TFLRE(List[Index]).Free;
+ end;
+ List.Free;
+ HashMap.Free;
+ inherited Destroy;
+end;
+
+procedure TFLRECache.Clear;
+var Index:longint;
+begin
+ for Index:=0 to List.Count-1 do begin
+  TFLRE(List[Index]).Free;
+ end;
+ List.Clear;
+ HashMap.Clear;
+end;
+
+function TFLRECache.Get(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]):TFLRE;
+var HashKey:TFLRERawByteString;
+begin
+ HashKey:=PtrCopy(pointer(@AFlags),0,SizeOf(TFLREFlags))+#0#1#0+ARegularExpression;
+ result:=HashMap.GetValue(HashKey);
+ if not assigned(result) then begin
+  result:=TFLRE.Create(ARegularExpression,AFlags);
+  List.Add(result);
+  HashMap.Add(HashKey,result);
+ end;
+end;
+
+function TFLRECache.Get(const ARegularExpressions:array of TFLRERawByteString;const AFlags:TFLREFlags=[]):TFLRE;
+var Index:longint;
+    HashKey:TFLRERawByteString;
+begin
+ HashKey:=PtrCopy(pointer(@AFlags),0,SizeOf(TFLREFlags));
+ for Index:=0 to length(ARegularExpressions)-1 do begin
+  HashKey:=HashKey+#0#2#0+ARegularExpressions[Index];
+ end;
+ result:=HashMap.GetValue(HashKey);
+ if not assigned(result) then begin
+  result:=TFLRE.Create(ARegularExpressions,AFlags);
+  List.Add(result);
+  HashMap.Add(HashKey,result);
  end;
 end;
 
