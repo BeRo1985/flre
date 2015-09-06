@@ -14967,14 +14967,7 @@ begin
    try
     ThreadLocalStorageInstance.Input:=Input;
     ThreadLocalStorageInstance.InputLength:=InputLength;
-    if rfMULTIMATCH in Flags then begin
-     for Index:=0 to CountMultiSubMatches-1 do begin
-      ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
-     end;
-     Count:=CountMultiSubMatches+1;
-    end else begin
-     Count:=CountCaptures;
-    end;
+    Count:=CountCaptures;
     SetLength(MultiExtractions,16,Count);
     SetLength(MatchResult,Count);
     while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,MatchResult,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
@@ -14989,7 +14982,7 @@ begin
        SetLength(MultiExtractions[Index],Count);
       end;
      end;
-     for Index:=0 to CountMultiSubMatches-1 do begin
+     for Index:=0 to CountCaptures-1 do begin
       MultiExtractions[CountMultiExtractions,Index]:=PtrCopy(Input,MatchResult[Index].Start,MatchResult[Index].Length);
      end;
      inc(CountMultiExtractions);
