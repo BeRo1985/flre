@@ -1044,6 +1044,7 @@ type EFLRE=class(Exception);
 
      TFLRECache=class
       private
+       ParallelLock:TFLREParallelLock;
        List:TList;
        HashMap:TFLRECacheHashMap;
       public
@@ -16114,6 +16115,7 @@ end;
 constructor TFLRECache.Create;
 begin
  inherited Create;
+ ParallelLock:=0;
  List:=TList.Create;
  HashMap:=TFLRECacheHashMap.Create;
 end;
@@ -16132,22 +16134,32 @@ end;
 procedure TFLRECache.Clear;
 var Index:longint;
 begin
- for Index:=0 to List.Count-1 do begin
-  TFLRE(List[Index]).Free;
+ ParallelLockEnter(@ParallelLock);
+ try
+  for Index:=0 to List.Count-1 do begin
+   TFLRE(List[Index]).Free;
+  end;
+  List.Clear;
+  HashMap.Clear;
+ finally
+  ParallelLockLeave(@ParallelLock);
  end;
- List.Clear;
- HashMap.Clear;
 end;
 
 function TFLRECache.Get(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]):TFLRE;
 var HashKey:TFLRERawByteString;
 begin
  HashKey:=PtrCopy(pointer(@AFlags),0,SizeOf(TFLREFlags))+#0#1#0+ARegularExpression;
- result:=HashMap.GetValue(HashKey);
- if not assigned(result) then begin
-  result:=TFLRE.Create(ARegularExpression,AFlags);
-  List.Add(result);
-  HashMap.Add(HashKey,result);
+ ParallelLockEnter(@ParallelLock);
+ try
+  result:=HashMap.GetValue(HashKey);
+  if not assigned(result) then begin
+   result:=TFLRE.Create(ARegularExpression,AFlags);
+   List.Add(result);
+   HashMap.Add(HashKey,result);
+  end;
+ finally
+  ParallelLockLeave(@ParallelLock);
  end;
 end;
 
@@ -16159,11 +16171,16 @@ begin
  for Index:=0 to length(ARegularExpressions)-1 do begin
   HashKey:=HashKey+#0#2#0+ARegularExpressions[Index];
  end;
- result:=HashMap.GetValue(HashKey);
- if not assigned(result) then begin
-  result:=TFLRE.Create(ARegularExpressions,AFlags);
-  List.Add(result);
-  HashMap.Add(HashKey,result);
+ ParallelLockEnter(@ParallelLock);
+ try
+  result:=HashMap.GetValue(HashKey);
+  if not assigned(result) then begin
+   result:=TFLRE.Create(ARegularExpressions,AFlags);
+   List.Add(result);
+   HashMap.Add(HashKey,result);
+  end;
+ finally
+  ParallelLockLeave(@ParallelLock);
  end;
 end;
 
