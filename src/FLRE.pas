@@ -242,7 +242,7 @@ type EFLRE=class(Exception);
 
      TPFLRECharClasses=array of PFLRECharClass;
 
-     TFLREReplacementCallback=function(const Input:PAnsiChar;const Captures:TFLRECaptures;const CapturedStrings:TFLREStrings):TFLRERawByteString of object;
+     TFLREReplacementCallback=function(const Input:PAnsiChar;const Captures:TFLRECaptures):TFLRERawByteString of object;
 
      PPFLRENode=^PFLRENode;
      PFLRENode=^TFLRENode;
@@ -1054,6 +1054,8 @@ type EFLRE=class(Exception);
        function Get(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]):TFLRE; overload;
        function Get(const ARegularExpressions:array of TFLRERawByteString;const AFlags:TFLREFlags=[]):TFLRE; overload;
      end;
+
+function FLREPtrCopy(const Src:PAnsiChar;const From,Len:longint):TFLRERawByteString;
 
 function FLREGetVersion:longword; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetVersionString:PAnsiChar; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
@@ -3545,7 +3547,7 @@ begin
  result:=-1;
 end;
 
-function PtrCopy(const Src:PAnsiChar;From,Len:longint):TFLRERawByteString;
+function FLREPtrCopy(const Src:PAnsiChar;const From,Len:longint):TFLRERawByteString;
 begin
  SetLength(result,Len);
  if Len>0 then begin
@@ -15031,7 +15033,7 @@ begin
       end;
      end;
      for Index:=0 to CountCaptures-1 do begin
-      MultiExtractions[CountMultiExtractions,Index]:=PtrCopy(Input,MatchResult[Index].Start,MatchResult[Index].Length);
+      MultiExtractions[CountMultiExtractions,Index]:=FLREPtrCopy(Input,MatchResult[Index].Start,MatchResult[Index].Length);
      end;
      inc(CountMultiExtractions);
      if Limit>0 then begin
@@ -15080,7 +15082,7 @@ begin
       end;
      end else begin
       if LastPosition<Captures[0].Start then begin
-       result:=result+PtrCopy(PAnsiChar(Input),LastPosition,Captures[0].Start-LastPosition);
+       result:=result+FLREPtrCopy(PAnsiChar(Input),LastPosition,Captures[0].Start-LastPosition);
       end;
       CurrentPosition:=Captures[0].Start+Captures[0].Length;
       if CurrentPosition<Next then begin
@@ -15088,7 +15090,7 @@ begin
       end;
       LastPosition:=CurrentPosition;
       if SimpleReplacement then begin
-       result:=result+PtrCopy(PAnsiChar(Replacement),0,ReplacementLength);
+       result:=result+FLREPtrCopy(PAnsiChar(Replacement),0,ReplacementLength);
       end else begin
        i:=0;
        while i<ReplacementLength do begin
@@ -15119,15 +15121,15 @@ begin
              end;
             end;
             '&':begin
-             result:=result+PtrCopy(PAnsiChar(Input),Captures[0].Start,Captures[0].Length);
+             result:=result+FLREPtrCopy(PAnsiChar(Input),Captures[0].Start,Captures[0].Length);
              inc(i);
             end;
             '`':begin
-             result:=result+PtrCopy(PAnsiChar(Input),0,Captures[0].Start-1);
+             result:=result+FLREPtrCopy(PAnsiChar(Input),0,Captures[0].Start-1);
              inc(i);
             end;
             '''':begin
-             result:=result+PtrCopy(PAnsiChar(Input),Captures[0].Start+Captures[0].Length,(InputLength-(Captures[0].Start+Captures[0].Length))+1);
+             result:=result+FLREPtrCopy(PAnsiChar(Input),Captures[0].Start+Captures[0].Length,(InputLength-(Captures[0].Start+Captures[0].Length))+1);
              inc(i);
             end;
             '_':begin
@@ -15136,14 +15138,14 @@ begin
             end;
             '-':begin
              if length(Captures)>1 then begin
-              result:=result+PtrCopy(PAnsiChar(Input),Captures[1].Start,Captures[1].Length);
+              result:=result+FLREPtrCopy(PAnsiChar(Input),Captures[1].Start,Captures[1].Length);
              end;
              inc(i);
             end;
             '+':begin
              if length(Captures)>1 then begin
               e:=length(Captures)-1;
-              result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
+              result:=result+FLREPtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
              end;
              inc(i);
             end;
@@ -15160,14 +15162,14 @@ begin
                end;
               end;
               if j<i then begin
-               e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(Replacement),j,i-j));
+               e:=NamedGroupStringIntegerPairHashMap.GetValue(FLREPtrCopy(PAnsiChar(Replacement),j,i-j));
               end;
               if e<0 then begin
                result:=result+cc+'g';
                i:=j;
               end else begin
                if (e>=0) and (e<length(Captures)) then begin
-                result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
+                result:=result+FLREPtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
                end;
               end;
              end else begin
@@ -15210,7 +15212,7 @@ begin
                  end;
                 end;
                 if (j<i) and (PAnsiChar(Replacement)[i]='}') then begin
-                 e:=NamedGroupStringIntegerPairHashMap.GetValue(PtrCopy(PAnsiChar(Replacement),j,i-j));
+                 e:=NamedGroupStringIntegerPairHashMap.GetValue(FLREPtrCopy(PAnsiChar(Replacement),j,i-j));
                  inc(i);
                 end else begin
                  e:=-1;
@@ -15223,7 +15225,7 @@ begin
               i:=j;
              end else begin
               if (e>=0) and (e<length(Captures)) then begin
-               result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
+               result:=result+FLREPtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
               end;
              end;
             end;
@@ -15247,7 +15249,7 @@ begin
               end;
              end;
              if (e>=0) and (e<length(Captures)) then begin
-              result:=result+PtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
+              result:=result+FLREPtrCopy(PAnsiChar(Input),Captures[e].Start,Captures[e].Length);
              end;
             end;
             else begin
@@ -15270,7 +15272,7 @@ begin
      end;
     end;
     if LastPosition<InputLength then begin
-     result:=result+PtrCopy(PAnsiChar(Input),LastPosition,InputLength-LastPosition);
+     result:=result+FLREPtrCopy(PAnsiChar(Input),LastPosition,InputLength-LastPosition);
     end;
    finally
     ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
@@ -15284,7 +15286,6 @@ end;
 function TFLRE.PtrReplaceCallback(const Input:pointer;const InputLength:longint;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
 var CurrentPosition,Next,LastPosition,Index:longint;
     Captures:TFLRECaptures;
-    MatchStrings:TFLREStrings;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
  result:='';
@@ -15296,51 +15297,42 @@ begin
  end;
  Captures:=nil;
  try
-  MatchStrings:=nil;
-  try
-   CurrentPosition:=StartPosition;
-   LastPosition:=CurrentPosition;
-   if CurrentPosition>=0 then begin
-    ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
-    try
-     ThreadLocalStorageInstance.Input:=Input;
-     ThreadLocalStorageInstance.InputLength:=InputLength;
-     SetLength(Captures,CountCaptures);
-     SetLength(MatchStrings,CountCaptures);
-     while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
-      Next:=CurrentPosition+1;
-      if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
-       CurrentPosition:=Captures[0].Start+Captures[0].Length;
-       if CurrentPosition<Next then begin
-        CurrentPosition:=Next;
-       end;
-      end else begin
-       if LastPosition<Captures[0].Start then begin
-        result:=result+PtrCopy(PAnsiChar(Input),LastPosition,Captures[0].Start-LastPosition);
-       end;
-       for Index:=0 to CountCaptures-1 do begin
-        MatchStrings[Index]:=PtrCopy(PAnsiChar(Input),Captures[Index].Start,Captures[Index].Length);
-       end;
-       result:=result+ReplacementCallback(PAnsiChar(Input),Captures,MatchStrings);
-       CurrentPosition:=Captures[0].Start+Captures[0].Length;
-       if CurrentPosition<Next then begin
-        CurrentPosition:=Next;
-       end;
-       LastPosition:=CurrentPosition;
+  CurrentPosition:=StartPosition;
+  LastPosition:=CurrentPosition;
+  if CurrentPosition>=0 then begin
+   ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+   try
+    ThreadLocalStorageInstance.Input:=Input;
+    ThreadLocalStorageInstance.InputLength:=InputLength;
+    SetLength(Captures,CountCaptures);
+    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
+     Next:=CurrentPosition+1;
+     if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
+      CurrentPosition:=Captures[0].Start+Captures[0].Length;
+      if CurrentPosition<Next then begin
+       CurrentPosition:=Next;
       end;
-      if Limit>0 then begin
-       dec(Limit);
+     end else begin
+      if LastPosition<Captures[0].Start then begin
+       result:=result+FLREPtrCopy(PAnsiChar(Input),LastPosition,Captures[0].Start-LastPosition);
       end;
+      result:=result+ReplacementCallback(PAnsiChar(Input),Captures);
+      CurrentPosition:=Captures[0].Start+Captures[0].Length;
+      if CurrentPosition<Next then begin
+       CurrentPosition:=Next;
+      end;
+      LastPosition:=CurrentPosition;
      end;
-     if LastPosition<InputLength then begin
-      result:=result+PtrCopy(PAnsiChar(Input),LastPosition,InputLength-LastPosition);
+     if Limit>0 then begin
+      dec(Limit);
      end;
-    finally
-     ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
     end;
+    if LastPosition<InputLength then begin
+     result:=result+FLREPtrCopy(PAnsiChar(Input),LastPosition,InputLength-LastPosition);
+    end;
+   finally
+    ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
    end;
-  finally
-   SetLength(MatchStrings,0);
   end;
  finally
   SetLength(Captures,0);
@@ -15380,7 +15372,7 @@ begin
        if Count>=length(SplittedStrings) then begin
         SetLength(SplittedStrings,(Count+1)*2);
        end;
-       SplittedStrings[Count]:=PtrCopy(PAnsiChar(Input),LastPosition,Captures[0].Start-LastPosition);
+       SplittedStrings[Count]:=FLREPtrCopy(PAnsiChar(Input),LastPosition,Captures[0].Start-LastPosition);
        inc(Count);
       end else begin
        if Count>=length(SplittedStrings) then begin
@@ -15403,7 +15395,7 @@ begin
      if Count>=length(SplittedStrings) then begin
       SetLength(SplittedStrings,(Count+1)*2);
      end;
-     SplittedStrings[Count]:=PtrCopy(PAnsiChar(Input),LastPosition,InputLength-LastPosition);
+     SplittedStrings[Count]:=FLREPtrCopy(PAnsiChar(Input),LastPosition,InputLength-LastPosition);
      inc(Count);
     end;
     SetLength(SplittedStrings,Count);
@@ -16149,7 +16141,7 @@ end;
 function TFLRECache.Get(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]):TFLRE;
 var HashKey:TFLRERawByteString;
 begin
- HashKey:=PtrCopy(pointer(@AFlags),0,SizeOf(TFLREFlags))+#0#1#0+ARegularExpression;
+ HashKey:=FLREPtrCopy(pointer(@AFlags),0,SizeOf(TFLREFlags))+#0#1#0+ARegularExpression;
  ParallelLockEnter(@ParallelLock);
  try
   result:=HashMap.GetValue(HashKey);
@@ -16167,7 +16159,7 @@ function TFLRECache.Get(const ARegularExpressions:array of TFLRERawByteString;co
 var Index:longint;
     HashKey:TFLRERawByteString;
 begin
- HashKey:=PtrCopy(pointer(@AFlags),0,SizeOf(TFLREFlags));
+ HashKey:=FLREPtrCopy(pointer(@AFlags),0,SizeOf(TFLREFlags));
  for Index:=0 to length(ARegularExpressions)-1 do begin
   HashKey:=HashKey+#0#2#0+ARegularExpressions[Index];
  end;
@@ -16242,7 +16234,7 @@ begin
    Include(RealFlags,rfDELIMITERS);
   end;
   try
-   TFLRE(result):=TFLRE.Create(TFLRERawByteString(PtrCopy(RegularExpression,0,RegularExpressionLength)),RealFlags);
+   TFLRE(result):=TFLRE.Create(TFLRERawByteString(FLREPtrCopy(RegularExpression,0,RegularExpressionLength)),RealFlags);
   except
    FreeAndNil(TFLRE(result));
    raise;
