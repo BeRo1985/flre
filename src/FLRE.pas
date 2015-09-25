@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.09.05.17.45.0000';
+      FLREVersionString='1.00.2015.09.25.10.25.0000';
 
       MaxPrefixCharClasses=32;
 
@@ -6976,6 +6976,14 @@ begin
 
  CountSubMatches:=Instance.CountSubMatches;
 
+ for Counter:=0 to CountSubMatches-1 do begin
+  WorkSubMatches[Counter]:=0;
+ end;
+
+ for Counter:=0 to CountSubMatches-1 do begin
+  MatchSubMatches[Counter]:=0;
+ end;
+
  LocalInput:=ThreadLocalStorageInstance.Input;
 
  State:=Instance.OnePassNFAStart;
@@ -7329,6 +7337,14 @@ begin
   StartInstruction:=Instance.UnanchoredStartInstruction;
  end else begin
   StartInstruction:=Instance.AnchoredStartInstruction;
+ end;
+
+ for Counter:=0 to Instance.CountSubMatches-1 do begin
+  WorkSubMatches[Counter]:=0;
+ end;
+
+ for Counter:=0 to Instance.CountSubMatches-1 do begin
+  MatchSubMatches[Counter]:=0;
  end;
 
  if TrySearch(StartInstruction,Position) then begin
