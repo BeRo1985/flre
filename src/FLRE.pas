@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.09.25.10.25.0000';
+      FLREVersionString='1.00.2015.11.05.03.34.0000';
 
       MaxPrefixCharClasses=32;
 
@@ -808,6 +808,8 @@ type EFLRE=class(Exception);
 
        RegularExpression:TFLRERawByteString;
 
+       OriginalRegularExpression:TFLRERawByteString;
+
        Flags:TFLREFlags;
 
        AnchoredRootNode:PFLRENode;
@@ -1006,6 +1008,10 @@ type EFLRE=class(Exception);
 
        property NamedGroups:TStringList read NamedGroupStringList;
        property NamedGroupIndices:TFLREStringIntegerPairHashMap read NamedGroupStringIntegerPairHashMap;
+
+       property RegularExpressionSource:TFLRERawByteString read OriginalRegularExpression;
+
+       property RegularExpressionFlags:TFLREFlags read Flags;
 
      end;
 
@@ -9235,6 +9241,8 @@ var StartDelimiter,EndDelimiter:ansichar;
     FlagsStr:TFLRERawByteString;
 begin
  inherited Create;
+
+ OriginalRegularExpression:=ARegularExpression;
 
  MaximalDFAStates:=4096;
  
