@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.11.05.03.34.0000';
+      FLREVersionString='1.00.2015.11.23.23.20.0000';
 
       MaxPrefixCharClasses=32;
 
@@ -3343,7 +3343,7 @@ begin
  result:=-1;
 
  Size:=(TextLength-Offset)+1;
- if Size>0 then begin
+ if (Offset<TextLength) and (ptrint(Size)>0) then begin
 
   XorMask:=byte(Pattern);
   XorMask:=XorMask or (XorMask shl 8);
@@ -15310,7 +15310,7 @@ begin
 end;
 
 function TFLRE.PtrReplaceCallback(const Input:pointer;const InputLength:longint;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
-var CurrentPosition,Next,LastPosition,Index:longint;
+var CurrentPosition,Next,LastPosition:longint;
     Captures:TFLRECaptures;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
