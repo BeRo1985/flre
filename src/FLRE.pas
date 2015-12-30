@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.30.21.17.0000';
+      FLREVersionString='1.00.2015.12.31.00.39.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -828,6 +828,8 @@ type EFLRE=class(Exception);
 
        CapturesToSubMatchesMap:TFLRECapturesToSubMatchesMap;
 
+       CanMatchEmptyStrings:longbool;
+
        ForwardInstructions:TFLREInstructions;
        CountForwardInstructions:longint;
 
@@ -925,6 +927,8 @@ type EFLRE=class(Exception);
 
        function Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
 
+       function NewNOP:PFLRENode;
+       
        function NewAlt(NodeLeft,NodeRight:PFLRENode):PFLRENode;
        function NewPlus(Node:PFLRENode;Kind:longint):PFLRENode;
        function NewStar(Node:PFLRENode;Kind:longint):PFLRENode;
@@ -1098,6 +1102,7 @@ const MaxGeneration=int64($4000000000000000);
       AllCharClass{:TFLRECharClass}=[#0..#255];
 
       // State flags
+      sfEmptyNoOperation=0;
       sfEmptyBeginLine=1 shl 0;
       sfEmptyEndLine=1 shl 1;
       sfEmptyBeginText=1 shl 2;
@@ -6927,11 +6932,10 @@ begin
      CurrentLength:=0;
     end;
    end;
+   Capture^.Start:=CurrentPosition;
    if CurrentLength<1 then begin
-    Capture^.Start:=0;
     Capture^.Length:=0;
    end else begin
-    Capture^.Start:=CurrentPosition;
     Capture^.Length:=CurrentLength;
    end;
   end;
@@ -8611,8 +8615,8 @@ begin
 
    mov ecx,dword ptr UntilExcludingPosition
    sub ecx,dword ptr Position
-   jz @Done
-   js @Done
+   jz @EmptyDone
+   js @EmptyDone
 
    mov esi,dword ptr LocalInput
    add esi,dword ptr Position
@@ -8702,6 +8706,8 @@ begin
     @Done:
 
     mov dword ptr State,edi
+
+    @EmptyDone:
 
    popad
 
@@ -8862,7 +8868,7 @@ begin
 
   mov ecx,dword ptr StartPosition
   sub ecx,dword ptr UntilExcludingPosition
-  js @Done
+  js @EmptyDone
 
   mov esi,dword ptr LocalInput
   add esi,dword ptr StartPosition
@@ -8942,6 +8948,8 @@ begin
    @Done:
 
    mov dword ptr State,edi
+
+   @EmptyDone:
 
   popad
 
@@ -9122,7 +9130,7 @@ begin
    end;
   end;
  end;
- if Position>=(InputLength-1) then begin
+ if Position>=InputLength then begin
   result:=result or (sfEmptyEndText or sfEmptyEndLine);
  end else begin
   case CurrentChar of
@@ -9238,9 +9246,12 @@ begin
 end;
 
 constructor TFLRE.Create(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]);
+const EmptyString:pansichar='';
 var StartDelimiter,EndDelimiter:ansichar;
     Index,SubIndex:longint;
     FlagsStr:TFLRERawByteString;
+    ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+    Captures:TFLRECaptures;
 begin
  inherited Create;
 
@@ -9251,7 +9262,7 @@ begin
  CountCaptures:=0;
 
  CountInternalCaptures:=0;
- 
+
  AnchoredRootNode:=nil;
 
  UnanchoredRootNode:=nil;
@@ -9471,6 +9482,26 @@ begin
   BeginningWildcardLoop:=BeginningJump and BeginningSplit and BeginningWildcard;
 
   HaveUnanchoredStart:=not BeginningAnchor;
+
+  begin
+   CanMatchEmptyStrings:=true;
+   ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+   try
+    ThreadLocalStorageInstance.Input:=EmptyString;
+    ThreadLocalStorageInstance.InputLength:=0;
+    Captures:=nil;
+    try
+     SetLength(Captures,CountCaptures);
+     if not ThreadLocalStorageInstance.ParallelNFA.SearchMatch(Captures,0,1,false) then begin
+      CanMatchEmptyStrings:=false;
+     end;
+    finally
+     SetLength(Captures,0);
+    end;
+   finally
+    ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
+   end;
+  end;
 
  finally
  end;
@@ -9810,6 +9841,11 @@ begin
   end;
   break;
  end;
+end;
+
+function TFLRE.NewNOP:PFLRENode;
+begin
+ result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyNoOperation);
 end;
 
 function TFLRE.NewAlt(NodeLeft,NodeRight:PFLRENode):PFLRENode;
@@ -12430,8 +12466,15 @@ var SourcePosition,SourceLength:longint;
   result:=nil;
   try
    SkipFreeSpacingWhiteSpace;
-   while (SourcePosition<=SourceLength) and not (Source[SourcePosition] in [')',#0]) do begin
-    Node:=ParseAlternative;
+   repeat
+    if (SourcePosition<=SourceLength) and not (Source[SourcePosition] in [')',#0]) then begin
+     Node:=ParseAlternative;
+    end else begin
+     Node:=nil;
+    end;
+    if not assigned(Node) then begin
+     Node:=NewNOP;
+    end;
     SkipFreeSpacingWhiteSpace;
     if assigned(result) then begin
      result:=NewAlt(result,Node);
@@ -12450,7 +12493,7 @@ var SourcePosition,SourceLength:longint;
     end else begin
      break;
     end;
-   end;
+   until false;
   except
    raise;
   end;
@@ -12489,7 +12532,7 @@ begin
  Source:=RegularExpression;
  SourcePosition:=1;
  SourceLength:=length(Source);
- if SourcePosition<=SourceLength then begin
+ begin
   NamedGroupStringIntegerPairHashMap.Add('wholematch',0);
   NamedGroupStringList.Add('wholematch');
   CountCaptures:=1;
@@ -14792,8 +14835,9 @@ begin
   exit;
  end;
 
- // First try to find the next possible match start with heuristic magic and so on
- if CountPrefixCharClasses>0 then begin
+ // First try to find the next possible match start with heuristic magic and so on (but only at regular expressions, which can't match also
+ // empty strings)
+ if (CountPrefixCharClasses>0) and not CanMatchEmptyStrings then begin
   Len:=UntilExcludingPosition-StartPosition;
   if FixedStringIsWholeRegExp and not UnanchoredStart then begin
    if Len>=FixedStringLength then begin
@@ -15382,50 +15426,95 @@ begin
 end;
 
 function TFLRE.PtrSplit(const Input:pointer;const InputLength:longint;var SplittedStrings:TFLREStrings;const StartPosition:longint=0;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
-var CurrentPosition,Next,LastPosition,Count,Index:longint;
+var LastPosition,MatchPosition,MatchEnd,Count,Index:longint;
+    Done:boolean;
     Captures:TFLRECaptures;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
  result:=false;
+
  if rfMULTIMATCH in Flags then begin
   raise EFLRE.Create('Split unsupported in multi match mode');
  end;
+
  Count:=0;
+
  Captures:=nil;
+
  try
-  CurrentPosition:=StartPosition;
-  LastPosition:=CurrentPosition;
-  if CurrentPosition>=0 then begin
+
+  LastPosition:=StartPosition;
+
+  MatchPosition:=StartPosition;
+
+  if LastPosition>=0 then begin
+
    ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+
    try
+
     ThreadLocalStorageInstance.Input:=Input;
     ThreadLocalStorageInstance.InputLength:=InputLength;
+
     SetLength(Captures,CountCaptures);
+
     if Limit<>0 then begin
+
      if InputLength=0 then begin
-      if WithEmpty and not SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) then begin
+
+      if WithEmpty and not SearchMatch(ThreadLocalStorageInstance,Captures,MatchPosition,InputLength,HaveUnanchoredStart) then begin
        Count:=1;
        SetLength(SplittedStrings,Count);
        SplittedStrings[0]:='';
       end;
+
      end else begin
-      while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
+
+      LastPosition:=StartPosition;
+      MatchPosition:=StartPosition;
+
+      while MatchPosition<InputLength do begin
+
+       if not SearchMatch(ThreadLocalStorageInstance,Captures,MatchPosition,InputLength,HaveUnanchoredStart) then begin
+        break;
+       end;
+
+       MatchPosition:=Captures[0].Start;
+       if MatchPosition>=InputLength then begin
+        break;
+       end;
+
+       MatchEnd:=Captures[0].Start+Captures[0].Length;
+
+       if MatchEnd=LastPosition then begin
+        inc(MatchPosition);
+        continue;
+       end;
+           
+       Assert(MatchEnd<>0,'FLRE internal error 2015-12-31-00-17-0000');
+
+       if Count>=length(SplittedStrings) then begin
+        SetLength(SplittedStrings,(Count+1)*2);
+       end;
+       SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,MatchPosition-LastPosition);
+       inc(Count);
+
        if Limit>0 then begin
         dec(Limit);
-       end;
-       result:=true;
-       Next:=CurrentPosition+1;
-       if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
-        CurrentPosition:=Captures[0].Start+Captures[0].Length;
-        if CurrentPosition<Next then begin
-         CurrentPosition:=Next;
+        if Limit=0 then begin
+         break;
         end;
-       end else begin
-        if LastPosition<Captures[0].Start then begin
+       end;
+
+       LastPosition:=MatchEnd;
+       MatchPosition:=MatchEnd;
+
+       for Index:=1 to CountCaptures-1 do begin
+        if Captures[Index].Length>0 then begin
          if Count>=length(SplittedStrings) then begin
           SetLength(SplittedStrings,(Count+1)*2);
          end;
-         SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,Captures[0].Start-LastPosition);
+         SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),Captures[Index].Start,Captures[Index].Length);
          inc(Count);
         end else if WithEmpty then begin
          if Count>=length(SplittedStrings) then begin
@@ -15434,35 +15523,20 @@ begin
          SplittedStrings[Count]:='';
          inc(Count);
         end;
-        for Index:=1 to CountCaptures-1 do begin
-         if Limit<>0 then begin
-          if Limit>0 then begin
-           dec(Limit);
-          end;
-          if Captures[Index].Length>0 then begin
-           if Count>=length(SplittedStrings) then begin
-            SetLength(SplittedStrings,(Count+1)*2);
-           end;
-           SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),Captures[Index].Start,Captures[Index].Length);
-           inc(Count);
-          end else if WithEmpty then begin
-           if Count>=length(SplittedStrings) then begin
-            SetLength(SplittedStrings,(Count+1)*2);
-           end;
-           SplittedStrings[Count]:='';
-           inc(Count);
-          end;
-         end else begin
+        if Limit>0 then begin
+         dec(Limit);
+         if Limit=0 then begin
           break;
          end;
         end;
-        CurrentPosition:=Captures[0].Start+Captures[0].Length;
-        if CurrentPosition<Next then begin
-         CurrentPosition:=Next;
-        end;
-        LastPosition:=CurrentPosition;
        end;
+
+       if Limit=0 then begin
+        break;
+       end;
+       
       end;
+
       if Limit<>0 then begin
        if LastPosition<InputLength then begin
         if Count>=length(SplittedStrings) then begin
@@ -15478,16 +15552,23 @@ begin
         inc(Count);
        end;
       end;
+
      end;
+
     end;
+
     SetLength(SplittedStrings,Count);
+
    finally
     ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
    end;
+
   end;
+
  finally
   SetLength(Captures,0);
  end;
+
 end;
 
 function TFLRE.PtrTest(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):boolean;
