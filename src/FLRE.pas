@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.30.14.22.0000';
+      FLREVersionString='1.00.2015.12.30.20.47.0000';
 
       MaxPrefixCharClasses=32;
 
@@ -15371,13 +15371,13 @@ begin
 end;
 
 function TFLRE.PtrSplit(const Input:pointer;const InputLength:longint;var SplittedStrings:TFLREStrings;const StartPosition:longint=0;Limit:longint=-1):boolean;
-var CurrentPosition,Next,LastPosition,Count:longint;
+var CurrentPosition,Next,LastPosition,Count,Index:longint;
     Captures:TFLRECaptures;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
 begin
  result:=false;
  if rfMULTIMATCH in Flags then begin
-  raise EFLRE.Create('SplitAll unsupported in multi match mode');
+  raise EFLRE.Create('Split unsupported in multi match mode');
  end;
  Count:=0;
  Captures:=nil;
@@ -15390,44 +15390,72 @@ begin
     ThreadLocalStorageInstance.Input:=Input;
     ThreadLocalStorageInstance.InputLength:=InputLength;
     SetLength(Captures,CountCaptures);
-    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
-     result:=true;
-     Next:=CurrentPosition+1;
-     if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
-      CurrentPosition:=Captures[0].Start+Captures[0].Length;
-      if CurrentPosition<Next then begin
-       CurrentPosition:=Next;
+    if Limit<>0 then begin
+     if InputLength=0 then begin
+      if not SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) then begin
+       Count:=1;
+       SetLength(SplittedStrings,Count);
+       SplittedStrings[0]:='';
       end;
      end else begin
-      if LastPosition<Captures[0].Start then begin
+      while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
+       if Limit>0 then begin
+        dec(Limit);
+       end;
+       result:=true;
+       Next:=CurrentPosition+1;
+       if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
+        CurrentPosition:=Captures[0].Start+Captures[0].Length;
+        if CurrentPosition<Next then begin
+         CurrentPosition:=Next;
+        end;
+       end else begin
+        if Count>=length(SplittedStrings) then begin
+         SetLength(SplittedStrings,(Count+1)*2);
+        end;
+        if LastPosition<Captures[0].Start then begin
+         SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,Captures[0].Start-LastPosition);
+        end else begin
+         SplittedStrings[Count]:='';
+        end;
+        inc(Count);
+        for Index:=1 to CountCaptures-1 do begin
+         if Limit<>0 then begin
+          if Limit>0 then begin
+           dec(Limit);
+          end;
+          if Count>=length(SplittedStrings) then begin
+           SetLength(SplittedStrings,(Count+1)*2);
+          end;
+          if Captures[Index].Length>0 then begin
+           SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),Captures[Index].Start,Captures[Index].Length);
+          end else begin
+           SplittedStrings[Count]:='';
+          end;
+          inc(Count);
+         end else begin
+          break;
+         end;
+        end;
+        CurrentPosition:=Captures[0].Start+Captures[0].Length;
+        if CurrentPosition<Next then begin
+         CurrentPosition:=Next;
+        end;
+        LastPosition:=CurrentPosition;
+       end;
+      end;
+      if Limit<>0 then begin
        if Count>=length(SplittedStrings) then begin
         SetLength(SplittedStrings,(Count+1)*2);
        end;
-       SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,Captures[0].Start-LastPosition);
-       inc(Count);
-      end else begin
-       if Count>=length(SplittedStrings) then begin
-        SetLength(SplittedStrings,(Count+1)*2);
+       if LastPosition<InputLength then begin
+        SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,InputLength-LastPosition);
+       end else begin
+        SplittedStrings[Count]:='';
        end;
-       SplittedStrings[Count]:='';
        inc(Count);
       end;
-      CurrentPosition:=Captures[0].Start+Captures[0].Length;
-      if CurrentPosition<Next then begin
-       CurrentPosition:=Next;
-      end;
-      LastPosition:=CurrentPosition;
      end;
-     if Limit>0 then begin
-      dec(Limit);
-     end;
-    end;
-    if (Limit<>0) and (LastPosition<InputLength) then begin
-     if Count>=length(SplittedStrings) then begin
-      SetLength(SplittedStrings,(Count+1)*2);
-     end;
-     SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,InputLength-LastPosition);
-     inc(Count);
     end;
     SetLength(SplittedStrings,Count);
    finally
