@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.30.20.47.0000';
+      FLREVersionString='1.00.2015.12.30.21.02.0000';
 
       MaxPrefixCharClasses=32;
 
@@ -971,7 +971,7 @@ type EFLRE=class(Exception);
        function PtrExtractAll(const Input:pointer;const InputLength:longint;var MultiExtractions:TFLREMultiStrings;const StartPosition:longint=0;Limit:longint=-1):boolean;
        function PtrReplace(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
        function PtrReplaceCallback(const Input:pointer;const InputLength:longint;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
-       function PtrSplit(const Input:pointer;const InputLength:longint;var SplittedStrings:TFLREStrings;const StartPosition:longint=0;Limit:longint=-1):boolean;
+       function PtrSplit(const Input:pointer;const InputLength:longint;var SplittedStrings:TFLREStrings;const StartPosition:longint=0;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
        function PtrTest(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):boolean;
        function PtrFind(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):longint;
 
@@ -981,7 +981,7 @@ type EFLRE=class(Exception);
        function ExtractAll(const Input:TFLRERawByteString;var MultiExtractions:TFLREMultiStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function Replace(const Input,Replacement:TFLRERawByteString;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
        function ReplaceCallback(const Input:TFLRERawByteString;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
-       function Split(const Input:TFLRERawByteString;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function Split(const Input:TFLRERawByteString;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
        function Test(const Input:TFLRERawByteString;const StartPosition:longint=1):boolean;
        function Find(const Input:TFLRERawByteString;const StartPosition:longint=1):longint;
 
@@ -991,7 +991,7 @@ type EFLRE=class(Exception);
        function UTF8ExtractAll(const Input:TFLREUTF8String;var MultiExtractions:TFLREMultiStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
        function UTF8Replace(const Input,Replacement:TFLREUTF8String;const StartPosition:longint=1;Limit:longint=-1):TFLREUTF8String;
        function UTF8ReplaceCallback(const Input:TFLREUTF8String;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
-       function UTF8Split(const Input:TFLREUTF8String;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
+       function UTF8Split(const Input:TFLREUTF8String;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
        function UTF8Test(const Input:TFLREUTF8String;const StartPosition:longint=1):boolean;
        function UTF8Find(const Input:TFLREUTF8String;const StartPosition:longint=1):longint;
 
@@ -9278,11 +9278,11 @@ begin
 
  Flags:=AFlags;
 
- if length(RegularExpression)=0 then begin
-  raise EFLRE.Create('Invalid regular expression');
- end;
-
  if rfDELIMITERS in Flags then begin
+
+  if length(RegularExpression)=0 then begin
+   raise EFLRE.Create('Invalid regular expression');
+  end;
 
   StartDelimiter:=RegularExpression[1];
 
@@ -15370,7 +15370,7 @@ begin
  end;
 end;
 
-function TFLRE.PtrSplit(const Input:pointer;const InputLength:longint;var SplittedStrings:TFLREStrings;const StartPosition:longint=0;Limit:longint=-1):boolean;
+function TFLRE.PtrSplit(const Input:pointer;const InputLength:longint;var SplittedStrings:TFLREStrings;const StartPosition:longint=0;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
 var CurrentPosition,Next,LastPosition,Count,Index:longint;
     Captures:TFLRECaptures;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
@@ -15392,7 +15392,7 @@ begin
     SetLength(Captures,CountCaptures);
     if Limit<>0 then begin
      if InputLength=0 then begin
-      if not SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) then begin
+      if WithEmpty and not SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) then begin
        Count:=1;
        SetLength(SplittedStrings,Count);
        SplittedStrings[0]:='';
@@ -15410,29 +15410,37 @@ begin
          CurrentPosition:=Next;
         end;
        end else begin
-        if Count>=length(SplittedStrings) then begin
-         SetLength(SplittedStrings,(Count+1)*2);
-        end;
         if LastPosition<Captures[0].Start then begin
+         if Count>=length(SplittedStrings) then begin
+          SetLength(SplittedStrings,(Count+1)*2);
+         end;
          SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,Captures[0].Start-LastPosition);
-        end else begin
+         inc(Count);
+        end else if WithEmpty then begin
+         if Count>=length(SplittedStrings) then begin
+          SetLength(SplittedStrings,(Count+1)*2);
+         end;
          SplittedStrings[Count]:='';
+         inc(Count);
         end;
-        inc(Count);
         for Index:=1 to CountCaptures-1 do begin
          if Limit<>0 then begin
           if Limit>0 then begin
            dec(Limit);
           end;
-          if Count>=length(SplittedStrings) then begin
-           SetLength(SplittedStrings,(Count+1)*2);
-          end;
           if Captures[Index].Length>0 then begin
+           if Count>=length(SplittedStrings) then begin
+            SetLength(SplittedStrings,(Count+1)*2);
+           end;
            SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),Captures[Index].Start,Captures[Index].Length);
-          end else begin
+           inc(Count);
+          end else if WithEmpty then begin
+           if Count>=length(SplittedStrings) then begin
+            SetLength(SplittedStrings,(Count+1)*2);
+           end;
            SplittedStrings[Count]:='';
+           inc(Count);
           end;
-          inc(Count);
          end else begin
           break;
          end;
@@ -15445,15 +15453,19 @@ begin
        end;
       end;
       if Limit<>0 then begin
-       if Count>=length(SplittedStrings) then begin
-        SetLength(SplittedStrings,(Count+1)*2);
-       end;
        if LastPosition<InputLength then begin
+        if Count>=length(SplittedStrings) then begin
+         SetLength(SplittedStrings,(Count+1)*2);
+        end;
         SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,InputLength-LastPosition);
-       end else begin
+        inc(Count);
+       end else if WithEmpty then begin
+        if Count>=length(SplittedStrings) then begin
+         SetLength(SplittedStrings,(Count+1)*2);
+        end;
         SplittedStrings[Count]:='';
+        inc(Count);
        end;
-       inc(Count);
       end;
      end;
     end;
@@ -15588,9 +15600,9 @@ begin
  result:=PtrReplaceCallback(PFLRERawByteChar(@Input[1]),length(Input),ReplacementCallback,StartPosition-1,Limit);
 end;
 
-function TFLRE.Split(const Input:TFLRERawByteString;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
+function TFLRE.Split(const Input:TFLRERawByteString;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
 begin
- result:=PtrSplit(PFLRERawByteChar(@Input[1]),length(Input),SplittedStrings,StartPosition-1,Limit);
+ result:=PtrSplit(PFLRERawByteChar(@Input[1]),length(Input),SplittedStrings,StartPosition-1,Limit,WithEmpty);
 end;
 
 function TFLRE.Test(const Input:TFLRERawByteString;const StartPosition:longint=1):boolean;
@@ -15662,9 +15674,9 @@ begin
  result:=PtrReplaceCallback(PFLRERawByteChar(@Input[1]),length(Input),ReplacementCallback,StartPosition-1,Limit);
 end;
 
-function TFLRE.UTF8Split(const Input:TFLREUTF8String;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1):boolean;
+function TFLRE.UTF8Split(const Input:TFLREUTF8String;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
 begin
- result:=PtrSplit(PFLRERawByteChar(@Input[1]),length(Input),SplittedStrings,StartPosition-1,Limit);
+ result:=PtrSplit(PFLRERawByteChar(@Input[1]),length(Input),SplittedStrings,StartPosition-1,Limit,WithEmpty);
 end;
 
 function TFLRE.UTF8Test(const Input:TFLREUTF8String;const StartPosition:longint=1):boolean;
