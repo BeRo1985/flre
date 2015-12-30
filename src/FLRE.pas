@@ -145,11 +145,11 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.30.21.02.0000';
+      FLREVersionString='1.00.2015.12.30.21.17.0000';
 
-      MaxPrefixCharClasses=32;
+      FLREMaxPrefixCharClasses=32;
 
-      MinNativeCodeBlockContainerSize=1048576;
+      FLREMinNativeCodeBlockContainerSize=1048576;
 
       carfIGNORECASE=1 shl 0;
       carfSINGLELINE=1 shl 1;
@@ -488,7 +488,7 @@ type EFLRE=class(Exception);
 
      TFLREBoyerMooreNext=array of longint;
 
-     TFLREPrefixCharClasses=array[0..MaxPrefixCharClasses-1] of TFLRECharClass;
+     TFLREPrefixCharClasses=array[0..FLREMaxPrefixCharClasses-1] of TFLRECharClass;
 
      PFLREIntegerArray=^TFLREIntegerArray;
      TFLREIntegerArray=array[0..(2147483647 div sizeof(longint))-1] of longint;
@@ -1062,6 +1062,8 @@ type EFLRE=class(Exception);
        function Get(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]):TFLRE; overload;
        function Get(const ARegularExpressions:array of TFLRERawByteString;const AFlags:TFLREFlags=[]):TFLRE; overload;
      end;
+
+var FLREMaximalRepetitionCount:longint=4096;
 
 function FLREPtrCopy(const Src:PFLRERawByteChar;const From,Len:longint):TFLRERawByteString;
 
@@ -4127,8 +4129,8 @@ begin
     end;
     BlockContainer:=BlockContainer^.Next;
    end;
-   if DestSize<=MinNativeCodeBlockContainerSize then begin
-    BlockContainerSize:=MinNativeCodeBlockContainerSize;
+   if DestSize<=FLREMinNativeCodeBlockContainerSize then begin
+    BlockContainerSize:=FLREMinNativeCodeBlockContainerSize;
    end else begin
     BlockContainerSize:=RoundUpToPowerOfTwo(DestSize);
    end;
@@ -9245,7 +9247,7 @@ begin
  OriginalRegularExpression:=ARegularExpression;
 
  MaximalDFAStates:=4096;
- 
+
  CountCaptures:=0;
 
  CountInternalCaptures:=0;
@@ -9915,6 +9917,15 @@ function TFLRE.NewExact(Node:PFLRENode;MinCount,MaxCount,Kind:longint):PFLRENode
 var Counter:longint;
     OptionalNode:PFLRENode;
 begin
+ begin
+  // Limiting repetition counts to FLREMaximalRepetitionCount for to avoid memory-wasting vulnerabilities
+  if MinCount>FLREMaximalRepetitionCount then begin
+   MinCount:=FLREMaximalRepetitionCount;
+  end;
+  if MaxCount>FLREMaximalRepetitionCount then begin
+   MaxCount:=FLREMaximalRepetitionCount;
+  end;
+ end;
  if (MinCount>=0) and (MaxCount<0) then begin
   case MinCount of
    0:begin
@@ -13740,7 +13751,7 @@ begin
    InstructionGenerations[Index]:=-1;
   end;
 
-  for CurrentPosition:=0 to MaxPrefixCharClasses-1 do begin
+  for CurrentPosition:=0 to FLREMaxPrefixCharClasses-1 do begin
    PrefixCharClasses[CurrentPosition]:=[];
   end;
 
@@ -13763,7 +13774,7 @@ begin
 
    Count:=0;
 
-   for CurrentPosition:=0 to MaxPrefixCharClasses do begin
+   for CurrentPosition:=0 to FLREMaxPrefixCharClasses do begin
     if CurrentThreadList^.Count=0 then begin
      break;
     end;
@@ -13774,13 +13785,13 @@ begin
      Instruction:=CurrentThread^.Instruction;
      case Instruction^.IDandOpcode and $ff of
       opSINGLECHAR:begin
-       if CurrentPosition<MaxPrefixCharClasses then begin
+       if CurrentPosition<FLREMaxPrefixCharClasses then begin
         PrefixCharClasses[CurrentPosition]:=PrefixCharClasses[CurrentPosition]+[ansichar(byte(Instruction^.Value))];
        end;
        AddThread(NewThreadList,Instruction^.Next);
       end;
       opCHAR:begin
-       if CurrentPosition<MaxPrefixCharClasses then begin
+       if CurrentPosition<FLREMaxPrefixCharClasses then begin
         PrefixCharClasses[CurrentPosition]:=PrefixCharClasses[CurrentPosition]+PFLRECharClass(pointer(ptruint(Instruction^.Value)))^;
        end;
        AddThread(NewThreadList,Instruction^.Next);
@@ -13789,7 +13800,7 @@ begin
        if CurrentPosition=0 then begin
         BeginningWildCard:=true;
        end;
-       if CurrentPosition<MaxPrefixCharClasses then begin
+       if CurrentPosition<FLREMaxPrefixCharClasses then begin
         PrefixCharClasses[CurrentPosition]:=PrefixCharClasses[CurrentPosition]+AllCharClass;
        end;
        AddThread(NewThreadList,Instruction^.Next);
@@ -13809,8 +13820,8 @@ begin
 
    if CountPrefixCharClasses=0 then begin
     CountPrefixCharClasses:=Count;
-    if CountPrefixCharClasses>MaxPrefixCharClasses then begin
-     CountPrefixCharClasses:=MaxPrefixCharClasses;
+    if CountPrefixCharClasses>FLREMaxPrefixCharClasses then begin
+     CountPrefixCharClasses:=FLREMaxPrefixCharClasses;
     end;
    end;
 
