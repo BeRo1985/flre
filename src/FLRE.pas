@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.11.23.23.20.0000';
+      FLREVersionString='1.00.2015.12.30.14.22.0000';
 
       MaxPrefixCharClasses=32;
 
@@ -10922,7 +10922,12 @@ var SourcePosition,SourceLength:longint;
  begin
   UnicodeCharClass.Optimize;
   if UnicodeCharClass.IsSingle then begin
-   result:=NewChar(UnicodeCharClass.First.Lo);
+   if assigned(UnicodeCharClass.First) then begin
+    result:=NewChar(UnicodeCharClass.First.Lo);
+   end else begin
+    result:=nil; // For to suppress compiler warnings
+    raise EFLRE.Create('Syntax error');
+   end;
   end else begin
    if (rfUTF8 in Flags) and assigned(UnicodeCharClass.Last) and (UnicodeCharClass.Last.Hi>=128) then begin
     result:=nil;
