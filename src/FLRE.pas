@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.31.22.26.0000';
+      FLREVersionString='1.00.2015.12.31.23.04.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -11139,8 +11139,8 @@ var SourcePosition,SourceLength:longint;
      end;
     end;
     '{':begin
-     LastSourcePos:=SourcePosition;
      inc(SourcePosition);
+     LastSourcePos:=SourcePosition;
      if (SourcePosition<=SourceLength) and (Source[SourcePosition]='^') then begin
       LastSourcePos:=SourcePosition;
       inc(SourcePosition);
@@ -11154,8 +11154,8 @@ var SourcePosition,SourceLength:longint;
       UntilSourcePos:=SourcePosition;
       inc(SourcePosition);
      end;
-     if (LastSourcePos<UntilSourcePos) and ((SourcePosition<=SourceLength) and (Source[SourcePosition]='}')) then begin
-      Identifier:=UTF8LowerCase(copy(Source,LastSourcePos,UntilSourcePos-LastSourcePos));
+     if (LastSourcePos<=UntilSourcePos) and ((SourcePosition<=SourceLength) and (Source[SourcePosition]='}')) then begin
+      Identifier:=UTF8LowerCase(copy(Source,LastSourcePos,(UntilSourcePos-LastSourcePos)+1));
       inc(SourcePosition);
       GetCharClassPerName(Identifier,UnicodeCharClass,IgnoreCase);
       if IsNegative and assigned(UnicodeCharClass.First) then begin
@@ -12007,6 +12007,11 @@ var SourcePosition,SourceLength:longint;
            inc(SourcePosition);
           end;
           result:=NewBackReferencePerIndex(Value);
+         end;
+         'C':begin
+          // Any byte
+          result:=NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass,true));
+          inc(SourcePosition);
          end;
          'b','y':begin
           result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyWordBoundary);
