@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.31.00.39.0000';
+      FLREVersionString='1.00.2015.12.31.21.02.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -14905,9 +14905,11 @@ begin
     end;
    end;
    DFAFail:begin
-    // No DFA match => stop
-    result:=false;
-    exit;
+    if not CanMatchEmptyStrings then begin
+     // No DFA match => stop
+     result:=false;
+     exit;
+    end;
    end;
    else {DFAError:}begin
     // Argh, a DFA internal error is happen => fallback to NFA
@@ -15138,7 +15140,7 @@ begin
 end;
 
 function TFLRE.PtrReplace(const Input:pointer;const InputLength:longint;const Replacement:pointer;const ReplacementLength:longint;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
-var CurrentPosition,Next,LastPosition,i,j,e:longint;
+var CurrentPosition,LastEnd,i,j,e:longint;
     Captures:TFLRECaptures;
     SimpleReplacement:boolean;
     c,cc:ansichar;
@@ -15152,213 +15154,209 @@ begin
  try
   SimpleReplacement:=(PtrPosChar('$',Replacement,ReplacementLength)<0) and (PtrPosChar('\',Replacement,ReplacementLength)<0);
   CurrentPosition:=StartPosition;
-  LastPosition:=CurrentPosition;
   if CurrentPosition>=0 then begin
    ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
    try
     ThreadLocalStorageInstance.Input:=Input;
     ThreadLocalStorageInstance.InputLength:=InputLength;
+    LastEnd:=-1;
     SetLength(Captures,CountCaptures);
-    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
-     Next:=CurrentPosition+1;
-     if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
-      CurrentPosition:=Captures[0].Start+Captures[0].Length;
-      if CurrentPosition<Next then begin
-       CurrentPosition:=Next;
+    while (CurrentPosition<=InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
+     if CurrentPosition<Captures[0].Start then begin
+      result:=result+FLREPtrCopy(PFLRERawByteChar(Input),CurrentPosition,Captures[0].Start-CurrentPosition);
+     end;
+     if (Captures[0].Start=LastEnd) and (Captures[0].Length=0) then begin
+      if CurrentPosition<InputLength then begin
+       result:=result+FLREPtrCopy(PFLRERawByteChar(Input),CurrentPosition,1);
       end;
+      inc(CurrentPosition);
+      continue;
+     end;
+     if SimpleReplacement then begin
+      result:=result+FLREPtrCopy(PFLRERawByteChar(Replacement),0,ReplacementLength);
      end else begin
-      if LastPosition<Captures[0].Start then begin
-       result:=result+FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,Captures[0].Start-LastPosition);
-      end;
-      CurrentPosition:=Captures[0].Start+Captures[0].Length;
-      if CurrentPosition<Next then begin
-       CurrentPosition:=Next;
-      end;
-      LastPosition:=CurrentPosition;
-      if SimpleReplacement then begin
-       result:=result+FLREPtrCopy(PFLRERawByteChar(Replacement),0,ReplacementLength);
-      end else begin
-       i:=0;
-       while i<ReplacementLength do begin
-        c:=PFLRERawByteChar(Replacement)[i];
-        case c of
-         '$','\':begin
-          cc:=c;
-          inc(i);
-          if i<ReplacementLength then begin
-           c:=PFLRERawByteChar(Replacement)[i];
-           case c of
-            '$':begin
-             if cc='$' then begin
-              result:=result+c;
-              inc(i);
-             end else begin
-              result:=result+'\$';
-              inc(i);
-             end;
-            end;
-            '\':begin
-             if cc='\' then begin
-              result:=result+c;
-              inc(i);
-             end else begin
-              result:=result+'$\';
-              inc(i);
-             end;
-            end;
-            '&':begin
-             result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[0].Start,Captures[0].Length);
+      i:=0;
+      while i<ReplacementLength do begin
+       c:=PFLRERawByteChar(Replacement)[i];
+       case c of
+        '$','\':begin
+         cc:=c;
+         inc(i);
+         if i<ReplacementLength then begin
+          c:=PFLRERawByteChar(Replacement)[i];
+          case c of
+           '$':begin
+            if cc='$' then begin
+             result:=result+c;
+             inc(i);
+            end else begin
+             result:=result+'\$';
              inc(i);
             end;
-            '`':begin
-             result:=result+FLREPtrCopy(PFLRERawByteChar(Input),0,Captures[0].Start-1);
+           end;
+           '\':begin
+            if cc='\' then begin
+             result:=result+c;
+             inc(i);
+            end else begin
+             result:=result+'$\';
              inc(i);
             end;
-            '''':begin
-             result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[0].Start+Captures[0].Length,(InputLength-(Captures[0].Start+Captures[0].Length))+1);
-             inc(i);
+           end;
+           '&':begin
+            result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[0].Start,Captures[0].Length);
+            inc(i);
+           end;
+           '`':begin
+            result:=result+FLREPtrCopy(PFLRERawByteChar(Input),0,Captures[0].Start-1);
+            inc(i);
+           end;
+           '''':begin
+            result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[0].Start+Captures[0].Length,(InputLength-(Captures[0].Start+Captures[0].Length))+1);
+            inc(i);
+           end;
+           '_':begin
+            result:=result+TFLRERawByteString(PFLRERawByteChar(Input));
+            inc(i);
+           end;
+           '-':begin
+            if length(Captures)>1 then begin
+             result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[1].Start,Captures[1].Length);
             end;
-            '_':begin
-             result:=result+TFLRERawByteString(PFLRERawByteChar(Input));
-             inc(i);
+            inc(i);
+           end;
+           '+':begin
+            if length(Captures)>1 then begin
+             e:=length(Captures)-1;
+             result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[e].Start,Captures[e].Length);
             end;
-            '-':begin
-             if length(Captures)>1 then begin
-              result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[1].Start,Captures[1].Length);
-             end;
-             inc(i);
-            end;
-            '+':begin
-             if length(Captures)>1 then begin
-              e:=length(Captures)-1;
-              result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[e].Start,Captures[e].Length);
-             end;
-             inc(i);
-            end;
-            'g':begin
-             if cc='\' then begin
-              e:=-1;
-              inc(i);
-              j:=i;
-              while i<ReplacementLength do begin
-               if PFLRERawByteChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
-                inc(i);
-               end else begin
-                break;
-               end;
-              end;
-              if j<i then begin
-               e:=NamedGroupStringIntegerPairHashMap.GetValue(FLREPtrCopy(PFLRERawByteChar(Replacement),j,i-j));
-              end;
-              if e<0 then begin
-               result:=result+cc+'g';
-               i:=j;
-              end else begin
-               if (e>=0) and (e<length(Captures)) then begin
-                result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[e].Start,Captures[e].Length);
-               end;
-              end;
-             end else begin
-              result:=result+cc+'g';
-              inc(i);
-             end;
-            end;
-            '{':begin
+            inc(i);
+           end;
+           'g':begin
+            if cc='\' then begin
              e:=-1;
              inc(i);
              j:=i;
-             if i<ReplacementLength then begin
-              case PFLRERawByteChar(Replacement)[i] of
-               '0'..'9':begin
-                e:=0;
-                while i<ReplacementLength do begin
-                 c:=PFLRERawByteChar(Replacement)[i];
-                 case c of
-                  '0'..'9':begin
-                   e:=(e*10)+(ord(c)-ord('0'));
-                   inc(i);
-                  end;
-                  else begin
-                   break;
-                  end;
-                 end;
-                end;
-                if (i<ReplacementLength) and (PFLRERawByteChar(Replacement)[i]='}') then begin
-                 inc(i);
-                end else begin
-                 e:=-1;
-                end;
-               end;
-               else begin
-                while i<ReplacementLength do begin
-                 if PFLRERawByteChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
-                  inc(i);
-                 end else begin
-                  break;
-                 end;
-                end;
-                if (j<i) and (PFLRERawByteChar(Replacement)[i]='}') then begin
-                 e:=NamedGroupStringIntegerPairHashMap.GetValue(FLREPtrCopy(PFLRERawByteChar(Replacement),j,i-j));
-                 inc(i);
-                end else begin
-                 e:=-1;
-                end;
-               end;
+             while i<ReplacementLength do begin
+              if PFLRERawByteChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
+               inc(i);
+              end else begin
+               break;
               end;
              end;
+             if j<i then begin
+              e:=NamedGroupStringIntegerPairHashMap.GetValue(FLREPtrCopy(PFLRERawByteChar(Replacement),j,i-j));
+             end;
              if e<0 then begin
-              result:=result+cc+'{';
+              result:=result+cc+'g';
               i:=j;
              end else begin
               if (e>=0) and (e<length(Captures)) then begin
                result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[e].Start,Captures[e].Length);
               end;
              end;
+            end else begin
+             result:=result+cc+'g';
+             inc(i);
             end;
-            '0'..'9':begin
-             if length(Captures)<10 then begin
-              e:=ord(c)-ord('0');
-              inc(i);
-             end else begin
-              e:=0;
-              while i<ReplacementLength do begin
-               c:=PFLRERawByteChar(Replacement)[i];
-               case c of
-                '0'..'9':begin
-                 e:=(e*10)+(ord(c)-ord('0'));
-                 inc(i);
+           end;
+           '{':begin
+            e:=-1;
+            inc(i);
+            j:=i;
+            if i<ReplacementLength then begin
+             case PFLRERawByteChar(Replacement)[i] of
+              '0'..'9':begin
+               e:=0;
+               while i<ReplacementLength do begin
+                c:=PFLRERawByteChar(Replacement)[i];
+                case c of
+                 '0'..'9':begin
+                  e:=(e*10)+(ord(c)-ord('0'));
+                  inc(i);
+                 end;
+                 else begin
+                  break;
+                 end;
                 end;
-                else begin
+               end;
+               if (i<ReplacementLength) and (PFLRERawByteChar(Replacement)[i]='}') then begin
+                inc(i);
+               end else begin
+                e:=-1;
+               end;
+              end;
+              else begin
+               while i<ReplacementLength do begin
+                if PFLRERawByteChar(Replacement)[i] in ['a'..'z','A'..'Z','_','0'..'9'] then begin
+                 inc(i);
+                end else begin
                  break;
                 end;
                end;
+               if (j<i) and (PFLRERawByteChar(Replacement)[i]='}') then begin
+                e:=NamedGroupStringIntegerPairHashMap.GetValue(FLREPtrCopy(PFLRERawByteChar(Replacement),j,i-j));
+                inc(i);
+               end else begin
+                e:=-1;
+               end;
               end;
              end;
+            end;
+            if e<0 then begin
+             result:=result+cc+'{';
+             i:=j;
+            end else begin
              if (e>=0) and (e<length(Captures)) then begin
               result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[e].Start,Captures[e].Length);
              end;
             end;
-            else begin
-             result:=result+c;
+           end;
+           '0'..'9':begin
+            if length(Captures)<10 then begin
+             e:=ord(c)-ord('0');
              inc(i);
+            end else begin
+             e:=0;
+             while i<ReplacementLength do begin
+              c:=PFLRERawByteChar(Replacement)[i];
+              case c of
+               '0'..'9':begin
+                e:=(e*10)+(ord(c)-ord('0'));
+                inc(i);
+               end;
+               else begin
+                break;
+               end;
+              end;
+             end;
             end;
+            if (e>=0) and (e<length(Captures)) then begin
+             result:=result+FLREPtrCopy(PFLRERawByteChar(Input),Captures[e].Start,Captures[e].Length);
+            end;
+           end;
+           else begin
+            result:=result+c;
+            inc(i);
            end;
           end;
          end;
-         else begin
-          result:=result+c;
-          inc(i);
-         end;
+        end;
+        else begin
+         result:=result+c;
+         inc(i);
         end;
        end;
       end;
      end;
+     CurrentPosition:=Captures[0].Start+Captures[0].Length;
+     LastEnd:=CurrentPosition;
      if Limit>0 then begin
       dec(Limit);
      end;
     end;
-    if LastPosition<InputLength then begin
-     result:=result+FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,InputLength-LastPosition);
+    if CurrentPosition<InputLength then begin
+     result:=result+FLREPtrCopy(PFLRERawByteChar(Input),CurrentPosition,InputLength-CurrentPosition);
     end;
    finally
     ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
