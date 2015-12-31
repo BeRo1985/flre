@@ -191,6 +191,21 @@ begin
  ExecuteSearchFailTest('^...$', '.'#$e6#$9c#$ac'.',[]);
  ExecuteSearchTest('^.....$', '.'#$e6#$9c#$ac'.',[]);
 
+ // Perl vs Posix
+ ExecuteSearchFailTest('\\B(fo|foo)\\B','xfooo',[]);
+ ExecuteSearchTest('(fo|foo)','foo',[]);
+
+ // Hexadecimal escapes
+ ExecuteSearchTest('\x{61}','a',[]);
+ ExecuteSearchTest('\x61','a',[]);
+ ExecuteSearchTest('\x{00000061}','a',[]);
+
+ // Unicode scripts
+ ExecuteSearchTest('\p{Greek}+', 'a'#$ce#$b1#$ce#$b2'b',[rfUTF8]);
+ ExecuteSearchTest('\P{Greek}+', 'a'#$ce#$b1#$ce#$b2'b',[rfUTF8]);
+ ExecuteSearchTest('\p{^Greek}+', 'a'#$ce#$b1#$ce#$b2'b',[rfUTF8]);
+ ExecuteSearchTest('\P{^Greek}+', 'a'#$ce#$b1#$ce#$b2'b',[rfUTF8]);
+
 end;
 
 end.

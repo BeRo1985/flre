@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.31.23.04.0000';
+      FLREVersionString='1.00.2015.12.31.23.19.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -11142,8 +11142,8 @@ var SourcePosition,SourceLength:longint;
      inc(SourcePosition);
      LastSourcePos:=SourcePosition;
      if (SourcePosition<=SourceLength) and (Source[SourcePosition]='^') then begin
-      LastSourcePos:=SourcePosition;
       inc(SourcePosition);
+      LastSourcePos:=SourcePosition;
       IsNegative:=true;
       IgnoreCase:=false;
      end else begin
@@ -11155,7 +11155,7 @@ var SourcePosition,SourceLength:longint;
       inc(SourcePosition);
      end;
      if (LastSourcePos<=UntilSourcePos) and ((SourcePosition<=SourceLength) and (Source[SourcePosition]='}')) then begin
-      Identifier:=UTF8LowerCase(copy(Source,LastSourcePos,(UntilSourcePos-LastSourcePos)+1));
+      Identifier:=copy(Source,LastSourcePos,(UntilSourcePos-LastSourcePos)+1);
       inc(SourcePosition);
       GetCharClassPerName(Identifier,UnicodeCharClass,IgnoreCase);
       if IsNegative and assigned(UnicodeCharClass.First) then begin
@@ -11328,7 +11328,7 @@ var SourcePosition,SourceLength:longint;
      if ((SourcePosition+1)<=SourceLength) and
         (Source[SourcePosition+0] in ['0'..'9','a'..'f','A'..'F']) and
         (Source[SourcePosition+1] in ['0'..'9','a'..'f','A'..'F']) then begin
-      result.AddChar((Hex2Value(Source[SourcePosition+0]) shl 8) or Hex2Value(Source[SourcePosition+1]),IgnoreCase);
+      result.AddChar((Hex2Value(Source[SourcePosition+0]) shl 4) or Hex2Value(Source[SourcePosition+1]),IgnoreCase);
       inc(SourcePosition,2);
      end else if (SourcePosition<=SourceLength) and (Source[SourcePosition]='{') then begin
       inc(SourcePosition);

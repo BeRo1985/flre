@@ -58,14 +58,22 @@ begin
     result:=result+'\r';
     inc(i);
    end;
-   #$0000..#$0007,#$000e..#$001f,#$007d..#$009f,#$00ad:begin
-    c:=byte(ansichar(s[i]));
-    result:=result+'\x'+HexChars[false,(c shr 4) and $f]+HexChars[false,c and $f];
+   '}':begin
+    result:=result+'}';
     inc(i);
    end;
    else begin
-    result:=result+s[i];
-    inc(i);
+    case s[i] of
+     #$0000..#$0007,#$000e..#$001f,#$007d..#$009f,#$00ad:begin
+      c:=byte(ansichar(s[i]));
+      result:=result+'\x'+HexChars[false,(c shr 4) and $f]+HexChars[false,c and $f];
+      inc(i);
+     end;
+     else begin
+      result:=result+s[i];
+      inc(i);
+     end;
+    end;
    end;
   end;
  end;
