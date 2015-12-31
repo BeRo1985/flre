@@ -206,6 +206,26 @@ begin
  ExecuteSearchTest('\p{^Greek}+', 'a'#$ce#$b1#$ce#$b2'b',[rfUTF8]);
  ExecuteSearchTest('\P{^Greek}+', 'a'#$ce#$b1#$ce#$b2'b',[rfUTF8]);
 
+ // Unicode properties.  Nd is decimal number.  N is any number.
+ ExecuteSearchTest('[^0-9]+', 'abc123',[rfUTF8]);
+ ExecuteSearchTest('\p{Nd}+', 'abc123'#$c2#$b2#$c2#$b3#$c2#$bc#$c2#$bd#$c2#$be#$e3#$82#$80#$e2#$82#$89,[rfUTF8]);
+ ExecuteSearchTest('\p{^Nd}+', 'abc123'#$c2#$b2#$c2#$b3#$c2#$bc#$c2#$bd#$c2#$be#$e3#$82#$80#$e2#$82#$89,[rfUTF8]);
+ ExecuteSearchTest('\P{Nd}+', 'abc123'#$c2#$b2#$c2#$b3#$c2#$bc#$c2#$bd#$c2#$be#$e3#$82#$80#$e2#$82#$89,[rfUTF8]);
+ ExecuteSearchTest('\P{^Nd}+', 'abc123'#$c2#$b2#$c2#$b3#$c2#$bc#$c2#$bd#$c2#$be#$e3#$82#$80#$e2#$82#$89,[rfUTF8]);
+ ExecuteSearchTest('\pN+', 'abc123'#$c2#$b2#$c2#$b3#$c2#$bc#$c2#$bd#$c2#$be#$e3#$82#$80#$e2#$82#$89,[rfUTF8]);
+ ExecuteSearchTest('\p{N}+', 'abc123'#$c2#$b2#$c2#$b3#$c2#$bc#$c2#$bd#$c2#$be#$e3#$82#$80#$e2#$82#$89,[rfUTF8]);
+ ExecuteSearchTest('\p{^N}+', 'abc123'#$c2#$b2#$c2#$b3#$c2#$bc#$c2#$bd#$c2#$be#$e3#$82#$80#$e2#$82#$89,[rfUTF8]);
+ ExecuteSearchTest('\p{Any}+', 'abc123',[rfUTF8]);
+
+ // Character classes & case folding.
+ ExecuteSearchTest('(?i)[@-A]+','@AaB',[]); // matches @Aa but not B
+ ExecuteSearchFailTest('(?i)[@-A]+','B',[]); // matches @Aa but not B
+ ExecuteSearchTest('(?i)[A-Z]+','aAzZ',[]);
+ ExecuteSearchTest('(?i)[A-Z]+','az',[]);
+ ExecuteSearchTest('(?i)(?i)[^\\]+','Aa\',[]); // \\ is between A-Z and a-z - splits the ranges in an interesting way.
+ ExecuteSearchTest('(?i)(?i)[^\\]+','Aa',[]); // \\ is between A-Z and a-z - splits the ranges in an interesting way.
+ ExecuteSearchFailTest('(?i)(?i)[^\\]+','\',[]); // \\ is between A-Z and a-z - splits the ranges in an interesting way.
+
 end;
 
 end.

@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.31.23.19.0000';
+      FLREVersionString='1.00.2015.12.31.23.30.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -10684,6 +10684,9 @@ var SourcePosition,SourceLength:longint;
    UnicodeCharClass.AddRange(ord('A'),ord('f'),IgnoreCase);
    UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
    UnicodeCharClass.Canonicalized:=true;
+  end else if Name='Any' then begin
+   UnicodeCharClass.AddRange(0,$10ffff,IgnoreCase);
+   UnicodeCharClass.Canonicalized:=true;
   end else begin
    raise EFLRE.Create('Syntax error');
   end;
@@ -11131,7 +11134,7 @@ var SourcePosition,SourceLength:longint;
    IgnoreCase:=CanBeAlreadyCanonicalized and (rfIGNORECASE in Flags);
    case Source[SourcePosition] of
     'a'..'z','A'..'Z':begin
-     f:=UnicodeClassHashMap.GetValue(UTF32CharToUTF8(UnicodeToLower(byte(ansichar(Source[SourcePosition])))));
+     f:=UnicodeClassHashMap.GetValue(UTF32CharToUTF8(byte(ansichar(Source[SourcePosition]))));
      if f>=0 then begin
       inc(SourcePosition);
       UnicodeCharClass.AddUnicodeCategory(f,IgnoreCase);
