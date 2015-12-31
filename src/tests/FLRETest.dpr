@@ -15,9 +15,11 @@ uses
   FLRE in '..\FLRE.pas',
   FLREUnicode in '..\FLREUnicode.pas',
   UnitTestGlobals in 'UnitTestGlobals.pas',
+  UnitSearchTests in 'UnitSearchTests.pas',
   UnitReplaceTests in 'UnitReplaceTests.pas';
 
 begin
+ ExecuteSearchTests;
  ExecuteReplaceTests;
 {$ifndef fpc}
  if DebugHook<>0 then begin

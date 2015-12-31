@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.31.21.02.0000';
+      FLREVersionString='1.00.2015.12.31.22.26.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -816,6 +816,8 @@ type EFLRE=class(Exception);
 
        UnanchoredRootNode:PFLRENode;
 
+       RegularExpressionHasCharClasses:longbool;
+
        Nodes:TList;
 
        CountCaptures:longint;
@@ -911,7 +913,7 @@ type EFLRE=class(Exception);
        PrefilterRootNode:TFLREPrefilterNode;
        HasPrefilter:boolean;
 
-       function NewCharClass(const CharClass:TFLRECharClass):longint;
+       function NewCharClass(const CharClass:TFLRECharClass;const FromRegularExpression:boolean):longint;
        function GetCharClass(const CharClass:longint):TFLRECharClass;
 
        function NewNode(const NodeType:longint;const Left,Right:PFLRENode;const Value:longint):PFLRENode;
@@ -977,6 +979,7 @@ type EFLRE=class(Exception);
        function PtrReplaceCallback(const Input:pointer;const InputLength:longint;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:longint=0;Limit:longint=-1):TFLRERawByteString;
        function PtrSplit(const Input:pointer;const InputLength:longint;var SplittedStrings:TFLREStrings;const StartPosition:longint=0;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
        function PtrTest(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):boolean;
+       function PtrTestAll(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):boolean;
        function PtrFind(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):longint;
 
        function Match(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
@@ -987,6 +990,7 @@ type EFLRE=class(Exception);
        function ReplaceCallback(const Input:TFLRERawByteString;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
        function Split(const Input:TFLRERawByteString;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
        function Test(const Input:TFLRERawByteString;const StartPosition:longint=1):boolean;
+       function TestAll(const Input:TFLRERawByteString;const StartPosition:longint=1):boolean;
        function Find(const Input:TFLRERawByteString;const StartPosition:longint=1):longint;
 
        function UTF8Match(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:longint=1):boolean;
@@ -997,6 +1001,7 @@ type EFLRE=class(Exception);
        function UTF8ReplaceCallback(const Input:TFLREUTF8String;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:longint=1;Limit:longint=-1):TFLRERawByteString;
        function UTF8Split(const Input:TFLREUTF8String;var SplittedStrings:TFLREStrings;const StartPosition:longint=1;Limit:longint=-1;const WithEmpty:boolean=true):boolean;
        function UTF8Test(const Input:TFLREUTF8String;const StartPosition:longint=1):boolean;
+       function UTF8TestAll(const Input:TFLREUTF8String;const StartPosition:longint=1):boolean;
        function UTF8Find(const Input:TFLREUTF8String;const StartPosition:longint=1):longint;
 
        function GetRange(var LowRange,HighRange:TFLRERawByteString):boolean;
@@ -9267,6 +9272,8 @@ begin
 
  UnanchoredRootNode:=nil;
 
+ RegularExpressionHasCharClasses:=false;
+
  Nodes:=TList.Create;
 
  ForwardInstructions:=nil;
@@ -9485,21 +9492,23 @@ begin
 
   begin
    CanMatchEmptyStrings:=true;
-   ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
-   try
-    ThreadLocalStorageInstance.Input:=EmptyString;
-    ThreadLocalStorageInstance.InputLength:=0;
-    Captures:=nil;
+   if RegularExpressionHasCharClasses then begin
+    ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
     try
-     SetLength(Captures,CountCaptures);
-     if not ThreadLocalStorageInstance.ParallelNFA.SearchMatch(Captures,0,1,false) then begin
-      CanMatchEmptyStrings:=false;
+     ThreadLocalStorageInstance.Input:=EmptyString;
+     ThreadLocalStorageInstance.InputLength:=0;
+     Captures:=nil;
+     try
+      SetLength(Captures,CountCaptures);
+      if not ThreadLocalStorageInstance.ParallelNFA.SearchMatch(Captures,0,1,false) then begin
+       CanMatchEmptyStrings:=false;
+      end;
+     finally
+      SetLength(Captures,0);
      end;
     finally
-     SetLength(Captures,0);
+     ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
     end;
-   finally
-    ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
    end;
   end;
 
@@ -9588,8 +9597,11 @@ begin
  inherited Destroy;
 end;
 
-function TFLRE.NewCharClass(const CharClass:TFLRECharClass):longint;
+function TFLRE.NewCharClass(const CharClass:TFLRECharClass;const FromRegularExpression:boolean):longint;
 begin
+ if FromRegularExpression then begin
+  RegularExpressionHasCharClasses:=true;
+ end;
  result:=CharClassHashMap.GetValue(CharClass);
  if result<0 then begin
   result:=CountCharClasses;
@@ -9883,7 +9895,7 @@ begin
   end else if AreNodesEqualSafe(NodeLeft,NodeRight) then begin
    result:=NodeLeft;
   end else if (NodeLeft^.NodeType=ntCHAR) and (NodeRight^.NodeType=ntCHAR) then begin
-   result:=NewNode(ntCHAR,nil,nil,NewCharClass(GetCharClass(NodeLeft^.Value)+GetCharClass(NodeRight^.Value)));
+   result:=NewNode(ntCHAR,nil,nil,NewCharClass(GetCharClass(NodeLeft^.Value)+GetCharClass(NodeRight^.Value),true));
   end else begin
    result:=NewNode(ntALT,NodeLeft,NodeRight,0);
   end;
@@ -10441,7 +10453,7 @@ begin
           end;
          end else if (Node^.Left^.NodeType=ntCHAR) and (Node^.Right^.NodeType=ntCHAR) then begin
           Node^.NodeType:=ntCHAR;
-          Node^.Value:=NewCharClass(GetCharClass(Node^.Left^.Value)+GetCharClass(Node^.Right^.Value));
+          Node^.Value:=NewCharClass(GetCharClass(Node^.Left^.Value)+GetCharClass(Node^.Right^.Value),true);
           Node^.Left:=nil;
           Node^.Right:=nil;
           HasOptimizations:=true;
@@ -10756,7 +10768,7 @@ var SourcePosition,SourceLength:longint;
   TemporaryString:=UTF32CharToUTF8(UnicodeChar);
   try
    for Index:=1 to length(TemporaryString) do begin
-    TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([TemporaryString[Index]]));
+    TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([TemporaryString[Index]],true));
     if assigned(result) then begin
      result:=Concat(result,TemporaryNode);
     end else begin
@@ -10772,7 +10784,7 @@ var SourcePosition,SourceLength:longint;
   if (rfUTF8 in Flags) and (UnicodeChar>=$80) then begin
    result:=NewUnicodeChar(UnicodeChar);
   end else if UnicodeChar<=$ff then begin
-   result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))]));
+   result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))],true));
   end else begin
    raise EFLRE.Create('Syntax error');
   end;
@@ -10786,13 +10798,13 @@ var SourcePosition,SourceLength:longint;
    if (rfUTF8 in Flags) and ((LowerCaseUnicodeChar>=$80) or (UpperCaseUnicodeChar>=$80)) then begin
     result:=NewAlt(NewCharEx(LowerCaseUnicodeChar),NewCharEx(UpperCaseUnicodeChar));
    end else begin
-    result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
+    result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))],true));
    end;
   end else begin
    if (rfUTF8 in Flags) and (UnicodeChar>=$80) then begin
     result:=NewCharEx(UnicodeChar);
    end else begin
-    result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))]));
+    result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(UnicodeChar))],true));
    end;
   end;
  end;
@@ -10881,7 +10893,7 @@ var SourcePosition,SourceLength:longint;
   procedure AddRange(const Lo,Hi:byte);
   var Node:PFLRENode;
   begin
-   Node:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(Lo))..ansichar(byte(Hi))]));
+   Node:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(Lo))..ansichar(byte(Hi))],true));
    Add(Node);
   end;
   procedure ProcessRange(Lo,Hi:longword);
@@ -10969,11 +10981,10 @@ var SourcePosition,SourceLength:longint;
  begin
   UnicodeCharClass.Optimize;
   if UnicodeCharClass.IsSingle then begin
-   if assigned(UnicodeCharClass.First) then begin
+   if assigned(UnicodeCharClass.First) and (UnicodeCharClass.First.Lo<=UnicodeCharClass.First.Hi) then begin
     result:=NewChar(UnicodeCharClass.First.Lo);
    end else begin
-    result:=nil; // For to suppress compiler warnings
-    raise EFLRE.Create('Syntax error');
+    result:=NewChar($deadc4a6); // deadchar
    end;
   end else begin
    if (rfUTF8 in Flags) and assigned(UnicodeCharClass.Last) and (UnicodeCharClass.Last.Hi>=128) then begin
@@ -11007,7 +11018,7 @@ var SourcePosition,SourceLength:longint;
      end;
      Range:=Range.Next;
     end;
-    result:=NewNode(ntCHAR,nil,nil,NewCharClass(CharClass));
+    result:=NewNode(ntCHAR,nil,nil,NewCharClass(CharClass,true));
    end;
   end;
  end;
@@ -12163,7 +12174,7 @@ var SourcePosition,SourceLength:longint;
            inc(SourcePosition);
            break;
           end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass(['\']));
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass(['\'],true));
           end;
          end;
          #128..#255:begin
@@ -12177,7 +12188,7 @@ var SourcePosition,SourceLength:longint;
             TemporaryNode:=NewUnicodeChar(UnicodeChar);
            end;
           end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]]));
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]],true));
            inc(SourcePosition);
           end;
          end;
@@ -12186,9 +12197,9 @@ var SourcePosition,SourceLength:longint;
            UnicodeChar:=byte(ansichar(Source[SourcePosition]));
            LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
            UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))],true));
           end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]]));
+           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]],true));
            inc(SourcePosition);
           end;
          end;
@@ -12244,9 +12255,9 @@ var SourcePosition,SourceLength:longint;
         end;
        end else begin
         if rfSINGLELINE in Flags then begin
-         result:=NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass));
+         result:=NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass,true));
         end else begin
-         result:=NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass-[#10,#13]));
+         result:=NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass-[#10,#13],true));
         end;
        end;
       end;
@@ -12277,7 +12288,7 @@ var SourcePosition,SourceLength:longint;
          result:=NewUnicodeChar(UnicodeChar);
         end;
        end else begin
-        result:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]]));
+        result:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]],true));
         inc(SourcePosition);
        end;
       end;
@@ -12287,9 +12298,9 @@ var SourcePosition,SourceLength:longint;
         inc(SourcePosition);
         LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
         UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-        result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))]));
+        result:=NewNode(ntCHAR,nil,nil,NewCharClass([ansichar(byte(LowerCaseUnicodeChar)),ansichar(byte(UpperCaseUnicodeChar))],true));
        end else begin
-        result:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]]));
+        result:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]],true));
         inc(SourcePosition);
        end;
       end;
@@ -12558,9 +12569,9 @@ begin
    end;
   end;
   if rfLONGEST in Flags then begin
-   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass)),nil,qkGREEDY),AnchoredRootNode,0);
+   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass,false)),nil,qkGREEDY),AnchoredRootNode,0);
   end else begin
-   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass)),nil,qkLAZY),AnchoredRootNode,0);
+   UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass,false)),nil,qkLAZY),AnchoredRootNode,0);
   end;
   DFANeedVerification:=false;
   BeginningAnchor:=false;
@@ -14113,7 +14124,7 @@ begin
              OnePassNFACharClassActions:=DestCharClassAction;
              DestCharClassAction^.Next:=Node^.CharClassAction;
              Node^.CharClassAction:=DestCharClassAction;
-             DestCharClassAction^.CharClass:=CharClasses[NewCharClass(CharClass)];
+             DestCharClassAction^.CharClass:=CharClasses[NewCharClass(CharClass,false)];
              DestCharClassAction^.Condition:=NewAction;
             end;
            end;
@@ -15598,6 +15609,35 @@ begin
  end;
 end;
 
+function TFLRE.PtrTestAll(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):boolean;
+var ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+    Index,Count:longint;
+    Captures:TFLRECaptures;
+begin
+ ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+ try
+  ThreadLocalStorageInstance.Input:=Input;
+  ThreadLocalStorageInstance.InputLength:=InputLength;
+  Captures:=nil;
+  try
+   if rfMULTIMATCH in Flags then begin
+    for Index:=0 to CountMultiSubMatches-1 do begin
+     ThreadLocalStorageInstance.MultiSubMatches[Index]:=-1;
+    end;
+    Count:=CountMultiSubMatches+1;
+   end else begin
+    Count:=CountCaptures;
+   end;
+   SetLength(Captures,Count);
+   result:=SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,HaveUnanchoredStart);
+  finally
+   SetLength(Captures,0);
+  end;
+ finally
+  ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
+ end;
+end;
+
 function TFLRE.PtrFind(const Input:pointer;const InputLength:longint;const StartPosition:longint=0):longint;
 var ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
     Index,Count:longint;
@@ -15700,6 +15740,11 @@ begin
  result:=PtrTest(PFLRERawByteChar(@Input[1]),length(Input),StartPosition-1);
 end;
 
+function TFLRE.TestAll(const Input:TFLRERawByteString;const StartPosition:longint=1):boolean;
+begin
+ result:=PtrTestAll(PFLRERawByteChar(@Input[1]),length(Input),StartPosition-1);
+end;
+
 function TFLRE.Find(const Input:TFLRERawByteString;const StartPosition:longint=1):longint;
 begin
  result:=PtrFind(PFLRERawByteChar(@Input[1]),length(Input),StartPosition-1)+1;
@@ -15772,6 +15817,11 @@ end;
 function TFLRE.UTF8Test(const Input:TFLREUTF8String;const StartPosition:longint=1):boolean;
 begin
  result:=PtrTest(PFLRERawByteChar(@Input[1]),length(Input),StartPosition-1);
+end;
+
+function TFLRE.UTF8TestAll(const Input:TFLREUTF8String;const StartPosition:longint=1):boolean;
+begin
+ result:=PtrTestAll(PFLRERawByteChar(@Input[1]),length(Input),StartPosition-1);
 end;
 
 function TFLRE.UTF8Find(const Input:TFLREUTF8String;const StartPosition:longint=1):longint;
