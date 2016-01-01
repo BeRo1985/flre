@@ -3,7 +3,7 @@
 ********************************************************************************
 
 FLRE - Fast Light Regular Expressions - A fast light regular expression library
-Copyright (C) 2015, Benjamin 'BeRo' Rosseaux
+Copyright (C) 2015-2016, Benjamin 'BeRo' Rosseaux
 
 The source code of the FLRE engine library and helper tools are
 distributed under the Library GNU Lesser General Public License Version 2.1 
@@ -16,7 +16,7 @@ and to copy and distribute the resulting executable under terms of your choice,
 provided that you also meet, for each linked independent module, the terms
 and conditions of the license of that module. An independent module is a module
 which is not derived from or based on this library. If you modify this
-library, you may extend this exception to your version of the library, but you 
+library, you may extend this exception to your version of the library, but you
 are not obligated to do so. If you do not wish to do so, delete this exception
 statement from your version.
 
@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2015.12.31.23.30.0000';
+      FLREVersionString='1.00.2016.01.01.05.46.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -1104,6 +1104,8 @@ const MaxGeneration=int64($4000000000000000);
 
       Mark=nil;
 
+      EmptyCharClass{:TFLRECharClass}=[];
+
       AllCharClass{:TFLRECharClass}=[#0..#255];
 
       // State flags
@@ -1168,23 +1170,24 @@ const MaxGeneration=int64($4000000000000000);
       ntBACKREFERENCEIGNORECASE=14;
 
       // Opcodes
-      opSINGLECHAR=0;
-      opCHAR=1;
-      opANY=2;
-      opMATCH=3;
+      opNONE=0;
+      opSINGLECHAR=1;
+      opCHAR=2;
+      opANY=3;
+      opMATCH=4;
 {$ifdef UseOpcodeJMP}
-      opJMP=4;
+      opJMP=5;
 {$endif}
-      opSPLIT=5;
-      opSPLITMATCH=6;
-      opSAVE=7;
-      opZEROWIDTH=8;
-      opLOOKBEHINDNEGATIVE=9;
-      opLOOKBEHINDPOSITIVE=10;
-      opLOOKAHEADNEGATIVE=11;
-      opLOOKAHEADPOSITIVE=12;
-      opBACKREFERENCE=13;
-      opBACKREFERENCEIGNORECASE=14;
+      opSPLIT=6;
+      opSPLITMATCH=7;
+      opSAVE=8;
+      opZEROWIDTH=9;
+      opLOOKBEHINDNEGATIVE=10;
+      opLOOKBEHINDPOSITIVE=11;
+      opLOOKAHEADNEGATIVE=12;
+      opLOOKAHEADPOSITIVE=13;
+      opBACKREFERENCE=14;
+      opBACKREFERENCEIGNORECASE=15;
 
       // Split kind
       skALT=0;
@@ -3987,7 +3990,7 @@ end;
 
 function IsInstructionGreedy(Instruction:PFLREInstruction):boolean;
 begin
- result:=assigned(Instruction^.Next) and ((Instruction^.Next^.IDandOpcode and $ff) in [opSINGLECHAR,opCHAR,opANY]);
+ result:=assigned(Instruction^.Next) and ((Instruction^.Next^.IDandOpcode and $ff) in [opNONE,opSINGLECHAR,opCHAR,opANY]);
 end;
 
 const bncmmMemoryBlockSignature:ptruint={$ifdef cpu64}$1337bab3deadc0d3{$else}$deadc0d3{$endif};
@@ -6848,6 +6851,9 @@ begin
     StateRelease(State);
    end else begin
     case Instruction^.IDandOpcode and $ff of
+     opNONE:begin
+      StateRelease(State);
+     end;
      opSINGLECHAR:begin
       if CurrentChar=Instruction^.Value then begin
        AddThread(NewThreadList,Instruction^.Next,State,CurrentPosition+1);
@@ -7212,6 +7218,9 @@ var LocalInputLength,BasePosition,Len:longint;
        end;
       end;
      end;{}
+     opNONE:begin
+      // Match against nothing
+     end;
      opSINGLECHAR:begin
       if (Position<LocalInputLength) and (byte(ansichar(LocalInput[Position]))=Instruction^.Value) then begin
        inc(Position);
@@ -7779,6 +7788,9 @@ begin
  for Counter:=0 To State^.CountInstructions-1 do begin
   Instruction:=State^.Instructions[Counter];
   case Instruction^.IDandOpcode and $ff of
+   opNONE:begin
+    // Match against nothing
+   end;
    opSINGLECHAR:begin
     if byte(ansichar(CurrentChar))=Instruction^.Value then begin
      FastAddInstructionThread(@NewState,Instruction^.Next);
@@ -8169,7 +8181,7 @@ begin
    continue;
   end;
   case Instruction^.IDandOpcode and $ff of
-   opSINGLECHAR,opCHAR,opANY,opMATCH,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
+   opNONE,opSINGLECHAR,opCHAR,opANY,opMATCH,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
 {   if (Instruction^.IDandOpcode and $ff)=opSPLITMATCH then begin
      if (MatchMode<>mmMultiMatch) and
         ((MatchMode<>mmFirstMatch) or ((Index=0) and IsInstructionGreedy(Instruction))) and
@@ -8277,7 +8289,7 @@ begin
   end else if not WorkQueue.Contains(Instruction) then begin
    WorkQueue.AddNew(Instruction);
    case Instruction^.IDandOpcode and $ff of
-    opSINGLECHAR,opCHAR,opANY,opMATCH:begin
+    opNONE,opSINGLECHAR,opCHAR,opANY,opMATCH:begin
      // Just save onto the queue
     end;
     {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
@@ -8346,6 +8358,9 @@ begin
    case Instruction^.IDandOpcode and $ff of
     {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
      // Already processed
+    end;
+    opNONE:begin
+     // Match against nothing
     end;
     opSINGLECHAR:begin
      if CurrentChar=longword(Instruction^.Value) then begin
@@ -10987,7 +11002,7 @@ var SourcePosition,SourceLength:longint;
    if assigned(UnicodeCharClass.First) and (UnicodeCharClass.First.Lo<=UnicodeCharClass.First.Hi) then begin
     result:=NewChar(UnicodeCharClass.First.Lo);
    end else begin
-    result:=NewChar($deadc4a6); // deadchar
+    result:=NewNode(ntCHAR,nil,nil,NewCharClass(EmptyCharClass,true));
    end;
   end else begin
    if (rfUTF8 in Flags) and assigned(UnicodeCharClass.Last) and (UnicodeCharClass.Last.Hi>=128) then begin
@@ -12831,7 +12846,10 @@ procedure TFLRE.Compile;
        end;
        ntCHAR:begin
         CharClass:=GetCharClass(Node^.Value);
-        if CharClass=AllCharClass then begin
+        if CharClass=EmptyCharClass then begin
+         i0:=NewInstruction(opNONE);
+         Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        end else if CharClass=AllCharClass then begin
          i0:=NewInstruction(opANY);
          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
         end else begin
@@ -13388,6 +13406,13 @@ var LowRangeString,HighRangeString:TFLRERawByteString;
       break;
      end;
     end;
+    opNONE:begin
+     // Match against nothing
+     if (LastIndex<0) or (Index<LastIndex) then begin
+      LastIndex:=Index;
+     end;
+     break;
+    end;
     opSINGLECHAR:begin
      AddChars(Index,ansichar(byte(Instruction^.Value)));
      inc(Index);
@@ -13801,6 +13826,7 @@ var ThreadIndex,Count,TotalCount,Index:longint;
     Instruction:PFLREInstruction;
     CurrentChar:ansichar;
     ThreadLists:TThreadLists;
+    HasCountPrefixCharClasses:boolean;
 begin
 
  Generation:=0;
@@ -13818,6 +13844,7 @@ begin
   end;
 
   CountPrefixCharClasses:=0;
+  HasCountPrefixCharClasses:=false;
 
   ThreadLists[0].Threads:=nil;
   ThreadLists[1].Threads:=nil;
@@ -13846,6 +13873,10 @@ begin
      CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
      Instruction:=CurrentThread^.Instruction;
      case Instruction^.IDandOpcode and $ff of
+      opNONE:begin
+       // Match against nothing
+       HasCountPrefixCharClasses:=true;
+      end;
       opSINGLECHAR:begin
        if CurrentPosition<FLREMaxPrefixCharClasses then begin
         PrefixCharClasses[CurrentPosition]:=PrefixCharClasses[CurrentPosition]+[ansichar(byte(Instruction^.Value))];
@@ -13870,6 +13901,9 @@ begin
       opMATCH:begin
        if CountPrefixCharClasses=0 then begin
         CountPrefixCharClasses:=CurrentPosition;
+        if CountPrefixCharClasses>0 then begin
+         HasCountPrefixCharClasses:=true;
+        end;
        end;
       end;
      end;
@@ -13880,7 +13914,7 @@ begin
     NewThreadList^.Count:=0;
    end;
 
-   if CountPrefixCharClasses=0 then begin
+   if not HasCountPrefixCharClasses then begin
     CountPrefixCharClasses:=Count;
     if CountPrefixCharClasses>FLREMaxPrefixCharClasses then begin
      CountPrefixCharClasses:=FLREMaxPrefixCharClasses;
@@ -14083,7 +14117,7 @@ begin
            inc(StackPointer);
           end;
 {$endif}
-          opSINGLECHAR,opCHAR,opANY:begin
+          opNONE,opSINGLECHAR,opCHAR,opANY:begin
            NextIndex:=NodeByID[Instruction^.Next^.IDandOpcode shr 8];
            if NextIndex<0 then begin
             if NodesCount>=MaxNodes then begin
@@ -14101,13 +14135,16 @@ begin
            NewAction:=longword(NextIndex shl sfIndexShift) or Condition;
            begin
             case Instruction^.IDandOpcode and $ff of
+             opNONE:begin
+              CharClass:=EmptyCharClass;
+             end;
              opSINGLECHAR:begin
               CharClass:=[ansichar(byte(Instruction^.Value))];
              end;
              opCHAR:begin
               CharClass:=PFLRECharClass(pointer(ptruint(Instruction^.Value)))^;
              end;
-             else {FLREoANY:}begin
+             else {opANY:}begin
               CharClass:=AllCharClass;
              end;
             end;
@@ -14138,6 +14175,10 @@ begin
            end;
            begin
             case Instruction^.IDandOpcode and $ff of
+             opNONE:begin
+              OnePassNFAReady:=false;
+              break;
+             end;
              opSINGLECHAR:begin
               b:=ByteMap[Instruction^.Value and $ff];
               Action:=Node^.Action[b];
@@ -14177,7 +14218,7 @@ begin
                break;
               end;
              end;
-             else {FLREoANY:}begin
+             else {opANY:}begin
               for i:=0 to ByteMapCount-1 do begin
                Action:=Node^.Action[i];
                if (Action and sfImpossible)=sfImpossible then begin
