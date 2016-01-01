@@ -217,14 +217,57 @@ begin
  ExecuteSearchTest('\p{^N}+', 'abc123'#$c2#$b2#$c2#$b3#$c2#$bc#$c2#$bd#$c2#$be#$e3#$82#$80#$e2#$82#$89,[rfUTF8]);
  ExecuteSearchTest('\p{Any}+', 'abc123',[rfUTF8]);
 
- // Character classes & case folding.
+ // Character classes & case folding
  ExecuteSearchTest('(?i)[@-A]+','@AaB',[]); // matches @Aa but not B
  ExecuteSearchFailTest('(?i)[@-A]+','B',[]); // matches @Aa but not B
  ExecuteSearchTest('(?i)[A-Z]+','aAzZ',[]);
  ExecuteSearchTest('(?i)[A-Z]+','az',[]);
- ExecuteSearchTest('(?i)(?i)[^\\]+','Aa\',[]); // \\ is between A-Z and a-z - splits the ranges in an interesting way.
- ExecuteSearchTest('(?i)(?i)[^\\]+','Aa',[]); // \\ is between A-Z and a-z - splits the ranges in an interesting way.
- ExecuteSearchFailTest('(?i)(?i)[^\\]+','\',[]); // \\ is between A-Z and a-z - splits the ranges in an interesting way.
+ ExecuteSearchTest('(?i)[^\\]+','Aa\',[]); // \\ is between A-Z and a-z - splits the ranges in an interesting way.
+ ExecuteSearchTest('(?i)[^\\]+','Aa',[]); // \\ is between A-Z and a-z - splits the ranges in an interesting way.
+ ExecuteSearchFailTest('(?i)[^\\]+','\',[]); // \\ is between A-Z and a-z - splits the ranges in an interesting way.
+ ExecuteSearchTest('(?i)[acegikmoqsuwy]+','ACEGIKMOQSUWY',[]);
+ ExecuteSearchTest('(?i)[acegikmoqsuwy]+','acegikmoqsuwy',[]);
+ ExecuteSearchTest('(?i)[acegikmoqsuwy]+','aCeGiKmOqSuWy',[]);
+ ExecuteSearchTest('(?i)[acegikmoqsuwy]+','acegikmoqsuwyACEGIKMOQSUWY',[]);
+ ExecuteSearchFailTest('(?-i)acegikmoqsuwy','aCeGiKmOqSuWy',[]);
+
+ // Character classes & case folding
+ ExecuteSearchTest('[@-A]+','@AaB',[]);
+ ExecuteSearchFailTest('[@-A]{4}','@AaB',[]);
+ ExecuteSearchTest('[A-Z]+','aAzZ',[]);
+ ExecuteSearchFailTest('[A-Z]{4}','aAzZ',[]);
+ ExecuteSearchTest('[acegikmoqsuwy]+','acegikmoqsuwyACEGIKMOQSUWY',[]);
+ ExecuteSearchTest('[^\\]+','Aa\',[]);
+
+ // Anchoring
+ ExecuteSearchTest('^abc','abcdef',[]);
+ ExecuteSearchFailTest('^abc','aabcdef',[]);
+ ExecuteSearchTest('^[ay]*[bx]+c','abcdef',[]);
+ ExecuteSearchTest('^[ay]*[bx]+c','aabcdef',[]);
+ ExecuteSearchTest('def$','abcdef',[]);
+ ExecuteSearchFailTest('def$','abcdeff',[]);
+ ExecuteSearchTest('d[ex][fy]$','abcdef',[]);
+ ExecuteSearchFailTest('d[ex][fy]$','abcdeff',[]);
+ ExecuteSearchTest('[dz][ex][fy]$','abcdef',[]);
+ ExecuteSearchFailTest('[dz][ex][fy]$','abcdeff',[]);
+ ExecuteSearchTest('(?m)^abc','abcdef',[]);
+ ExecuteSearchFailTest('(?m)^abc','aabcdef',[]);
+ ExecuteSearchTest('(?m)^[ay]*[bx]+c','abcdef',[]);
+ ExecuteSearchTest('(?m)^[ay]*[bx]+c','aabcdef',[]);
+ ExecuteSearchTest('(?m)def$','abcdef',[]);
+ ExecuteSearchFailTest('(?m)def$','abcdeff',[]);
+ ExecuteSearchTest('(?m)d[ex][fy]$','abcdef',[]);
+ ExecuteSearchFailTest('(?m)d[ex][fy]$','abcdeff',[]);
+ ExecuteSearchTest('(?m)[dz][ex][fy]$','abcdef',[]);
+ ExecuteSearchFailTest('(?m)[dz][ex][fy]$','abcdeff',[]);
+ ExecuteSearchTest('^','a',[]);
+ ExecuteSearchTest('^^','a',[]);
+
+ // Context
+ ExecuteSearchTest('a','a',[]);
+ ExecuteSearchTest('ab*','a',[]);
+ ExecuteSearchTest('a\C*','a',[]);
+ ExecuteSearchTest('a\C*|ba\C','baba',[]);
 
 end;
 
