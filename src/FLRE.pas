@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.01.05.46.0000';
+      FLREVersionString='1.00.2016.01.01.17.48.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -553,6 +553,7 @@ type EFLRE=class(Exception);
        constructor Create;
        destructor Destroy; override;
        procedure Clear;
+       procedure LowerCaseAssignFrom(const HashMap:TFLREStringIntegerPairHashMap);
        function Add(const Key:TFLRERawByteString;Value:TFLREStringIntegerPairHashMapData):PFLREStringIntegerPairHashMapEntity;
        function Get(const Key:TFLRERawByteString;CreateIfNotExist:boolean=false):PFLREStringIntegerPairHashMapEntity;
        function Delete(const Key:TFLRERawByteString):boolean;
@@ -929,7 +930,7 @@ type EFLRE=class(Exception);
 
        function Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
 
-       function NewNOP:PFLRENode;
+       function NewEmptyMatch:PFLRENode;
        
        function NewAlt(NodeLeft,NodeRight:PFLRENode):PFLRENode;
        function NewPlus(Node:PFLRENode;Kind:longint):PFLRENode;
@@ -1109,7 +1110,7 @@ const MaxGeneration=int64($4000000000000000);
       AllCharClass{:TFLRECharClass}=[#0..#255];
 
       // State flags
-      sfEmptyNoOperation=0;
+      sfEmptyMatch=0;
       sfEmptyBeginLine=1 shl 0;
       sfEmptyEndLine=1 shl 1;
       sfEmptyBeginText=1 shl 2;
@@ -1348,6 +1349,9 @@ var NativeCodeMemoryManager:TFLRENativeCodeMemoryManager;
     UnicodeClassHashMap:TFLREStringIntegerPairHashMap;
     UnicodeScriptHashMap:TFLREStringIntegerPairHashMap;
     UnicodeBlockHashMap:TFLREStringIntegerPairHashMap;
+    UnicodeClassLowerCaseHashMap:TFLREStringIntegerPairHashMap;
+    UnicodeScriptLowerCaseHashMap:TFLREStringIntegerPairHashMap;
+    UnicodeBlockLowerCaseHashMap:TFLREStringIntegerPairHashMap;
 
 function RoundUpToPowerOfTwo(x:ptruint):ptruint; {$ifdef caninline}inline;{$endif}
 begin
@@ -4957,6 +4961,17 @@ begin
  SetLength(EntityToCellIndex,0);
  SetLength(CellToEntityIndex,0);
  Resize;
+end;
+
+procedure TFLREStringIntegerPairHashMap.LowerCaseAssignFrom(const HashMap:TFLREStringIntegerPairHashMap);
+var Counter:longint;
+begin
+ Clear;
+ for Counter:=0 to length(HashMap.EntityToCellIndex)-1 do begin
+  if HashMap.EntityToCellIndex[Counter]>=0 then begin
+   Add(UTF8LowerCase(HashMap.Entities[Counter].Key),HashMap.Entities[Counter].Value);
+  end;
+ end;
 end;
 
 function TFLREStringIntegerPairHashMap.FindCell(const Key:TFLRERawByteString):longword;
@@ -9870,9 +9885,9 @@ begin
  end;
 end;
 
-function TFLRE.NewNOP:PFLRENode;
+function TFLRE.NewEmptyMatch:PFLRENode;
 begin
- result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyNoOperation);
+ result:=NewNode(ntZEROWIDTH,nil,nil,sfEmptyMatch);
 end;
 
 function TFLRE.NewAlt(NodeLeft,NodeRight:PFLRENode):PFLRENode;
@@ -10010,7 +10025,7 @@ begin
   end;
  end else if (MinCount=0) and (MaxCount=0) then begin
   // x{0,0} is nothing
-  result:=nil;
+  result:=NewEmptyMatch;
  end else if (MinCount=0) and (MaxCount=1) then begin
   // x{0,1} is x?
   result:=NewQuest(Node,Kind);
@@ -10523,12 +10538,22 @@ var SourcePosition,SourceLength:longint;
   end;
  end;
  function ParseDisjunction:PFLRENode; forward;
- procedure GetCharClassPerName(const Name:TFLRERawByteString;const UnicodeCharClass:TFLREUnicodeCharClass;const IgnoreCase:boolean);
+ procedure GetCharClassPerName(const Name:TFLRERawByteString;const UnicodeCharClass:TFLREUnicodeCharClass;const IgnoreCase,WithLowerCase:boolean);
  var i:longint;
      f:int64;
+     LowerCaseName:TFLRERawByteString;
  begin
+  if WithLowerCase then begin
+   LowerCaseName:=UTF8LowerCase(Name);
+  end else begin
+   LowerCaseName:='';
+  end;
   begin
-   f:=UnicodeClassHashMap[Name];
+   if WithLowerCase then begin
+    f:=UnicodeClassLowerCaseHashMap[LowerCaseName];
+   end else begin
+    f:=UnicodeClassHashMap[Name];
+   end;
    if f>0 then begin
     UnicodeCharClass.AddUnicodeCategory(f,IgnoreCase);
     UnicodeCharClass.Canonicalized:=true;
@@ -10536,7 +10561,11 @@ var SourcePosition,SourceLength:longint;
    end;
   end;
   begin
-   f:=UnicodeScriptHashMap[Name];
+   if WithLowerCase then begin
+    f:=UnicodeScriptLowerCaseHashMap[LowerCaseName];
+   end else begin
+    f:=UnicodeScriptHashMap[Name];
+   enD;
    if f>0 then begin
     UnicodeCharClass.AddUnicodeScript(f,IgnoreCase);
     UnicodeCharClass.Canonicalized:=true;
@@ -10544,14 +10573,19 @@ var SourcePosition,SourceLength:longint;
    end;
   end;
   begin
-   f:=UnicodeBlockHashMap[Name];
+   if WithLowerCase then begin
+    f:=UnicodeBlockLowerCaseHashMap[LowerCaseName];
+   end else begin
+    f:=UnicodeBlockHashMap[Name];
+   end;
    if f>0 then begin
     UnicodeCharClass.AddUnicodeBlock(f,IgnoreCase);
     UnicodeCharClass.Canonicalized:=true;
     exit;
    end;
   end;
-  if Name='alnum' then begin
+  if (WithLowerCase and (LowerCaseName='alnum')) or
+     ((not WithLowerCase) and (Name='Alnum')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryLu) or (1 shl FLREUnicodeCategoryLl) or (1 shl FLREUnicodeCategoryLt) or (1 shl FLREUnicodeCategoryNd),IgnoreCase);
    end else begin
@@ -10560,7 +10594,8 @@ var SourcePosition,SourceLength:longint;
     UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='alpha' then begin
+  end else if (WithLowerCase and (LowerCaseName='alpha')) or
+              ((not WithLowerCase) and (Name='Alpha')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryLu) or (1 shl FLREUnicodeCategoryLl) or (1 shl FLREUnicodeCategoryLt),IgnoreCase);
    end else begin
@@ -10568,10 +10603,12 @@ var SourcePosition,SourceLength:longint;
     UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='ascii' then begin
+  end else if (WithLowerCase and (LowerCaseName='ascii')) or
+              ((not WithLowerCase) and (Name='ASCII')) then begin
    UnicodeCharClass.AddRange($00,$7f,IgnoreCase);
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='blank' then begin
+  end else if (WithLowerCase and (LowerCaseName='blank')) or
+              ((not WithLowerCase) and (Name='Blank')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryZs,IgnoreCase);
    end else begin
@@ -10579,7 +10616,8 @@ var SourcePosition,SourceLength:longint;
     UnicodeCharClass.AddChar(32,IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='cntrl' then begin
+  end else if (WithLowerCase and (LowerCaseName='cntrl')) or
+              ((not WithLowerCase) and (Name='Cntrl')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryCc,IgnoreCase);
    end else begin
@@ -10587,24 +10625,28 @@ var SourcePosition,SourceLength:longint;
     UnicodeCharClass.AddChar($7f,IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='digits' then begin
+  end else if (WithLowerCase and (LowerCaseName='digits')) or
+              ((not WithLowerCase) and (Name='Digits')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryNd,IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='graph' then begin
+  end else if (WithLowerCase and (LowerCaseName='graph')) or
+              ((not WithLowerCase) and (Name='Graph')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryZs) or (1 shl FLREUnicodeCategoryZl) or (1 shl FLREUnicodeCategoryZp) or (1 shl FLREUnicodeCategoryCc) or (1 shl FLREUnicodeCategoryCf) or (1 shl FLREUnicodeCategoryCo) or (1 shl FLREUnicodeCategoryCs) or (1 shl FLREUnicodeCategoryCn),IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange($21,$7e,IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='inbasiclatin' then begin
+  end else if (WithLowerCase and (LowerCaseName='inbasiclatin')) or
+              ((not WithLowerCase) and (Name='InBasicLatin')) then begin
    UnicodeCharClass.AddRange($00,$7f,IgnoreCase);
    UnicodeCharClass.Canonicalized:=true;
-  end else if (Name='inno_block') or (Name='isno_block') or (Name='innoblock') or (Name='isnoblock') then begin
+  end else if (WithLowerCase and ((LowerCaseName='inno_block') or (LowerCaseName='isno_block') or (LowerCaseName='innoblock') or (LowerCaseName='isnoblock'))) or
+              ((not WithLowerCase) and ((Name='InNo_Block') or (Name='IsNo_Block') or (Name='InNoBlock') or (Name='IsNoBlock'))) then begin
    for i:=0 to FLREUnicodeBlockCount-1 do begin
     UnicodeCharClass.AddUnicodeBlock(i,false);
    end;
@@ -10614,21 +10656,24 @@ var SourcePosition,SourceLength:longint;
     UnicodeCharClass.Canonicalize;
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='lower' then begin
+  end else if (WithLowerCase and (LowerCaseName='lower')) or
+              ((not WithLowerCase) and (Name='Lower')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryLl,IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='print' then begin
+  end else if (WithLowerCase and (LowerCaseName='print')) or
+              ((not WithLowerCase) and (Name='Print')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryCc) or (1 shl FLREUnicodeCategoryCf) or (1 shl FLREUnicodeCategoryCo) or (1 shl FLREUnicodeCategoryCs) or (1 shl FLREUnicodeCategoryCn),IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange($20,$7e,IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='punct' then begin
+  end else if (WithLowerCase and (LowerCaseName='punct')) or
+              ((not WithLowerCase) and (Name='Punct')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryPd) or (1 shl FLREUnicodeCategoryPs) or (1 shl FLREUnicodeCategoryPe) or (1 shl FLREUnicodeCategoryPc) or (1 shl FLREUnicodeCategoryPo),IgnoreCase);
    end else begin
@@ -10666,7 +10711,8 @@ var SourcePosition,SourceLength:longint;
     UnicodeCharClass.AddChar(ord('~'),IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='space' then begin
+  end else if (WithLowerCase and (LowerCaseName='space')) or
+              ((not WithLowerCase) and (Name='Space')) then begin
    if rfUTF8 in Flags then begin
     for i:=0 to length(UnicodeCharRangeClasses[ucrWHITESPACES])-1 do begin
      UnicodeCharClass.AddRange(UnicodeCharRangeClasses[ucrWHITESPACES,i,0],UnicodeCharRangeClasses[ucrWHITESPACES,i,1],IgnoreCase);
@@ -10675,14 +10721,16 @@ var SourcePosition,SourceLength:longint;
     UnicodeCharClass.AddRange(9,13,IgnoreCase);
     UnicodeCharClass.AddChar(32,IgnoreCase);
    end;
-  end else if Name='upper' then begin
+  end else if (WithLowerCase and (LowerCaseName='upper')) or
+              ((not WithLowerCase) and (Name='Upper')) then begin
    if rfUTF8 in Flags then begin
     UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryLu,IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='word' then begin
+  end else if (WithLowerCase and (LowerCaseName='word')) or
+              ((not WithLowerCase) and (Name='Word')) then begin
    if rfUTF8 in Flags then begin
     for i:=0 to length(UnicodeCharRangeClasses[ucrWORDS])-1 do begin
      UnicodeCharClass.AddRange(UnicodeCharRangeClasses[ucrWORDS,i,0],UnicodeCharRangeClasses[ucrWORDS,i,1],IgnoreCase);
@@ -10694,12 +10742,14 @@ var SourcePosition,SourceLength:longint;
     UnicodeCharClass.AddChar(ord('_'),IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='xdigit' then begin
+  end else if (WithLowerCase and (LowerCaseName='xdigit')) or
+              ((not WithLowerCase) and (Name='XDigit')) then begin
    UnicodeCharClass.AddRange(ord('a'),ord('f'),IgnoreCase);
    UnicodeCharClass.AddRange(ord('A'),ord('f'),IgnoreCase);
    UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
    UnicodeCharClass.Canonicalized:=true;
-  end else if Name='Any' then begin
+  end else if (WithLowerCase and (LowerCaseName='any')) or
+              ((not WithLowerCase) and (Name='Any')) then begin
    UnicodeCharClass.AddRange(0,$10ffff,IgnoreCase);
    UnicodeCharClass.Canonicalized:=true;
   end else begin
@@ -11131,7 +11181,7 @@ var SourcePosition,SourceLength:longint;
    raise EFLRE.Create('Syntax error');
   end;
 
-  GetCharClassPerName(Name,UnicodeCharClass,IgnoreCase);
+  GetCharClassPerName(Name,UnicodeCharClass,IgnoreCase,true);
   if Negate then begin
    UnicodeCharClass.Invert;
    UnicodeCharClass.Inverted:=false;
@@ -11175,7 +11225,7 @@ var SourcePosition,SourceLength:longint;
      if (LastSourcePos<=UntilSourcePos) and ((SourcePosition<=SourceLength) and (Source[SourcePosition]='}')) then begin
       Identifier:=copy(Source,LastSourcePos,(UntilSourcePos-LastSourcePos)+1);
       inc(SourcePosition);
-      GetCharClassPerName(Identifier,UnicodeCharClass,IgnoreCase);
+      GetCharClassPerName(Identifier,UnicodeCharClass,IgnoreCase,false);
       if IsNegative and assigned(UnicodeCharClass.First) then begin
        UnicodeCharClass.Invert;
        UnicodeCharClass.Inverted:=false;
@@ -12507,7 +12557,7 @@ var SourcePosition,SourceLength:longint;
      Node:=nil;
     end;
     if not assigned(Node) then begin
-     Node:=NewNOP;
+     Node:=NewEmptyMatch;
     end;
     SkipFreeSpacingWhiteSpace;
     if assigned(result) then begin
@@ -17874,6 +17924,9 @@ const FLRESignature:TFLRERawByteString=' FLRE - yet another efficient, principle
     UnicodeScriptHashMap.SetValue(UTF8Correct(s),i);
     UnicodeScriptHashMap.SetValue(UTF8Correct('In'+s),i);
     UnicodeScriptHashMap.SetValue(UTF8Correct('Is'+s),i);
+    UnicodeScriptHashMap.SetValue(UTF8Correct(s),i);
+    UnicodeScriptHashMap.SetValue(UTF8Correct('In'+s),i);
+    UnicodeScriptHashMap.SetValue(UTF8Correct('Is'+s),i);
     s:=TFLRERawByteString(StringReplace(String(s),'_','',[rfREPLACEALL]));
     UnicodeScriptHashMap.SetValue(UTF8Correct(s),i);
     UnicodeScriptHashMap.SetValue(UTF8Correct('In'+s),i);
@@ -17892,6 +17945,18 @@ const FLRESignature:TFLRERawByteString=' FLRE - yet another efficient, principle
     UnicodeBlockHashMap.SetValue(UTF8Correct('In'+s),i);
     UnicodeBlockHashMap.SetValue(UTF8Correct('Is'+s),i);
    end;
+  end;
+  begin
+   UnicodeClassLowerCaseHashMap:=TFLREStringIntegerPairHashMap.Create;
+   UnicodeClassLowerCaseHashMap.LowerCaseAssignFrom(UnicodeClassHashMap);
+  end;
+  begin
+   UnicodeScriptLowerCaseHashMap:=TFLREStringIntegerPairHashMap.Create;
+   UnicodeScriptLowerCaseHashMap.LowerCaseAssignFrom(UnicodeScriptHashMap);
+  end;
+  begin
+   UnicodeBlockLowerCaseHashMap:=TFLREStringIntegerPairHashMap.Create;
+   UnicodeBlockLowerCaseHashMap.LowerCaseAssignFrom(UnicodeBlockHashMap);
   end;
  end;
 begin
@@ -17926,6 +17991,9 @@ begin
   FreeAndNil(UnicodeClassHashMap);
   FreeAndNil(UnicodeScriptHashMap);
   FreeAndNil(UnicodeBlockHashMap);
+  FreeAndNil(UnicodeClassLowerCaseHashMap);
+  FreeAndNil(UnicodeScriptLowerCaseHashMap);
+  FreeAndNil(UnicodeBlockLowerCaseHashMap);
   FreeAndNil(LowerUpperCaseUnicodeCharClass);
   FLREInitialized:=false;
  end;
