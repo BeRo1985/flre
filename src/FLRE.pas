@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.02.19.00.0000';
+      FLREVersionString='1.00.2016.01.02.21.09.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -1304,7 +1304,7 @@ type PUnicodeCharRange=^TUnicodeCharRange;
 
      TUTF8Bytes=array[byte] of byte;
 
-{$ifdef PLCEStrictUTF8}
+{$ifdef FLREStrictUTF8}
                               //0 1 2 3 4 5 6 7 8 9 a b c d e f
 const UTF8CharSteps:TUTF8Chars=(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 0
                                 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 1
@@ -1324,7 +1324,45 @@ const UTF8CharSteps:TUTF8Chars=(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 0
                                 4,4,4,4,4,1,1,1,1,1,1,1,1,1,1,1); // f
                               //0 1 2 3 4 5 6 7 8 9 a b c d e f
 
+{$ifndef FLRERuntimeUTF8DFATableGeneration}
+      UTF8DFACharClasses:TUTF8Chars=( 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                      1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+                                      9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,
+                                      7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
+                                      7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,
+                                      8,8,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+                                      2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+                                     10,3,3,3,3,3,3,3,3,3,3,3,3,4,3,3,
+                                     11,6,6,6,5,8,8,8,8,8,8,8,8,8,8,8);
+
+      UTF8DFATransitions:TUTF8Bytes=( 0,16,32,48,80,128,112,16,16,16,64,96,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,16,16,16,16,16,16,16,16,16,
+                                     16, 0,16,16,16, 16, 16, 0,16, 0,16,16,16,16,16,16,
+                                     16,32,16,16,16, 16, 16,32,16,32,16,16,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,32,16,16,16,16,16,16,16,16,
+                                     16,32,16,16,16, 16, 16,16,16,32,16,16,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,48,16,48,16,16,16,16,16,16,
+                                     16,48,16,16,16, 16, 16,48,16,48,16,16,16,16,16,16,
+                                     16,48,16,16,16, 16, 16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16, 16, 16,16,16,16,16,16,16,16,16,16);
+
+{$endif}
+
 {$else}
+
                               //0 1 2 3 4 5 6 7 8 9 a b c d e f
 const UTF8CharSteps:TUTF8Chars=(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 0
                                 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 1
@@ -1344,6 +1382,43 @@ const UTF8CharSteps:TUTF8Chars=(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,  // 0
                                 4,4,4,4,4,4,4,4,5,5,5,5,6,6,1,1); // f
                               //0 1 2 3 4 5 6 7 8 9 a b c d e f
 
+{$ifndef FLRERuntimeUTF8DFATableGeneration}
+      UTF8DFACharClasses:TUTF8Chars=(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                                     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+                                     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+                                     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+                                     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
+                                     3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,
+                                     3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,
+                                     4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,
+                                     5,5,5,5,5,5,5,5,6,6,6,6,7,7,8,8);
+
+      UTF8DFATransitions:TUTF8Bytes=( 0,16,16,32,48,64,80,96,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16, 0,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,32,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,48,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,64,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,80,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,
+                                     16,16,16,16,16,16,16,16,16,16,16,16,16,16,16,16);
+
+{$endif}
+
 {$endif}
 
 var NativeCodeMemoryManager:TFLRENativeCodeMemoryManager;
@@ -1353,8 +1428,10 @@ var NativeCodeMemoryManager:TFLRENativeCodeMemoryManager;
 {$endif}
 {$endif}
 
+{$ifdef FLRERuntimeUTF8DFATableGeneration}
     UTF8DFACharClasses:TUTF8Chars;
     UTF8DFATransitions:TUTF8Bytes;
+{$endif}
 
     UnicodeCharRangeClasses:TUnicodeCharRangeClasses;
 
@@ -17589,6 +17666,7 @@ end;
 
 procedure InitializeFLRE;
 const FLRESignature:TFLRERawByteString=' FLRE - yet another efficient, principled regular expression library - Version '+FLREVersionString+' - Copyright (C) 2015, Benjamin ''BeRo'' Rosseaux - benjamin@rosseaux.com - http://www.rosseaux.com ';
+{$ifdef FLRERuntimeUTF8DFATableGeneration}
  procedure InitializeUTF8DFA;
  type TAnsiCharSet=set of ansichar;
 {$ifdef FLREStrictUTF8}
@@ -17895,7 +17973,19 @@ const FLRESignature:TFLRERawByteString=' FLRE - yet another efficient, principle
    end;
   end;
 {$endif}
+{$ifdef FLRERuntimeUTF8DFATableGenerationDump}
+  for i:=0 to 255 do begin
+   write(UTF8DFACharClasses[ansichar(byte(i))],',');
+  end;
+  writeln;
+  for i:=0 to 255 do begin
+   write(UTF8DFATransitions[i],',');
+  end;
+  writeln;
+  readln;
+{$endif}
  end;
+{$endif}
  procedure InitializeUnicode;
  var i,l,h,cl,cu:longword;
      Count:longint;
@@ -18565,7 +18655,9 @@ const FLRESignature:TFLRERawByteString=' FLRE - yet another efficient, principle
 begin
  if (not FLREInitialized) and (length(FLRESignature)>0) then begin
   FLREInitialized:=true;
+{$ifdef FLRERuntimeUTF8DFATableGeneration}
   InitializeUTF8DFA;
+{$endif}
   InitializeUnicode;
 {$ifdef HasJIT}
 {$ifdef unix}
