@@ -275,6 +275,9 @@ begin
 
  // Anchoring in alternating groups
  ExecuteSearchTest('(^| *) *abc *(,|$)','abc, foobar',[]);
+ ExecuteSearchTest('(^| *) *abc *(,|$)','abc',[]);
+ ExecuteSearchFailTest('(^| *) *abc *(,|$)','abca',[]);
+ ExecuteSearchFailTest('(^| *) *abc *(,|$)','abc a',[]);
 
 end;
 
