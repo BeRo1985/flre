@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.02.05.32.0000';
+      FLREVersionString='1.00.2016.01.02.13.39.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -15566,7 +15566,7 @@ begin
     end else begin
      Count:=CountCaptures;
     end;
-    SetLength(MultiCaptures,16,Count);
+    SetLength(MultiCaptures,0,Count);
     SetLength(MatchResult,Count);
     while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,MatchResult,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
      Next:=CurrentPosition+1;
@@ -15630,7 +15630,7 @@ begin
     ThreadLocalStorageInstance.Input:=Input;
     ThreadLocalStorageInstance.InputLength:=InputLength;
     Count:=CountCaptures;
-    SetLength(MultiExtractions,16,Count);
+    SetLength(MultiExtractions,0,Count);
     SetLength(MatchResult,Count);
     while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,MatchResult,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
      Next:=CurrentPosition+1;
