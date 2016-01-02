@@ -269,7 +269,7 @@ begin
  ExecuteSearchTest('a\C*','a',[]);
  ExecuteSearchTest('a\C*|ba\C','baba',[]);
 
- // Back reference comparsion groups
+ // Back-reference comparsion groups
  ExecuteSearchTest('(?i)(s(?-i)\p{Lu}(?i)t)(?P=1:s\p{Lu}t)','sUtsut',[]);
  ExecuteSearchFailTest('(?i)(s(?-i)\p{Lu}(?i)t)(?P=1:s\p{Lu}t)','sZtsut',[]);
 
@@ -278,6 +278,14 @@ begin
  ExecuteSearchTest('(^| *) *abc *(,|$)','abc',[]);
  ExecuteSearchFailTest('(^| *) *abc *(,|$)','abca',[]);
  ExecuteSearchFailTest('(^| *) *abc *(,|$)','abc a',[]);
+
+ // Back-references
+ ExecuteSearchTest('([a-c])\1(x)(y)\3','aaxyy',[]);
+ ExecuteSearchTest('([a-c])\1(x)(y)\3','aAxyy',[rfIGNORECASE]);
+ ExecuteSearchFailTest('([a-c])\1(x)(y)\3','aaxyz',[]);
+ ExecuteSearchFailTest('([a-c])\1(x)(y)\3','aAxyz',[rfIGNORECASE]);
+ ExecuteSearchFailTest('([a-c])\1(x)(y)\3','aBxyy',[]);
+ ExecuteSearchFailTest('([a-c])\1(x)(y)\3','abxyy',[rfIGNORECASE]);
 
 end;
 

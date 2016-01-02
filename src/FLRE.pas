@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.02.14.06.0000';
+      FLREVersionString='1.00.2016.01.02.19.00.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -9736,6 +9736,7 @@ function TFLRE.CopyNode(Node:PFLRENode):PFLRENode;
 begin
  if assigned(Node) then begin
   result:=NewNode(Node^.NodeType,nil,nil,Node^.Value);
+  result^.Flags:=Node^.Flags;
   result^.Group:=Node^.Group;
   result^.Name:=Node^.Name;
   if assigned(Node^.Left) then begin
@@ -11738,61 +11739,63 @@ var SourcePosition,SourceLength:longint;
   end;
  end;
  function NewNumberedGroup:PFLRENode;
- var Value:longint;
+ var SubMatchIndex,GroupIndex:longint;
  begin
   if ([rfNAMED,rfNOCAPTURES,rfMULTIMATCH]*Flags)<>[] then begin
    result:=ParseDisjunction;
   end else begin
-   Value:=CountInternalCaptures;
+   SubMatchIndex:=CountInternalCaptures;
    inc(CountInternalCaptures);
-   if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
-    SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
-   end;
-   CapturesToSubMatchesMap[CountCaptures]:=Value;
+   GroupIndex:=CountCaptures;
    inc(CountCaptures);
-   NamedGroupStringIntegerPairHashMap.Add(TFLRERawByteString(IntToStr(Value)),Value);
-   if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
-    NamedGroupStringList.Add(IntToStr(Value));
+   if CountCaptures>length(CapturesToSubMatchesMap) then begin
+    SetLength(CapturesToSubMatchesMap,CountCaptures*2);
+   end;
+   CapturesToSubMatchesMap[GroupIndex]:=SubMatchIndex;
+   NamedGroupStringIntegerPairHashMap.Add(TFLRERawByteString(IntToStr(GroupIndex)),GroupIndex);
+   if NamedGroupStringList.IndexOf(IntToStr(GroupIndex))<0 then begin
+    NamedGroupStringList.Add(IntToStr(GroupIndex));
    end else begin
     raise EFLRE.Create('Duplicate named group');
    end;
-   GroupIndexIntegerStack.Add(Value);
+   GroupIndexIntegerStack.Add(GroupIndex);
    try
-    result:=NewNode(ntPAREN,ParseDisjunction,nil,Value);
+    result:=NewNode(ntPAREN,ParseDisjunction,nil,SubMatchIndex);
    finally
     GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
    end;
   end;
  end;
  function NewNamedGroup(const Name:TFLRERawByteString):PFLRENode;
- var Value:longint;
+ var SubMatchIndex,GroupIndex:longint;
  begin
   if ([rfNOCAPTURES,rfMULTIMATCH]*Flags)<>[] then begin
    result:=ParseDisjunction;
   end else begin
-   Value:=CountInternalCaptures;
+   SubMatchIndex:=CountInternalCaptures;
    inc(CountInternalCaptures);
-   if (CountCaptures+1)>length(CapturesToSubMatchesMap) then begin
-    SetLength(CapturesToSubMatchesMap,(CountCaptures+1)*2);
-   end;
-   CapturesToSubMatchesMap[CountCaptures]:=Value;
+   GroupIndex:=CountCaptures;
    inc(CountCaptures);
-   NamedGroupStringIntegerPairHashMap.Add(Name,Value);
+   if CountCaptures>length(CapturesToSubMatchesMap) then begin
+    SetLength(CapturesToSubMatchesMap,CountCaptures*2);
+   end;
+   CapturesToSubMatchesMap[CountCaptures]:=GroupIndex;
+   NamedGroupStringIntegerPairHashMap.Add(Name,GroupIndex);
    if NamedGroupStringList.IndexOf(String(Name))<0 then begin
     NamedGroupStringList.Add(String(Name));
    end else begin
     raise EFLRE.Create('Duplicate named group');
    end;
-   NamedGroupStringIntegerPairHashMap.Add(TFLRERawByteString(IntToStr(Value)),Value);
-   if NamedGroupStringList.IndexOf(IntToStr(Value))<0 then begin
-    NamedGroupStringList.Add(IntToStr(Value));
+   NamedGroupStringIntegerPairHashMap.Add(TFLRERawByteString(IntToStr(GroupIndex)),GroupIndex);
+   if NamedGroupStringList.IndexOf(IntToStr(GroupIndex))<0 then begin
+    NamedGroupStringList.Add(IntToStr(GroupIndex));
    end else begin
     raise EFLRE.Create('Duplicate named group');
    end;
-   GroupIndexIntegerStack.Add(Value);
+   GroupIndexIntegerStack.Add(GroupIndex);
    GroupNameStringStack.Add(String(Name));
    try
-    result:=NewNode(ntPAREN,ParseDisjunction,nil,Value);
+    result:=NewNode(ntPAREN,ParseDisjunction,nil,SubMatchIndex);
    finally
     GroupIndexIntegerStack.Delete(GroupIndexIntegerStack.Count-1);
     GroupNameStringStack.Delete(GroupNameStringStack.Count-1);
@@ -12691,7 +12694,7 @@ var SourcePosition,SourceLength:longint;
    raise;
   end;
  end;
-var Counter,SubCounter:longint;
+var Counter,SubCounter,SubMatchIndex:longint;
     Node,SubNode:PFLRENode;
 begin
  Source:=RegularExpression;
@@ -12700,6 +12703,8 @@ begin
  begin
   NamedGroupStringIntegerPairHashMap.Add('wholematch',0);
   NamedGroupStringList.Add('wholematch');
+  NamedGroupStringIntegerPairHashMap.Add('0',0);
+  NamedGroupStringList.Add('0');
   CountCaptures:=1;
   CountInternalCaptures:=1;
   SetLength(CapturesToSubMatchesMap,1);
@@ -12764,9 +12769,10 @@ begin
      end;
      if (Node^.Flags and 1)=0 then begin
       Node^.Left:=nil;
+      SubMatchIndex:=CapturesToSubMatchesMap[Node^.Group];
       for SubCounter:=0 to Nodes.Count-1 do begin
        SubNode:=Nodes[SubCounter];
-       if (Node<>SubNode) and (SubNode^.NodeType=ntPAREN) and (SubNode^.Value=Node^.Group) then begin
+       if (Node<>SubNode) and (SubNode^.NodeType=ntPAREN) and (SubNode^.Value=SubMatchIndex) then begin
         Node^.Left:=SubNode;
         break;
        end;
