@@ -269,6 +269,13 @@ begin
  ExecuteSearchTest('a\C*','a',[]);
  ExecuteSearchTest('a\C*|ba\C','baba',[]);
 
+ // Back reference comparsion groups
+ ExecuteSearchTest('(?i)(s(?-i)\p{Lu}(?i)t)(?P=1:s\p{Lu}t)','sUtsut',[]);
+ ExecuteSearchFailTest('(?i)(s(?-i)\p{Lu}(?i)t)(?P=1:s\p{Lu}t)','sZtsut',[]);
+
+ // Anchoring in alternating groups
+ ExecuteSearchTest('(^| *) *abc *(,|$)','abc, foobar',[]);
+
 end;
 
 end.

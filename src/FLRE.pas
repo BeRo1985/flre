@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.01.19.47.0000';
+      FLREVersionString='1.00.2016.01.02.05.32.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -251,6 +251,7 @@ type EFLRE=class(Exception);
      TFLRENode=record
       NodeType:longint;
       Value:longint;
+      Flags:longword;
       Group:longint;
       Left:PFLRENode;
       Right:PFLRENode;
@@ -882,11 +883,8 @@ type EFLRE=class(Exception);
        DFAFast:longbool;
        DFAFastBeginningSearch:longbool;
 
-       BeginningJump:longbool;
-       BeginningSplit:longbool;
-       BeginningWildCard:longbool;
-       BeginningAnchor:longbool;
-       EndingAnchor:longbool;
+       BeginTextAnchor:longbool;
+       EndTextAnchor:longbool;
        BeginningWildcardLoop:longbool;
 
        HasWordBoundaries:longbool;
@@ -949,6 +947,8 @@ type EFLRE=class(Exception);
        procedure CompilePrefixCharClasses;
        procedure CompileByteMapForOnePassNFAAndDFA;
        procedure CompileOnePassNFA;
+
+       procedure ScanProgram;
 
        function PrefilterOptimize(Node:TFLREPrefilterNode):TFLREPrefilterNode;
        function CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
@@ -1241,22 +1241,24 @@ const MaxGeneration=int64($4000000000000000);
       npMultiMatch=6;
       npTopLevel=7;
 
-      NodePrecedences:array[ntALT..ntBACKREFERENCEIGNORECASE] of longint=(
-       npAlternate,   // ntALT=0;
-       npConcat,      // ntCAT=1;
-       npAtom,        // ntCHAR=2;
-       npParen,       // ntPAREN=3;
-       npUnary,       // ntQUEST=4;
-       npUnary,       // ntSTAR=5;
-       npUnary,       // ntPLUS=6;
-       npMultiMatch,  // ntMULTIMATCH=7;
-       npZeroWidth,   // ntZEROWIDTH=8;
-       npZeroWidth,   // ntLOOKBEHINDNEGATIVE=9;
-       npZeroWidth,   // ntLOOKBEHINDPOSITIVE=10;
-       npZeroWidth,   // ntLOOKAHEADNEGATIVE=11;
-       npZeroWidth,   // ntLOOKAHEADPOSITIVE=12;
-       npZeroWidth,   // ntBACKREFERENCE=13;
-       npZeroWidth);  // ntBACKREFERENCEIGNORECASE=14;
+      NodePrecedences:array[ntALT..ntBACKREFERENCEIGNORECASE] of longint=
+       (
+        npAlternate,   // ntALT=0;
+        npConcat,      // ntCAT=1;
+        npAtom,        // ntCHAR=2;
+        npParen,       // ntPAREN=3;
+        npUnary,       // ntQUEST=4;
+        npUnary,       // ntSTAR=5;
+        npUnary,       // ntPLUS=6;
+        npMultiMatch,  // ntMULTIMATCH=7;
+        npZeroWidth,   // ntZEROWIDTH=8;
+        npZeroWidth,   // ntLOOKBEHINDNEGATIVE=9;
+        npZeroWidth,   // ntLOOKBEHINDPOSITIVE=10;
+        npZeroWidth,   // ntLOOKAHEADNEGATIVE=11;
+        npZeroWidth,   // ntLOOKAHEADPOSITIVE=12;
+        npZeroWidth,   // ntBACKREFERENCE=13;
+        npZeroWidth    // ntBACKREFERENCEIGNORECASE=14;
+       );
 
       FLREInitialized:longbool=false;
 
@@ -6805,9 +6807,9 @@ begin
      end;
      opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
       if assigned(Instruction^.OtherNext) and BackReferenceAssertion(State,
-                                                                                Instruction^.Value,
-                                                                                Instruction^.OtherNext^.Value,
-                                                                                (Instruction^.IDandOpcode and $ff)=opBACKREFERENCEIGNORECASE) then begin
+                                                                     Instruction^.Value,
+                                                                     Instruction^.OtherNext^.Value,
+                                                                     (Instruction^.IDandOpcode and $ff)=opBACKREFERENCEIGNORECASE) then begin
        Instruction:=Instruction^.Next;
        continue;
       end else begin
@@ -7909,6 +7911,9 @@ asm
    mov edi,dword ptr [edx+TFLREDFA.DefaultStates+dskFastAnchored*4]
   @AnchoredStartSkip:
 
+  test edi,edi
+  jz @Error
+
   mov edx,[edx+TFLREDFA.Instance]
   lea edx,[edx+TFLRE.ByteMap]
 
@@ -7993,6 +7998,7 @@ asm
     test edi,edi
     jnz @HaveNextState
 
+    @Error:
     mov dword ptr ResultValue,DFAError
 
   @Done:
@@ -8016,6 +8022,10 @@ begin
   State:=DefaultStates[dskFastUnanchored];
  end else begin
   State:=DefaultStates[dskFastAnchored];
+ end;
+ if not assigned(State) then begin
+  result:=DFAError;
+  exit;
  end;
  Position:=StartPosition;
  while Position<UntilExcludingPosition do begin
@@ -8078,6 +8088,8 @@ asm
   add esi,dword ptr StartPosition
 
   mov edi,dword ptr [edx+TFLREDFA.DefaultStates+dskFastReversed*4]
+  test edi,edi
+  jz @Error
 
   mov ecx,dword ptr StartPosition
   sub ecx,dword ptr UntilIncludingPosition
@@ -8140,6 +8152,7 @@ asm
     test edi,edi
     jnz @HaveNextState
 
+    @Error:
     mov dword ptr ResultValue,DFAError
 
   @Done:
@@ -8160,6 +8173,10 @@ begin
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalByteMap:=@Instance.ByteMap;
  State:=DefaultStates[dskFastReversed];
+ if not assigned(State) then begin
+  result:=DFAError;
+  exit;
+ end;
  for Position:=StartPosition downto UntilIncludingPosition do begin
   LastState:=State;
   State:=State^.NextStates[LocalByteMap[byte(ansichar(LocalInput[Position]))]];
@@ -8238,7 +8255,7 @@ begin
     if (Instruction^.IDandOpcode and $ff)=opZEROWIDTH then begin
      NeedFlags:=NeedFlags or longword(Instruction^.Value);
     end;
-    if ((Instruction^.IDandOpcode and $ff)=opMATCH) and not Instance.EndingAnchor then begin
+    if ((Instruction^.IDandOpcode and $ff)=opMATCH) and not Instance.EndTextAnchor then begin
      SawMatch:=true;
     end;
    end;
@@ -8417,7 +8434,7 @@ begin
      end;
     end;
     opMATCH:begin
-     if not (Instance.EndingAnchor and (CurrentChar<>256)) then begin
+     if not (Instance.EndTextAnchor and (CurrentChar<>256)) then begin
       IsMatch:=true;
       if MatchMode=mmFirstMatch then begin
        exit;
@@ -8448,14 +8465,19 @@ begin
   exit;
  end;
 
+ if assigned(State^.NextStates[ByteMap[CurrentChar]]) then begin
+  result:=State^.NextStates[ByteMap[CurrentChar]];
+  exit;
+ end;
+
  Queues[0]:=WorkQueues[0];
  Queues[1]:=WorkQueues[1];
 
  StateToWorkQueue(State,Queues[0]);
 
  // Fetch flags
- NeedFlags:=(State.Flags and sfDFACacheMask) shr sfDFANeedShift;
- BeforeFlags:=State.Flags and sfEmptyAllFlags;
+ NeedFlags:=(State^.Flags and sfDFACacheMask) shr sfDFANeedShift;
+ BeforeFlags:=State^.Flags and sfEmptyAllFlags;
  OldBeforeFlags:=BeforeFlags and sfDFACacheMask;
  AfterFlags:=0;
 
@@ -8489,7 +8511,7 @@ begin
   writeln(' ',((State.Flags and sfDFALastWord)<>0)=IsWordChar,' ',(State.Flags and sfDFALastWord)<>0,' ',IsWordChar);
  end;{}
 
- if ((State.Flags and sfDFALastWord)<>0)=IsWordChar then begin
+ if ((State^.Flags and sfDFALastWord)<>0)=IsWordChar then begin
   BeforeFlags:=BeforeFlags or sfEmptyNonWordBoundary;
  end else begin
   BeforeFlags:=BeforeFlags or sfEmptyWordBoundary;
@@ -8526,7 +8548,7 @@ begin
  result:=WorkQueueToCachedState(Queues[0],Flags);
 
  // Connect the last state to the new state with the current char
- State.NextStates[ByteMap[CurrentChar]]:=result;
+ State^.NextStates[ByteMap[CurrentChar]]:=result;
 
 end;
 
@@ -8614,7 +8636,6 @@ begin
 
   if UnanchoredStart then begin
    if Instance.DFAFastBeginningSearch then begin
-
     Flags:=Flags or sfDFAStart;
    end;
    StartInstruction:=Instance.UnanchoredStartInstruction;
@@ -8653,6 +8674,11 @@ begin
  result:=DFAFail;
 
  State:=InitializeStartState(StartPosition,UnanchoredStart);
+
+ if not assigned(State) then begin
+  result:=DFAError;
+  exit;
+ end;
 
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalInputLength:=ThreadLocalStorageInstance.InputLength;
@@ -8909,6 +8935,11 @@ begin
  result:=DFAFail;
 
  State:=InitializeStartState(StartPosition,UnanchoredStart);
+
+ if not assigned(State) then begin
+  result:=DFAError;
+  exit;
+ end;
 
  LocalInput:=ThreadLocalStorageInstance.Input;
  LocalInputLength:=ThreadLocalStorageInstance.InputLength;
@@ -9467,16 +9498,15 @@ begin
 
  BitStateNFAReady:=false;
 
+ CanMatchEmptyStrings:=false;
+
  DFAReady:=false;
  DFANeedVerification:=false;
  DFAFast:=true;
  DFAFastBeginningSearch:=false;
 
- BeginningJump:=false;
- BeginningSplit:=false;
- BeginningWildCard:=false;
- BeginningAnchor:=false;
- EndingAnchor:=false;
+ BeginTextAnchor:=false;
+ EndTextAnchor:=false;
 
  HasWordBoundaries:=false;
  HasNewLineAssertions:=false;
@@ -9522,6 +9552,8 @@ begin
 
   SetLength(CapturesToSubMatchesMap,CountCaptures);
 
+  ScanProgram;
+
   CompilePrefix;
 
   CompileFixedStringSearch;
@@ -9540,12 +9572,9 @@ begin
 
   BitStateNFAReady:=(CountForwardInstructions>0) and (CountForwardInstructions<512);
 
-  BeginningWildcardLoop:=BeginningJump and BeginningSplit and BeginningWildcard;
+  HaveUnanchoredStart:=not BeginTextAnchor;
 
-  HaveUnanchoredStart:=not BeginningAnchor;
-
-  begin
-   CanMatchEmptyStrings:=true;
+  if CanMatchEmptyStrings then begin
    if RegularExpressionHasCharClasses then begin
     ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
     try
@@ -11770,7 +11799,7 @@ var SourcePosition,SourceLength:longint;
    end;
   end;
  end;
- function NewBackReferencePerIndex(const Group:longint):PFLRENode;
+ function NewBackReferencePerIndex(const Group:longint;const ComparisonGroup:boolean):PFLRENode;
  var Value:longint;
  begin
   result:=nil;
@@ -11785,9 +11814,14 @@ var SourcePosition,SourceLength:longint;
     result:=NewNode(ntBACKREFERENCE,nil,nil,Value);
    end;
    result^.Group:=Group;
+   if ComparisonGroup then begin
+    result^.Flags:=1;
+   end else begin
+    result^.Flags:=0;
+   end;
   end;
  end;
- function NewBackReferencePerName(const Name:TFLRERawByteString):PFLRENode;
+ function NewBackReferencePerName(const Name:TFLRERawByteString;const ComparisonGroup:boolean):PFLRENode;
  var Start,Index,Value:longint;
      Minus:boolean;
  begin
@@ -11817,12 +11851,12 @@ var SourcePosition,SourceLength:longint;
    if Minus then begin
     Value:=CountCaptures-Value;
     if (Value>=0) and (Value<CountCaptures) then begin
-     result:=NewBackReferencePerIndex(CountCaptures-Value);
+     result:=NewBackReferencePerIndex(CountCaptures-Value,ComparisonGroup);
     end else begin
      raise EFLRE.Create('Syntax error');
     end;
    end else begin
-    result:=NewBackReferencePerIndex(Value);
+    result:=NewBackReferencePerIndex(Value,ComparisonGroup);
    end;
   end else begin
    if (NamedGroupStringList.IndexOf(String(Name))<0) or (GroupNameStringStack.IndexOf(String(Name))>=0) then begin
@@ -11837,6 +11871,11 @@ var SourcePosition,SourceLength:longint;
     end;
     result^.Group:=-1;
     result^.Name:=Name;
+    if ComparisonGroup then begin
+     result^.Flags:=1;
+    end else begin
+     result^.Flags:=0;
+    end;
    end;
   end;
  end;
@@ -12059,7 +12098,13 @@ var SourcePosition,SourceLength:longint;
                Name:=Name+Source[SourcePosition];
                inc(SourcePosition);
               end;
-              result:=NewBackReferencePerName(Name);
+              if (SourcePosition<=SourceLength) and (Source[SourcePosition]=':') then begin
+               inc(SourcePosition);
+               result:=NewBackReferencePerName(Name,true);
+               result^.Left:=ParseDisjunction;
+              end else begin
+               result:=NewBackReferencePerName(Name,false);
+              end;
              end;
              '<':begin
               inc(SourcePosition);
@@ -12072,7 +12117,7 @@ var SourcePosition,SourceLength:longint;
                inc(SourcePosition);
               end else begin
                raise EFLRE.Create('Syntax error');
-              end;
+              end;          
               result:=NewNamedGroup(Name);
              end
              else begin
@@ -12110,7 +12155,7 @@ var SourcePosition,SourceLength:longint;
            Value:=(Value*10)+(byte(ansichar(Source[SourcePosition]))-byte(ansichar('0')));
            inc(SourcePosition);
           end;
-          result:=NewBackReferencePerIndex(Value);
+          result:=NewBackReferencePerIndex(Value,false);
          end;
          'C':begin
           // Any byte
@@ -12183,7 +12228,7 @@ var SourcePosition,SourceLength:longint;
                Name:=Name+Source[SourcePosition];
                inc(SourcePosition);
               until (SourcePosition>SourceLength) or not (Source[SourcePosition] in ['0'..'9']);
-              result:=NewBackReferencePerName(Name);
+              result:=NewBackReferencePerName(Name,false);
              end else begin
               raise EFLRE.Create('Syntax error');
              end;   
@@ -12194,7 +12239,7 @@ var SourcePosition,SourceLength:longint;
               Name:=Name+Source[SourcePosition];
               inc(SourcePosition);
              end;
-             result:=NewBackReferencePerName(Name);
+             result:=NewBackReferencePerName(Name,false);
             end;
             '{':begin
              TerminateChar:='}';
@@ -12206,7 +12251,7 @@ var SourcePosition,SourceLength:longint;
              end;
              if (SourcePosition<=SourceLength) and (Source[SourcePosition]=TerminateChar) then begin
               inc(SourcePosition);
-              result:=NewBackReferencePerName(Name);
+              result:=NewBackReferencePerName(Name,false);
              end else begin
               raise EFLRE.Create('Syntax error');
              end;
@@ -12241,7 +12286,7 @@ var SourcePosition,SourceLength:longint;
            end;
            if (SourcePosition<=SourceLength) and (Source[SourcePosition]=TerminateChar) then begin
             inc(SourcePosition);
-            result:=NewBackReferencePerName(Name);
+            result:=NewBackReferencePerName(Name,false);
            end else begin
             raise EFLRE.Create('Syntax error');
            end;
@@ -12683,8 +12728,6 @@ begin
    UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass,false)),nil,qkLAZY),AnchoredRootNode,0);
   end;
   DFANeedVerification:=false;
-  BeginningAnchor:=false;
-  EndingAnchor:=false;
   HasWordBoundaries:=false;
   HasNewLineAssertions:=false;
   HasLookAssertions:=false;
@@ -12698,15 +12741,7 @@ begin
     ntZEROWIDTH:begin
      //DFANeedVerification:=true;
      DFAFast:=false;
-     if (Node^.Value and sfEmptyBeginText)<>0 then begin
-      BeginningAnchor:=true;
-      HasNewLineAssertions:=true;
-     end;
-     if (Node^.Value and sfEmptyEndText)<>0 then begin
-      EndingAnchor:=true;
-      HasNewLineAssertions:=true;
-     end;
-     if (Node^.Value and (sfEmptyBeginLine or sfEmptyEndLine))<>0 then begin
+     if (Node^.Value and (sfEmptyBeginLine or sfEmptyEndLine or sfEmptyBeginText or sfEmptyEndText))<>0 then begin
       HasNewLineAssertions:=true;
      end;
      if (Node^.Value and (sfEmptyWordBoundary or sfEmptyNonWordBoundary))<>0 then begin
@@ -12727,12 +12762,14 @@ begin
      if (Node^.Group<0) or (Node^.Group>=CountCaptures) then begin
       raise EFLRE.Create('Syntax error');
      end;
-     Node^.Left:=nil;
-     for SubCounter:=0 to Nodes.Count-1 do begin
-      SubNode:=Nodes[SubCounter];
-      if (Node<>SubNode) and (SubNode^.NodeType=ntPAREN) and (SubNode^.Value=Node^.Group) then begin
-       Node^.Left:=SubNode;
-       break;
+     if (Node^.Flags and 1)=0 then begin
+      Node^.Left:=nil;
+      for SubCounter:=0 to Nodes.Count-1 do begin
+       SubNode:=Nodes[SubCounter];
+       if (Node<>SubNode) and (SubNode^.NodeType=ntPAREN) and (SubNode^.Value=Node^.Group) then begin
+        Node^.Left:=SubNode;
+        break;
+       end;
       end;
      end;
      if not assigned(Node^.Left) then begin
@@ -13252,9 +13289,11 @@ procedure TFLRE.Compile;
         end else begin
          Flags:=Node^.Value;
         end;
-        i0:=NewInstruction(opZEROWIDTH);
-        Instructions[i0].Value:=Flags;
-        Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        if Flags<>0 then begin
+         i0:=NewInstruction(opZEROWIDTH);
+         Instructions[i0].Value:=Flags;
+         Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        end; 
        end;
        ntLOOKBEHINDNEGATIVE:begin
         i0:=NewInstruction(opLOOKBEHINDNEGATIVE);
@@ -13856,24 +13895,11 @@ var CurrentPosition:longint;
     case Instruction^.IDandOpcode and $ff of
 {$ifdef UseOpcodeJMP}
      opJMP:begin
-      if (CurrentPosition=0) and ((Instruction^.Next^.IDandOpcode shr 8)<=(Instruction^.IDandOpcode shr 8)) then begin
-       BeginningJump:=true;
-      end;
       Instruction:=Instruction^.Next;
       continue;
      end;
 {$endif}
      opSPLIT,opSPLITMATCH:begin
-      if CurrentPosition=0 then begin
-       BeginningSplit:=true;
-{$ifndef UseOpcodeJMP}
-       if (CurrentPosition=0) and assigned(Instruction^.Next) and assigned(Instruction^.Next^.Next) and ((Instruction^.Next^.Next^.IDandOpcode shr 8)<=(Instruction^.Next^.IDandOpcode shr 8)) then begin
-        BeginningJump:=true;
-       end else if (CurrentPosition=0) and assigned(Instruction^.OtherNext) and assigned(Instruction^.Next^.Next) and ((Instruction^.OtherNext^.Next^.IDandOpcode shr 8)<=(Instruction^.Next^.IDandOpcode shr 8)) then begin
-        BeginningJump:=true;
-       end;
-{$endif}
-      end;
       AddThread(ThreadList,Instruction^.Next);
       Instruction:=Instruction^.OtherNext;
       continue;
@@ -13945,6 +13971,7 @@ begin
    NewThreadList^.Count:=0;
 
    Generation:=1;
+   CurrentPosition:=0;
    AddThread(CurrentThreadList,AnchoredStartInstruction);
 
    Count:=0;
@@ -13976,9 +14003,6 @@ begin
        AddThread(NewThreadList,Instruction^.Next);
       end;
       opANY:begin
-       if CurrentPosition=0 then begin
-        BeginningWildCard:=true;
-       end;
        if CurrentPosition<FLREMaxPrefixCharClasses then begin
         PrefixCharClasses[CurrentPosition]:=PrefixCharClasses[CurrentPosition]+AllCharClass;
        end;
@@ -14467,6 +14491,360 @@ begin
  finally
   SetLength(Stack,0);
  end;
+end;
+
+procedure TFLRE.ScanProgram;
+type PThread=^TThread;
+     TThread=record
+      Instruction:PFLREInstruction;
+      PossibleBeginningSplit:boolean;
+      PossibleBeginningAnchor:boolean;
+      PossibleEndingSplit:boolean;
+      PossibleEndingAnchor:boolean;
+     end;
+     TThreads=array of TThread;
+     PThreadList=^TThreadList;
+     TThreadList=record
+      Threads:TThreads;
+      Count:longint;
+     end;
+     TThreadLists=array[0..1] of TThreadList;
+var CurrentPosition:longint;
+    Generation:int64;
+    InstructionGenerations:TFLREInstructionGenerations;
+    InstructionVisitedCounts:TFLREInstructionGenerations;
+    BeginningJump,BeginningSplit,EndingSplit,BeginningWildCard,BeginningAnchor,EndingAnchor,
+    HaveBeginningAnchorWithoutBeginningSplit,HaveBeginningAnchorWithBeginningSplit,HaveBeginningWithoutBeginningAnchor:boolean;
+ procedure AddThread(const ThreadList:PThreadList;Instruction:PFLREInstruction;PossibleBeginningSplit,PossibleBeginningAnchor,PossibleEndingSplit,PossibleEndingAnchor:boolean);
+ var Thread:PThread;
+ begin
+  while assigned(Instruction) do begin
+   if (InstructionGenerations[Instruction^.IDandOpcode shr 8]=Generation) or
+      (InstructionVisitedCounts[Instruction^.IDandOpcode shr 8]>0) then begin
+    break;
+   end else begin
+    InstructionGenerations[Instruction^.IDandOpcode shr 8]:=Generation;
+    inc(InstructionVisitedCounts[Instruction^.IDandOpcode shr 8]);
+    case Instruction^.IDandOpcode and $ff of
+{$ifdef UseOpcodeJMP}
+     opJMP:begin
+      if (CurrentPosition=0) and ((Instruction^.Next^.IDandOpcode shr 8)<=(Instruction^.IDandOpcode shr 8)) then begin
+       BeginningJump:=true;
+      end;
+      Instruction:=Instruction^.Next;
+      continue;
+     end;
+{$endif}
+     opSPLIT,opSPLITMATCH:begin
+      if CurrentPosition=0 then begin
+       BeginningSplit:=true;
+{$ifndef UseOpcodeJMP}
+       if (CurrentPosition=0) and assigned(Instruction^.Next) and assigned(Instruction^.Next^.Next) and ((Instruction^.Next^.Next^.IDandOpcode shr 8)<=(Instruction^.Next^.IDandOpcode shr 8)) then begin
+        BeginningJump:=true;
+       end else if (CurrentPosition=0) and assigned(Instruction^.OtherNext) and assigned(Instruction^.Next^.Next) and ((Instruction^.OtherNext^.Next^.IDandOpcode shr 8)<=(Instruction^.Next^.IDandOpcode shr 8)) then begin
+        BeginningJump:=true;
+       end;
+{$endif}
+      end;
+      PossibleBeginningSplit:=true;
+      PossibleEndingSplit:=true;
+      AddThread(ThreadList,Instruction^.Next,PossibleBeginningSplit,PossibleBeginningAnchor,PossibleEndingSplit,PossibleEndingAnchor);
+      Instruction:=Instruction^.OtherNext;
+      continue;
+     end;
+     opZEROWIDTH:begin
+      if CurrentPosition=0 then begin
+       if (Instruction^.Value and sfEmptyBeginText)<>0 then begin
+        BeginningAnchor:=true;
+        PossibleBeginningAnchor:=true;
+        if PossibleBeginningSplit then begin
+         HaveBeginningAnchorWithBeginningSplit:=true;
+        end else begin
+         HaveBeginningAnchorWithoutBeginningSplit:=true;
+        end;
+       end;
+      end;
+      if (Instruction^.Value and sfEmptyEndText)<>0 then begin
+       PossibleEndingAnchor:=true;
+      end;
+      Instruction:=Instruction^.Next;
+      continue;
+     end;
+     opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+      Instruction:=Instruction^.Next;
+      continue;
+     end;
+     else begin
+      Thread:=@ThreadList^.Threads[ThreadList^.Count];
+      Thread^.Instruction:=Instruction;
+      Thread^.PossibleBeginningSplit:=PossibleBeginningSplit;
+      Thread^.PossibleBeginningAnchor:=PossibleBeginningAnchor;
+      Thread^.PossibleEndingSplit:=PossibleEndingSplit;
+      Thread^.PossibleEndingAnchor:=PossibleEndingAnchor;
+      inc(ThreadList^.Count);
+      break;
+     end;
+    end;
+   end;
+  end;
+ end;
+ procedure SearchForZeroWidthEmptyBeginningEndingTextInsideAlternative(Node:PFLRENode;Beginning:boolean);
+  type PStackItem=^TStackItem;
+       TStackItem=record
+        Node:PFLRENode;
+        Alternative:boolean;
+       end;
+       TStackItems=array of TStackItem;
+  var Stack:TStackItems;
+      StackItem:PStackItem;
+      StackSize:longint;
+      Alternative:boolean;
+ begin
+  Stack:=nil;
+  try
+   SetLength(Stack,(Nodes.Count*2)+16);
+   StackSize:=0;
+   StackItem:=@Stack[StackSize];
+   StackItem^.Node:=Node;
+   StackItem^.Alternative:=false;
+   inc(StackSize);
+   while StackSize>0 do begin
+    dec(StackSize);
+    StackItem:=@Stack[StackSize];
+    Node:=StackItem^.Node;
+    Alternative:=StackItem^.Alternative;
+    while assigned(Node) do begin
+     case Node^.NodeType of
+      ntALT:begin
+       Alternative:=true;
+       begin
+        if (StackSize+1)>length(Stack) then begin
+         SetLength(Stack,(StackSize+1)*2);
+        end;
+        StackItem:=@Stack[StackSize];
+        inc(StackSize);
+        StackItem^.Node:=Node^.Left;
+        StackItem^.Alternative:=Alternative;
+       end;
+       Node:=Node^.Right;
+       continue;
+      end;
+      ntCAT:begin
+       begin
+        if (StackSize+1)>length(Stack) then begin
+         SetLength(Stack,(StackSize+1)*2);
+        end;
+        StackItem:=@Stack[StackSize];
+        inc(StackSize);
+        StackItem^.Node:=Node^.Right;
+        StackItem^.Alternative:=Alternative;
+       end;
+       Node:=Node^.Left;
+       continue;
+      end;
+      ntPAREN,ntMULTIMATCH:begin
+       Node:=Node^.Left;
+       continue;
+      end;
+      ntCHAR:begin
+      end;
+      ntQUEST,ntSTAR,ntPLUS:begin
+       Node:=Node^.Left;
+       continue;
+      end;
+      ntZEROWIDTH:begin
+       if Beginning then begin
+        if ((Node^.Value and sfEmptyBeginText)<>0) and Alternative then begin
+         BeginTextAnchor:=false;
+         StackSize:=0;
+        end;
+       end else begin
+        if ((Node^.Value and sfEmptyEndText)<>0) and Alternative then begin
+         EndTextAnchor:=false;
+         StackSize:=0;
+        end;
+       end;
+      end;
+      ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE:begin
+      end;
+      ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
+       if (Node^.Flags and 1)<>0 then begin
+        Node:=Node^.Left;
+        continue;
+       end;
+      end;
+     end;
+     break;
+    end;
+   end;
+  finally
+   SetLength(Stack,0);
+  end;
+ end;
+var ThreadIndex,Count,TotalCount,Index:longint;
+    CurrentThreadList,NewThreadList,TemporaryThreadList:PThreadList;
+    CurrentThread:PThread;
+    Instruction:PFLREInstruction;
+    CurrentChar:ansichar;
+    ThreadLists:TThreadLists;
+    PossibleBeginningSplit,PossibleBeginningAnchor,PossibleEndingSplit,PossibleEndingAnchor,
+    HaveEndingAnchorWithoutEndingSplit,HaveEndingAnchorWithEndingSplit,HaveEndingWithoutEndingAnchor:boolean;
+begin
+
+ BeginningJump:=false;
+ BeginningSplit:=false;
+ EndingSplit:=false;
+ BeginningWildCard:=false;
+ BeginningAnchor:=false;
+ EndingAnchor:=false;
+
+ BeginTextAnchor:=false;
+ EndTextAnchor:=false;
+
+ CanMatchEmptyStrings:=false;
+
+ HaveBeginningAnchorWithoutBeginningSplit:=false;
+ HaveBeginningAnchorWithBeginningSplit:=false;
+ HaveBeginningWithoutBeginningAnchor:=false;
+
+ HaveEndingAnchorWithoutEndingSplit:=false;
+ HaveEndingAnchorWithEndingSplit:=false;
+ HaveEndingWithoutEndingAnchor:=false;
+
+ Generation:=0;
+
+ InstructionVisitedCounts:=nil;
+ try
+
+  SetLength(InstructionVisitedCounts,CountForwardInstructions+1);
+  for Index:=0 to length(InstructionVisitedCounts)-1 do begin
+   InstructionVisitedCounts[Index]:=0;
+  end;
+
+  InstructionGenerations:=nil;
+  try
+
+   SetLength(InstructionGenerations,CountForwardInstructions+1);
+   for Index:=0 to length(InstructionGenerations)-1 do begin
+    InstructionGenerations[Index]:=-1;
+   end;
+
+   ThreadLists[0].Threads:=nil;
+   ThreadLists[1].Threads:=nil;
+   try
+    SetLength(ThreadLists[0].Threads,(CountForwardInstructions+1)*4);
+    SetLength(ThreadLists[1].Threads,(CountForwardInstructions+1)*4);
+
+    CurrentThreadList:=@ThreadLists[0];
+    NewThreadList:=@ThreadLists[1];
+
+    CurrentThreadList^.Count:=0;
+    NewThreadList^.Count:=0;
+
+    Generation:=1;
+    CurrentPosition:=0;
+    AddThread(CurrentThreadList,AnchoredStartInstruction,false,false,false,false);
+
+    Count:=0;
+
+    for CurrentPosition:=0 to $7fffffff do begin
+     if CurrentThreadList^.Count=0 then begin
+      break;
+     end;
+     inc(Generation);
+     inc(Count);
+     for ThreadIndex:=0 to CurrentThreadList^.Count-1 do begin
+      CurrentThread:=@CurrentThreadList^.Threads[ThreadIndex];
+      Instruction:=CurrentThread^.Instruction;
+      PossibleBeginningSplit:=CurrentThread^.PossibleBeginningSplit;
+      PossibleBeginningAnchor:=CurrentThread^.PossibleBeginningAnchor;
+      PossibleEndingSplit:=CurrentThread^.PossibleEndingSplit;
+      PossibleEndingAnchor:=CurrentThread^.PossibleEndingAnchor;
+      case Instruction^.IDandOpcode and $ff of
+       opNONE:begin
+        // Match against nothing
+        if (CurrentPosition=0) and not PossibleBeginningAnchor then begin
+         HaveBeginningWithoutBeginningAnchor:=true;
+        end;
+       end;
+       opSINGLECHAR:begin
+        if (CurrentPosition=0) and not PossibleBeginningAnchor then begin
+         HaveBeginningWithoutBeginningAnchor:=true;
+        end;
+        AddThread(NewThreadList,Instruction^.Next,PossibleBeginningSplit,PossibleBeginningAnchor,false,false);
+       end;
+       opCHAR:begin
+        if (CurrentPosition=0) and not PossibleBeginningAnchor then begin
+         HaveBeginningWithoutBeginningAnchor:=true;
+        end;
+        AddThread(NewThreadList,Instruction^.Next,PossibleBeginningSplit,PossibleBeginningAnchor,false,false);
+       end;
+       opANY:begin
+        if CurrentPosition=0 then begin
+         if not PossibleBeginningAnchor then begin
+          HaveBeginningWithoutBeginningAnchor:=true;
+         end;
+         BeginningWildCard:=true;
+        end;
+        AddThread(NewThreadList,Instruction^.Next,PossibleBeginningSplit,PossibleBeginningAnchor,false,false);
+       end;
+       opMATCH:begin
+        if CurrentPosition=0 then begin
+         CanMatchEmptyStrings:=true;
+        end;
+        if PossibleEndingAnchor then begin
+         if PossibleEndingSplit then begin
+          HaveEndingAnchorWithEndingSplit:=true;
+         end else begin
+          HaveEndingAnchorWithoutEndingSplit:=true;
+         end;
+        end else begin
+         HaveEndingWithoutEndingAnchor:=true;
+        end;
+        if PossibleEndingSplit then begin
+         EndingSplit:=true;
+        end;
+        if PossibleEndingAnchor then begin
+         EndingAnchor:=true;
+        end;
+       end;
+      end;
+     end;
+     TemporaryThreadList:=CurrentThreadList;
+     CurrentThreadList:=NewThreadList;
+     NewThreadList:=TemporaryThreadList;
+     NewThreadList^.Count:=0;
+    end;
+
+   finally
+    SetLength(ThreadLists[0].Threads,0);
+    SetLength(ThreadLists[1].Threads,0);
+   end;
+
+  finally
+   SetLength(InstructionGenerations,0);
+  end;
+
+ finally
+  SetLength(InstructionVisitedCounts,0);
+ end;
+
+ if HaveBeginningAnchorWithoutBeginningSplit and not (HaveBeginningWithoutBeginningAnchor or HaveBeginningAnchorWithBeginningSplit) then begin
+  BeginTextAnchor:=BeginningAnchor and not BeginningSplit;
+  if BeginTextAnchor then begin
+   SearchForZeroWidthEmptyBeginningEndingTextInsideAlternative(AnchoredRootNode,true);
+  end;
+ end;
+
+ if HaveEndingAnchorWithoutEndingSplit and not (HaveEndingWithoutEndingAnchor or HaveEndingAnchorWithEndingSplit) then begin
+  EndTextAnchor:=EndingAnchor and not EndingSplit;
+  if EndTextAnchor then begin
+   SearchForZeroWidthEmptyBeginningEndingTextInsideAlternative(AnchoredRootNode,false);
+  end;
+ end;
+  
+ BeginningWildcardLoop:=BeginningJump and BeginningSplit and BeginningWildcard;
+
 end;
 
 function TFLRE.PrefilterOptimize(Node:TFLREPrefilterNode):TFLREPrefilterNode;
@@ -16164,7 +16542,11 @@ var CharClass:TFLRECharClass;
      result:=result+'(?='+LookAssertionStrings[Node^.Value]+')';
     end;
     ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
-     result:=result+'\g{'+TFLRERawByteString(IntToStr(Node^.Value shr 1))+'}';
+     if (Node^.Flags and 1)<>0 then begin
+      result:=result+'(?P='+TFLRERawByteString(IntToStr(Node^.Value shr 1))+':'+ProcessNode(Node^.Left,NodePrecedences[Node^.NodeType])+')';
+     end else begin
+      result:=result+'\g{'+TFLRERawByteString(IntToStr(Node^.Value shr 1))+'}';
+     end;
     end;
    end;
   end;
