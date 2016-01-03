@@ -2326,6 +2326,57 @@ begin
     end;
    end;
 
+   UnitSourceList.Add('const FLRE'+HashTableName+'SeedSize='+IntToStr(length(Seeds))+';');
+   UnitSourceList.Add('      FLRE'+HashTableName+'ValueSize='+IntToStr(length(Values))+';');
+   UnitSourceList.Add('');
+   UnitSourceList.Add('      FLRE'+HashTableName+'Seed:array[0..'+IntToStr(length(Seeds)-1)+'] of longint=(');
+   for Index:=0 to length(Seeds)-1 do begin
+    if (Index+1)<length(Seeds) then begin
+     UnitSourceList.Add(IntToStr(Seeds[Index])+',');
+    end else begin
+     UnitSourceList.Add(IntToStr(Seeds[Index]));
+    end;
+   end;
+   UnitSourceList.Add(');');
+   UnitSourceList.Add('');                                                                                                
+   UnitSourceList.Add('      FLRE'+HashTableName+'ValueKeys:array[0..'+IntToStr(length(Values)-1)+'] of TFLRERawByteString=(');
+   for Index:=0 to length(Values)-1 do begin
+    if assigned(Values[Index]) then begin
+     if (Index+1)<length(Values) then begin
+      UnitSourceList.Add(''''+PHashBucketItem(Values[Index])^.Key+''',');
+     end else begin
+      UnitSourceList.Add(''''+PHashBucketItem(Values[Index])^.Key+'''');
+     end;
+    end else begin
+     if (Index+1)<length(Values) then begin
+      UnitSourceList.Add(''''',');
+     end else begin
+      UnitSourceList.Add('''''');
+     end;
+    end;
+   end;
+   UnitSourceList.Add(');');
+   UnitSourceList.Add('');
+
+   UnitSourceList.Add('      FLRE'+HashTableName+'Values:array[0..'+IntToStr(length(Values)-1)+'] of longint=(');
+   for Index:=0 to length(Values)-1 do begin
+    if assigned(Values[Index]) then begin
+     if (Index+1)<length(Values) then begin
+      UnitSourceList.Add(IntToStr(PHashBucketItem(Values[Index])^.Value)+',');
+     end else begin
+      UnitSourceList.Add(IntToStr(PHashBucketItem(Values[Index])^.Value));
+     end;
+    end else begin
+     if (Index+1)<length(Values) then begin
+      UnitSourceList.Add('-1,');
+     end else begin
+      UnitSourceList.Add('-1');
+     end;
+    end;
+   end;
+   UnitSourceList.Add(');');
+   UnitSourceList.Add('');
+
   end else begin
 
    Assert(false);
@@ -2409,11 +2460,11 @@ begin
   UnitSourceList.Add(');');
   UnitSourceList.Add('');
 
+  MakeMinimalPerfectHashTable(UnicodeClassHashMap,'FLREUnicodeClassHashMap');
+
   UnitSourceList.Add('implementation');
   UnitSourceList.Add('end.');
   UnitSourceList.SaveToFile(IncludeTrailingPathDelimiter('..')+'FLREUnicode.pas');
-
-  MakeMinimalPerfectHashTable(UnicodeClassHashMap,'FLREUnicodeClassHashMap');
 
   for i:=low(TUnicodeCharRangeClasses) to high(TUnicodeCharRangeClasses) do begin
    SetLength(UnicodeCharRangeClasses[i],0);
