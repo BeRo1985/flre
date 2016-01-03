@@ -2127,6 +2127,76 @@ begin
  end;
 end;
 
+procedure MakeMinimalPerfectHashTable(const StringIntegerPairHashMap:TFLREStringIntegerPairHashMap;const HashTableName:ansistring);
+ function HashFromString(d:longword;const s:TFLRERawByteString):longword;
+ var i:longint;
+ begin
+  if d=0 then begin
+   result:=$811c9dc5;
+  end else begin
+   result:=d;
+  end;
+  for i:=0 to length(s)-1 do begin
+   inc(result,(result shl 1)+(result shl 4)+(result shl 7)+(result shl 8)+(result shl 24));
+   result:=result xor byte(TFLRERawByteChar(s[i]));
+  end;
+  result:=(result shr 1) and $7fffffff;
+ end;
+type PHashBucketItem=^THashBucketItem;
+     THashBucketItem=record
+      Key:TFLRERawByteString;
+      Value:longint;
+     end;
+     PHashBucket=^THashBucket;
+     THashBucket=record
+      Items:array of THashBucketItem;
+      Count:longint;
+     end;
+     THashBuckets=array of THashBucket;
+var Index,Size,HashValue,OldCount,SubIndex:longint;
+    Buckets:THashBuckets;
+    Bucket:PHashBucket;
+    CountBuckets:longint;
+begin
+ Buckets:=nil;
+ CountBuckets:=0;
+ try
+  Size:=0;
+  for Index:=0 to length(StringIntegerPairHashMap.EntityToCellIndex)-1 do begin
+   if StringIntegerPairHashMap.EntityToCellIndex[Index]>=0 then begin
+    inc(Size);
+   end;
+  end;
+  if Size>0 then begin
+   for Index:=0 to length(StringIntegerPairHashMap.EntityToCellIndex)-1 do begin
+    if StringIntegerPairHashMap.EntityToCellIndex[Index]>=0 then begin
+     HashValue:=longint(HashFromString(0,StringIntegerPairHashMap.Entities[Index].Key)) mod Size;
+     if HashValue>=length(Buckets) then begin
+      OldCount:=length(Buckets);
+      SetLength(Buckets,(HashValue+1)*2);
+      for SubIndex:=OldCount to length(Buckets)-1 do begin
+       Bucket:=@Buckets[SubIndex];
+       Bucket^.Items:=nil;
+       Bucket^.Count:=0;
+      end;
+     end;
+     if CountBuckets<=HashValue then begin
+      CountBuckets:=HashValue+1;
+     end;
+     Bucket:=@Buckets[HashValue];
+     inc(Bucket^.Count);
+     if Bucket^.Count>length(Bucket^.Items) then begin
+      SetLength(Bucket^.Items,Bucket^.Count*2);
+     end;
+
+    end;
+   end;
+  end;
+ finally
+  SetLength(Buckets,0);
+ end;
+end;
+
 var i,j,k:longint;
 begin
  UnitSourceList:=TStringList.Create;
@@ -2155,9 +2225,12 @@ begin
   UnitSourceList.Add('      FLREucrWHITESPACES=2;');
   UnitSourceList.Add('      FLREucrLAST=FLREucrWHITESPACES;');
   UnitSourceList.Add('');
+  UnitSourceList.Add('type PFLREUnicodeCharRange=^TFLREUnicodeCharRange;');
+  UnitSourceList.Add('     TFLREUnicodeCharRange=array[0..1] of longword;');
+  UnitSourceList.Add('');                                                   
 
   for i:=0 to length(UnicodeCharRangeClasses)-1 do begin
-   UnitSourceList.Add('const UnicodeCharRangeClasses'+IntToStr(i)+'=array[0..'+IntToStr(length(UnicodeCharRangeClasses[i])-1)+'] of TUnicodeCharRange=(');
+   UnitSourceList.Add('const FLREUnicodeCharRangeClasses'+IntToStr(i)+'=array[0..'+IntToStr(length(UnicodeCharRangeClasses[i])-1)+'] of TFLREUnicodeCharRange=(');
    for j:=0 to length(UnicodeCharRangeClasses[i])-1 do begin
     if (j+1)<length(UnicodeCharRangeClasses[i]) then begin
      UnitSourceList.Add('('+IntToStr(UnicodeCharRangeClasses[i,j,0])+','+IntToStr(UnicodeCharRangeClasses[i,j,1])+'),');
@@ -2169,18 +2242,18 @@ begin
    UnitSourceList.Add('');
   end;
 
-  UnitSourceList.Add('const UnicodeCharRangeClassesData=array[0..'+IntToStr(length(UnicodeCharRangeClasses)-1)+'] of pointer=(');
+  UnitSourceList.Add('const FLREUnicodeCharRangeClassesData=array[0..'+IntToStr(length(UnicodeCharRangeClasses)-1)+'] of pointer=(');
   for i:=0 to length(UnicodeCharRangeClasses)-1 do begin
    if (i+1)<length(UnicodeCharRangeClasses) then begin
-    UnitSourceList.Add('@UnicodeCharRangeClasses'+IntToStr(i)+',');
+    UnitSourceList.Add('@FLREUnicodeCharRangeClasses'+IntToStr(i)+',');
    end else begin
-    UnitSourceList.Add('@UnicodeCharRangeClasses'+IntToStr(i));
+    UnitSourceList.Add('@FLREUnicodeCharRangeClasses'+IntToStr(i));
    end;
   end;
   UnitSourceList.Add(');');
   UnitSourceList.Add('');
 
-  UnitSourceList.Add('const UnicodeCharRangeClassesCounts=array[0..'+IntToStr(length(UnicodeCharRangeClasses)-1)+'] of longint=(');
+  UnitSourceList.Add('const FLREUnicodeCharRangeClassesCounts=array[0..'+IntToStr(length(UnicodeCharRangeClasses)-1)+'] of longint=(');
   for i:=0 to length(UnicodeCharRangeClasses)-1 do begin
    if (i+1)<length(UnicodeCharRangeClasses) then begin
     UnitSourceList.Add(IntToStr(length(UnicodeCharRangeClasses[i]))+',');
@@ -2194,6 +2267,8 @@ begin
   UnitSourceList.Add('implementation');
   UnitSourceList.Add('end.');
   UnitSourceList.SaveToFile(IncludeTrailingPathDelimiter('..')+'FLREUnicode.pas');
+
+  MakeMinimalPerfectHashTable(UnicodeClassHashMap,'FLREUnicodeClassHashMap');
 
   for i:=low(TUnicodeCharRangeClasses) to high(TUnicodeCharRangeClasses) do begin
    SetLength(UnicodeCharRangeClasses[i],0);
