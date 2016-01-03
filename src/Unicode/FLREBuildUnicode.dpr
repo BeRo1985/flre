@@ -2339,7 +2339,7 @@ begin
    end;
    UnitSourceList.Add(');');
    UnitSourceList.Add('');                                                                                                
-   UnitSourceList.Add('      FLRE'+HashTableName+'ValueKeys:array[0..'+IntToStr(length(Values)-1)+'] of TFLRERawByteString=(');
+   UnitSourceList.Add('      FLRE'+HashTableName+'Keys:array[0..'+IntToStr(length(Values)-1)+'] of TFLRERawByteString=(');
    for Index:=0 to length(Values)-1 do begin
     if assigned(Values[Index]) then begin
      if (Index+1)<length(Values) then begin
@@ -2460,7 +2460,14 @@ begin
   UnitSourceList.Add(');');
   UnitSourceList.Add('');
 
-  MakeMinimalPerfectHashTable(UnicodeClassHashMap,'FLREUnicodeClassHashMap');
+  MakeMinimalPerfectHashTable(UnicodeClassHashMap,'UnicodeClassHashMap');
+  MakeMinimalPerfectHashTable(UnicodeScriptHashMap,'UnicodeScriptHashMap');
+  MakeMinimalPerfectHashTable(UnicodeBlockHashMap,'UnicodeBlockHashMap');
+  MakeMinimalPerfectHashTable(UnicodeAdditionalBlockHashMap,'UnicodeAdditionalBlockHashMap');
+  MakeMinimalPerfectHashTable(UnicodeClassLowerCaseHashMap,'UnicodeClassLowerCaseHashMap');
+  MakeMinimalPerfectHashTable(UnicodeScriptLowerCaseHashMap,'UnicodeScriptLowerCaseHashMap');
+  MakeMinimalPerfectHashTable(UnicodeBlockLowerCaseHashMap,'UnicodeBlockLowerCaseHashMap');
+  MakeMinimalPerfectHashTable(UnicodeAdditionalBlockLowerCaseHashMap,'UnicodeAdditionalBlockLowerCaseHashMap');
 
   UnitSourceList.Add('implementation');
   UnitSourceList.Add('end.');
