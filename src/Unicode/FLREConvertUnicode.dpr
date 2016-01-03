@@ -3,7 +3,7 @@
 ***********************************************************
 **
 ** This file is part of the FLRE Regular Expression Library.
-** Copyright (C) 2011 by Benjamin Rosseaux
+** Copyright (C) 2011-2016 by Benjamin Rosseaux
 **
 ** See the file COPYING.FLRE, included in this distribution,
 ** for details about the copyright.
@@ -598,7 +598,8 @@ begin
     OutputList.Add('{$endif}');
     OutputList.Add('interface');
     OutputList.Add('');
-    OutputList.Add('uses FLRE;');
+//  OutputList.Add('uses FLRE;');
+    OutputList.Add('type TFLRERawByteString={$ifdef HAS_TYPE_RAWBYTESTRING}RawByteString{$else}AnsiString{$endif};');
     OutputList.Add('');
     ParseBlocks;
     begin
@@ -664,15 +665,16 @@ begin
      OutputList.Add('');
     end;
     PackTable(FLREUnicodeCategories,0,'FLREUnicodeCategoryArray');
-    writeln;
+    OutputList.Add('');
     PackTable(FLREUnicodeScripts,0,'FLREUnicodeScriptArray');
-    writeln;
+    OutputList.Add('');
     PackTable(FLREUnicodeUpperCaseDeltas,0,'FLREUnicodeUpperCaseDeltaArray');
     PackTable(FLREUnicodeLowerCaseDeltas,0,'FLREUnicodeLowerCaseDeltaArray');
     PackTable(FLREUnicodeTitleCaseDeltas,0,'FLREUnicodeTitleCaseDeltaArray');
     OutputList.Add('implementation');
     OutputList.Add('end.');
-    OutputList.SaveToFile(IncludeTrailingPathDelimiter('..')+'FLREUnicode.pas');
+    OutputList.SaveToFile('FLREUnicode.pas');
+//  OutputList.SaveToFile(IncludeTrailingPathDelimiter('..')+'FLREUnicode.pas');
    finally
     FLREScripts.Free;
    end;
