@@ -2128,19 +2128,18 @@ begin
 end;
 
 procedure MakeMinimalPerfectHashTable(const StringIntegerPairHashMap:TFLREStringIntegerPairHashMap;const HashTableName:ansistring);
- function HashFromString(d:longword;const s:TFLRERawByteString):longword;
+ function HashFromString(Seed:longword;const s:TFLRERawByteString):longword;
  var i:longint;
  begin
-  if d=0 then begin
+  if Seed=0 then begin
    result:=$811c9dc5;
   end else begin
-   result:=d;
+   result:=Seed;
   end;
-  for i:=0 to length(s)-1 do begin
-   inc(result,(result shl 1)+(result shl 4)+(result shl 7)+(result shl 8)+(result shl 24));
-   result:=result xor byte(TFLRERawByteChar(s[i]));
+  for i:=1 to length(s) do begin
+   result:=(result+(result shl 1)+(result shl 4)+(result shl 7)+(result shl 8)+(result shl 24)) xor byte(TFLRERawByteChar(s[i]));
   end;
-  result:=(result shr 1) and $7fffffff;
+  result:=result and $7fffffff;
  end;
 type PHashBucketItem=^THashBucketItem;
      THashBucketItem=record
@@ -2153,21 +2152,36 @@ type PHashBucketItem=^THashBucketItem;
       Count:longint;
      end;
      THashBuckets=array of THashBucket;
-var Index,Size,HashValue,OldCount,SubIndex:longint;
+var Index,Size,HashValue,OldCount,SubIndex,CountBuckets,TempInteger,BucketIndex,ItemIndex,SlotIndex,CountSlots,FreeListSize,
+    Seed:longint;
     Buckets:THashBuckets;
     Bucket:PHashBucket;
-    CountBuckets:longint;
+    BucketItem:PHashBucketItem;
+    TempPointer:pointer;
+    Used:array of boolean;
+    Values:array of PHashBucketItem;
+    Slots:array of longint;
+    Seeds:array of longint;
+    FreeList:array of longint;
 begin
  Buckets:=nil;
  CountBuckets:=0;
+ Used:=nil;
+ Values:=nil;
+ Slots:=nil;
+ Seeds:=nil;
+ FreeList:=nil;
  try
+
   Size:=0;
   for Index:=0 to length(StringIntegerPairHashMap.EntityToCellIndex)-1 do begin
    if StringIntegerPairHashMap.EntityToCellIndex[Index]>=0 then begin
     inc(Size);
    end;
   end;
+
   if Size>0 then begin
+
    for Index:=0 to length(StringIntegerPairHashMap.EntityToCellIndex)-1 do begin
     if StringIntegerPairHashMap.EntityToCellIndex[Index]>=0 then begin
      HashValue:=longint(HashFromString(0,StringIntegerPairHashMap.Entities[Index].Key)) mod Size;
@@ -2188,12 +2202,143 @@ begin
      if Bucket^.Count>length(Bucket^.Items) then begin
       SetLength(Bucket^.Items,Bucket^.Count*2);
      end;
-
+     BucketItem:=@Bucket^.Items[Bucket^.Count-1];
+     BucketItem^.Key:=StringIntegerPairHashMap.Entities[Index].Key;
+     BucketItem^.Value:=StringIntegerPairHashMap.Entities[Index].Value;
     end;
    end;
+
+   Index:=0;
+   while Index<(CountBuckets-1) do begin
+    if Buckets[Index].Count<Buckets[Index+1].Count then begin
+     TempPointer:=pointer(Buckets[Index].Items);
+     pointer(Buckets[Index].Items):=pointer(Buckets[Index+1].Items);
+     pointer(Buckets[Index+1].Items):=TempPointer;
+     TempInteger:=Buckets[Index].Count;
+     Buckets[Index].Count:=Buckets[Index+1].Count;
+     Buckets[Index+1].Count:=TempInteger;
+     if Index>0 then begin
+      dec(Index);
+     end else begin
+      inc(Index);
+     end;
+    end else begin
+     inc(Index);
+    end;
+   end;
+
+   SetLength(Used,Size);
+   SetLength(Values,Size);
+   SetLength(Seeds,Size);
+
+   for Index:=0 to Size-1 do begin
+    Used[Index]:=false;
+    Values[Index]:=nil;
+    Seeds[Index]:=0;
+   end;
+
+   SetLength(Slots,0);
+   CountSlots:=0;
+
+   BucketIndex:=0;
+   while BucketIndex<CountBuckets do begin
+    Seed:=1;
+    Bucket:=@Buckets[BucketIndex];
+    if Bucket^.Count<2 then begin
+     break;
+    end else begin
+     for Index:=0 to Size-1 do begin
+      Used[Index]:=false;
+     end;
+     CountSlots:=0;
+     ItemIndex:=0;
+     while ItemIndex<Bucket^.Count do begin
+      BucketItem:=@Bucket^.Items[ItemIndex];
+      SlotIndex:=longint(HashFromString(longword(Seed),BucketItem^.Key)) mod Size;
+      if assigned(Values[SlotIndex]) or Used[SlotIndex] then begin
+       inc(Seed);
+       ItemIndex:=0;
+       CountSlots:=0;
+       for Index:=0 to Size-1 do begin
+        Used[Index]:=false;
+       end;
+      end else begin
+       Used[SlotIndex]:=true;
+       inc(CountSlots);
+       if CountSlots>length(Slots) then begin
+        SetLength(Slots,CountSlots*2);
+       end;
+       Slots[CountSlots-1]:=SlotIndex;
+       inc(ItemIndex);
+      end;
+     end;
+     BucketItem:=@Bucket^.Items[0];
+     Seeds[longint(HashFromString(0,BucketItem^.Key)) mod Size]:=Seed;
+     for ItemIndex:=0 to Bucket^.Count-1 do begin
+      Values[Slots[ItemIndex]]:=@Bucket^.Items[ItemIndex];
+     end;
+    end;
+    inc(BucketIndex);
+   end;
+   SetLength(Slots,CountSlots);
+
+   FreeList:=nil;
+   FreeListSize:=0;
+   for Index:=0 to Size-1 do begin
+    if not assigned(Values[Index]) then begin
+     inc(FreeListSize);
+    end;
+   end;
+   SetLength(FreeList,FreeListSize);
+   FreeListSize:=0;
+   for Index:=0 to Size-1 do begin
+    if not assigned(Values[Index]) then begin
+     FreeList[FreeListSize]:=Index;
+     inc(FreeListSize);
+    end;
+   end;
+
+   while BucketIndex<CountBuckets do begin
+    Bucket:=@Buckets[BucketIndex];
+    if Bucket^.Count=0 then begin
+     break;
+    end else begin
+     Assert(FreeListSize>0);
+     dec(FreeListSize);
+     SlotIndex:=FreeList[FreeListSize];
+     BucketItem:=@Bucket^.Items[0];
+     Seeds[longint(HashFromString(0,BucketItem^.Key)) mod Size]:=-(SlotIndex+1);
+     Assert(not assigned(Values[SlotIndex]));
+     Values[SlotIndex]:=@Bucket^.Items[0];
+     inc(BucketIndex);
+    end;
+   end;
+
+   for Index:=0 to length(StringIntegerPairHashMap.EntityToCellIndex)-1 do begin
+    if StringIntegerPairHashMap.EntityToCellIndex[Index]>=0 then begin
+     Seed:=Seeds[longint(HashFromString(0,StringIntegerPairHashMap.Entities[Index].Key)) mod length(Seeds)];
+     if Seed<0 then begin
+      TempPointer:=Values[-(Seed+1)];
+     end else begin
+      TempPointer:=Values[longint(HashFromString(longword(Seed),StringIntegerPairHashMap.Entities[Index].Key)) mod length(Values)];
+     end;
+     Assert(assigned(TempPointer) and (PHashBucketItem(TempPointer)^.Key=StringIntegerPairHashMap.Entities[Index].Key));
+    end;
+   end;
+
+  end else begin
+
+   Assert(false);
+   
   end;
+
  finally
   SetLength(Buckets,0);
+  SetLength(Used,0);
+  SetLength(Values,0);
+  SetLength(Slots,0);
+  SetLength(Seeds,0);
+  SetLength(FreeList,0);
  end;
 end;
 
