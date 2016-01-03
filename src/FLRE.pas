@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.03.05.44.0000';
+      FLREVersionString='1.00.2016.01.04.00.45.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -3653,21 +3653,64 @@ begin
  result:=result and $7fffffff;
 end;
 
-function GetMinimalPerfectHashTableValue(const Seeds,Keys,Values:pointer;const Size:longint;const Key:TFLRERawByteString):longint;
-type PIntegers=^TIntegers;
+function GetMinimalPerfectHashTableValue(const Seeds,Keys,Values:pointer;const SeedBits,ValueBits,Size:longint;const Key:TFLRERawByteString):int64;
+type PShortints=^TShortints;
+     TShortints=array[0..0] of shortint;
+     PSmallints=^TSmallints;
+     TSmallints=array[0..0] of smallint;
+     PIntegers=^TIntegers;
      TIntegers=array[0..0] of longint;
+     PBytes=^TBytes;
+     TBytes=array[0..0] of byte;
+     PWords=^TWords;
+     TWords=array[0..0] of word;
+     PLongwords=^TLongwords;
+     TLongwords=array[0..0] of longword;
+     PInt64s=^TInt64s;
+     TInt64s=array[0..0] of int64;
      PRawByteStrings=^TRawByteStrings;
      TRawByteStrings=array[0..0] of TFLRERawByteString;
 var Seed,Index:longint;
 begin
- Seed:=PIntegers(Seeds)^[longint(GetMinimalPerfectHashTableValueHashFromString(0,Key)) mod Size];
+ Index:=longint(GetMinimalPerfectHashTableValueHashFromString(0,Key)) mod Size;
+ case SeedBits of
+  8:begin
+   Seed:=PShortints(Seeds)^[Index]; // Signed 8-bit
+  end;
+  16:begin
+   Seed:=PSmallints(Seeds)^[Index]; // Signed 16-bit
+  end;
+  32:begin
+   Seed:=PIntegers(Seeds)^[Index]; // Signed 32-bit
+  end;
+  else begin
+   result:=-1;
+   exit;
+  end;
+ end;
  if Seed<0 then begin
   Index:=-(Seed+1);
  end else begin
   Index:=longint(GetMinimalPerfectHashTableValueHashFromString(longword(Seed),Key)) mod Size;
  end;
  if (Index>=0) and (Index<Size) and (PRawByteStrings(Keys)^[Index]=Key) then begin
-  result:=PIntegers(Values)^[Index];
+  case ValueBits of
+   8:begin
+    result:=PBytes(Values)^[Index]; // Unsigned 8-bit
+   end;
+   16:begin
+    result:=PWords(Values)^[Index]; // Unsigned 16-bit
+   end;
+   32:begin
+    result:=PLongwords(Values)^[Index]; // Unsigned 32-bit
+   end;
+   64:begin
+    result:=PInt64s(Values)^[Index]; // Signed 64-bit
+   end;
+   else begin
+    result:=-1;
+   end;
+  end;
  end else begin
   result:=-1;
  end;
@@ -10718,12 +10761,16 @@ var SourcePosition,SourceLength:longint;
     f:=GetMinimalPerfectHashTableValue(@FLREUnicodeClassLowerCaseHashMapSeeds,
                                        @FLREUnicodeClassLowerCaseHashMapKeys,
                                        @FLREUnicodeClassLowerCaseHashMapValues,
+                                       FLREUnicodeClassLowerCaseHashMapSeedBits,
+                                       FLREUnicodeClassLowerCaseHashMapValueBits,
                                        FLREUnicodeClassLowerCaseHashMapSize,
                                        LowerCaseName);
    end else begin
     f:=GetMinimalPerfectHashTableValue(@FLREUnicodeClassHashMapSeeds,
                                        @FLREUnicodeClassHashMapKeys,
                                        @FLREUnicodeClassHashMapValues,
+                                       FLREUnicodeClassHashMapSeedBits,
+                                       FLREUnicodeClassHashMapValueBits,
                                        FLREUnicodeClassHashMapSize,
                                        Name);
    end;
@@ -10738,12 +10785,16 @@ var SourcePosition,SourceLength:longint;
     f:=GetMinimalPerfectHashTableValue(@FLREUnicodeScriptLowerCaseHashMapSeeds,
                                        @FLREUnicodeScriptLowerCaseHashMapKeys,
                                        @FLREUnicodeScriptLowerCaseHashMapValues,
+                                       FLREUnicodeScriptLowerCaseHashMapSeedBits,
+                                       FLREUnicodeScriptLowerCaseHashMapValueBits,
                                        FLREUnicodeScriptLowerCaseHashMapSize,
                                        LowerCaseName);
    end else begin
     f:=GetMinimalPerfectHashTableValue(@FLREUnicodeScriptHashMapSeeds,
                                        @FLREUnicodeScriptHashMapKeys,
                                        @FLREUnicodeScriptHashMapValues,
+                                       FLREUnicodeScriptHashMapSeedBits,
+                                       FLREUnicodeScriptHashMapValueBits,
                                        FLREUnicodeScriptHashMapSize,
                                        Name);
    end;
@@ -10758,12 +10809,16 @@ var SourcePosition,SourceLength:longint;
     f:=GetMinimalPerfectHashTableValue(@FLREUnicodeBlockLowerCaseHashMapSeeds,
                                        @FLREUnicodeBlockLowerCaseHashMapKeys,
                                        @FLREUnicodeBlockLowerCaseHashMapValues,
+                                       FLREUnicodeBlockLowerCaseHashMapSeedBits,
+                                       FLREUnicodeBlockLowerCaseHashMapValueBits,
                                        FLREUnicodeBlockLowerCaseHashMapSize,
                                        LowerCaseName);
    end else begin
     f:=GetMinimalPerfectHashTableValue(@FLREUnicodeBlockHashMapSeeds,
                                        @FLREUnicodeBlockHashMapKeys,
                                        @FLREUnicodeBlockHashMapValues,
+                                       FLREUnicodeBlockHashMapSeedBits,
+                                       FLREUnicodeBlockHashMapValueBits,
                                        FLREUnicodeBlockHashMapSize,
                                        Name);
    end;
@@ -10778,12 +10833,16 @@ var SourcePosition,SourceLength:longint;
     f:=GetMinimalPerfectHashTableValue(@FLREUnicodeAdditionalBlockLowerCaseHashMapSeeds,
                                        @FLREUnicodeAdditionalBlockLowerCaseHashMapKeys,
                                        @FLREUnicodeAdditionalBlockLowerCaseHashMapValues,
+                                       FLREUnicodeAdditionalBlockLowerCaseHashMapSeedBits,
+                                       FLREUnicodeAdditionalBlockLowerCaseHashMapValueBits,
                                        FLREUnicodeAdditionalBlockLowerCaseHashMapSize,
                                        LowerCaseName);
    end else begin
     f:=GetMinimalPerfectHashTableValue(@FLREUnicodeAdditionalBlockHashMapSeeds,
                                        @FLREUnicodeAdditionalBlockHashMapKeys,
                                        @FLREUnicodeAdditionalBlockHashMapValues,
+                                       FLREUnicodeAdditionalBlockHashMapSeedBits,
+                                       FLREUnicodeAdditionalBlockHashMapValueBits,
                                        FLREUnicodeAdditionalBlockHashMapSize,
                                        Name);
    end;
@@ -11415,6 +11474,8 @@ var SourcePosition,SourceLength:longint;
      f:=GetMinimalPerfectHashTableValue(@FLREUnicodeClassHashMapSeeds,
                                         @FLREUnicodeClassHashMapKeys,
                                         @FLREUnicodeClassHashMapValues,
+                                        FLREUnicodeClassHashMapSeedBits,
+                                        FLREUnicodeClassHashMapValueBits,
                                         FLREUnicodeClassHashMapSize,
                                         UTF32CharToUTF8(byte(ansichar(Source[SourcePosition]))));
      if f>=0 then begin

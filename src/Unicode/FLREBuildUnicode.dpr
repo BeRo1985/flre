@@ -2143,7 +2143,7 @@ procedure MakeMinimalPerfectHashTable(const StringIntegerPairHashMap:TFLREString
 type PHashBucketItem=^THashBucketItem;
      THashBucketItem=record
       Key:TFLRERawByteString;
-      Value:longint;
+      Value:int64;
      end;
      PHashBucket=^THashBucket;
      THashBucket=record
@@ -2157,6 +2157,7 @@ var Index,Size,HashValue,OldCount,SubIndex,CountBuckets,TempInteger,BucketIndex,
     Bucket:PHashBucket;
     BucketItem:PHashBucketItem;
     TempPointer:pointer;
+    MinValue,MaxValue:int64;
     Used:array of boolean;
     Values:array of PHashBucketItem;
     Slots:array of longint;
@@ -2325,11 +2326,38 @@ begin
     end;
    end;
 
+   MinValue:=$7fffffffffffffff;
+   MaxValue:=int64(-$7fffffffffffffff)-1; // int64(-$8000000000000000) => parser error under Delphi 7
+   for Index:=0 to length(Seeds)-1 do begin
+    if MinValue>Seeds[Index] then begin
+     MinValue:=Seeds[Index];
+    end;
+    if MaxValue<Seeds[Index] then begin
+     MaxValue:=Seeds[Index];
+    end;
+   end;
    UnitSourceList.Add('const FLRE'+HashTableName+'SeedSize='+IntToStr(length(Seeds))+';');
    UnitSourceList.Add('      FLRE'+HashTableName+'ValueSize='+IntToStr(length(Values))+';');
    UnitSourceList.Add('      FLRE'+HashTableName+'Size='+IntToStr(Size)+';');
    UnitSourceList.Add('');
-   UnitSourceList.Add('      FLRE'+HashTableName+'Seeds:array[0..'+IntToStr(length(Seeds)-1)+'] of longint=(');
+   if (MinValue>=int64(-$80)) and (MaxValue<=int64($7f)) then begin
+    UnitSourceList.Add('      FLRE'+HashTableName+'SeedBits=8;');
+    UnitSourceList.Add('');
+    UnitSourceList.Add('      FLRE'+HashTableName+'Seeds:array[0..'+IntToStr(length(Seeds)-1)+'] of shortint=(');
+   end else if (MinValue>=int64(-$8000)) and (MaxValue<=int64($7fff)) then begin
+    UnitSourceList.Add('      FLRE'+HashTableName+'SeedBits=16;');
+    UnitSourceList.Add('');
+    UnitSourceList.Add('      FLRE'+HashTableName+'Seeds:array[0..'+IntToStr(length(Seeds)-1)+'] of smallint=(');
+   end else if (MinValue>=-int64($80000000)) and (MaxValue<=int64($7fffffff)) then begin
+    UnitSourceList.Add('      FLRE'+HashTableName+'SeedBits=32;');
+    UnitSourceList.Add('');
+    UnitSourceList.Add('      FLRE'+HashTableName+'Seeds:array[0..'+IntToStr(length(Seeds)-1)+'] of longint=(');
+   end else begin
+    Assert(false,'Ups, seed should be maximal 32-bit signed!');
+    UnitSourceList.Add('      FLRE'+HashTableName+'SeedBits=64;');
+    UnitSourceList.Add('');
+    UnitSourceList.Add('      FLRE'+HashTableName+'Seeds:array[0..'+IntToStr(length(Seeds)-1)+'] of int64=(');
+   end;
    for Index:=0 to length(Seeds)-1 do begin
     if (Index+1)<length(Seeds) then begin
      UnitSourceList.Add(IntToStr(Seeds[Index])+',');
@@ -2338,7 +2366,7 @@ begin
     end;
    end;
    UnitSourceList.Add(');');
-   UnitSourceList.Add('');                                                                                                
+   UnitSourceList.Add('');
    UnitSourceList.Add('      FLRE'+HashTableName+'Keys:array[0..'+IntToStr(length(Values)-1)+'] of TFLRERawByteString=(');
    for Index:=0 to length(Values)-1 do begin
     if assigned(Values[Index]) then begin
@@ -2358,15 +2386,52 @@ begin
    UnitSourceList.Add(');');
    UnitSourceList.Add('');
 
-   UnitSourceList.Add('      FLRE'+HashTableName+'Values:array[0..'+IntToStr(length(Values)-1)+'] of longint=(');
+   MinValue:=$7fffffffffffffff;
+   MaxValue:=int64(-$7fffffffffffffff)-1; // int64(-$8000000000000000) => parser error under Delphi 7
    for Index:=0 to length(Values)-1 do begin
     if assigned(Values[Index]) then begin
+     if MinValue>PHashBucketItem(Values[Index])^.Value then begin
+      MinValue:=PHashBucketItem(Values[Index])^.Value;
+     end;
+     if MaxValue<PHashBucketItem(Values[Index])^.Value then begin
+      MaxValue:=PHashBucketItem(Values[Index])^.Value;
+     end;
+    end else begin
+     if MinValue>-1 then begin
+      MinValue:=-1;
+     end;
+     if MaxValue<-1 then begin
+      MaxValue:=-1;
+     end;
+    end;
+   end;
+   if (MinValue>=0) and (MaxValue<int64($100)) then begin
+    UnitSourceList.Add('      FLRE'+HashTableName+'ValueBits=8;');
+    UnitSourceList.Add('');
+    UnitSourceList.Add('      FLRE'+HashTableName+'Values:array[0..'+IntToStr(length(Values)-1)+'] of byte=(');
+   end else if (MinValue>=0) and (MaxValue<int64($10000)) then begin
+    UnitSourceList.Add('      FLRE'+HashTableName+'ValueBits=16;');
+    UnitSourceList.Add('');
+    UnitSourceList.Add('      FLRE'+HashTableName+'Values:array[0..'+IntToStr(length(Values)-1)+'] of word=(');
+   end else if (MinValue>=0) and (MaxValue<int64($100000000)) then begin
+    UnitSourceList.Add('      FLRE'+HashTableName+'ValueBits=32;');
+    UnitSourceList.Add('');
+    UnitSourceList.Add('      FLRE'+HashTableName+'Values:array[0..'+IntToStr(length(Values)-1)+'] of longword=(');
+   end else begin
+    UnitSourceList.Add('      FLRE'+HashTableName+'ValueBits=64;');
+    UnitSourceList.Add('');
+    UnitSourceList.Add('      FLRE'+HashTableName+'Values:array[0..'+IntToStr(length(Values)-1)+'] of int64=(');
+   end;
+   for Index:=0 to length(Values)-1 do begin
+    if assigned(Values[Index]) then begin
+     Assert((PHashBucketItem(Values[Index])^.Value>=0) and (PHashBucketItem(Values[Index])^.Value<=$ffffffff));
      if (Index+1)<length(Values) then begin
       UnitSourceList.Add(IntToStr(PHashBucketItem(Values[Index])^.Value)+',');
      end else begin
       UnitSourceList.Add(IntToStr(PHashBucketItem(Values[Index])^.Value));
      end;
     end else begin
+     Assert(false);
      if (Index+1)<length(Values) then begin
       UnitSourceList.Add('-1,');
      end else begin

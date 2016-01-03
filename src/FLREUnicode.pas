@@ -4979,7 +4979,9 @@ const FLREUnicodeClassHashMapSeedSize=297;
       FLREUnicodeClassHashMapValueSize=297;
       FLREUnicodeClassHashMapSize=297;
 
-      FLREUnicodeClassHashMapSeeds:array[0..296] of longint=(
+      FLREUnicodeClassHashMapSeedBits=16;
+
+      FLREUnicodeClassHashMapSeeds:array[0..296] of smallint=(
 -297,
 3,
 -295,
@@ -5579,7 +5581,9 @@ const FLREUnicodeClassHashMapSeedSize=297;
 'IsClose_Punctuation'
 );
 
-      FLREUnicodeClassHashMapValues:array[0..296] of longint=(
+      FLREUnicodeClassHashMapValueBits=32;
+
+      FLREUnicodeClassHashMapValues:array[0..296] of longword=(
 4194304,
 128,
 4096,
@@ -5883,7 +5887,9 @@ const FLREUnicodeScriptHashMapSeedSize=495;
       FLREUnicodeScriptHashMapValueSize=495;
       FLREUnicodeScriptHashMapSize=495;
 
-      FLREUnicodeScriptHashMapSeeds:array[0..494] of longint=(
+      FLREUnicodeScriptHashMapSeedBits=16;
+
+      FLREUnicodeScriptHashMapSeeds:array[0..494] of smallint=(
 1,
 -495,
 -492,
@@ -6879,7 +6885,9 @@ const FLREUnicodeScriptHashMapSeedSize=495;
 'IsSyloti_Nagri'
 );
 
-      FLREUnicodeScriptHashMapValues:array[0..494] of longint=(
+      FLREUnicodeScriptHashMapValueBits=8;
+
+      FLREUnicodeScriptHashMapValues:array[0..494] of byte=(
 94,
 62,
 77,
@@ -7381,7 +7389,9 @@ const FLREUnicodeBlockHashMapSeedSize=1290;
       FLREUnicodeBlockHashMapValueSize=1290;
       FLREUnicodeBlockHashMapSize=1290;
 
-      FLREUnicodeBlockHashMapSeeds:array[0..1289] of longint=(
+      FLREUnicodeBlockHashMapSeedBits=16;
+
+      FLREUnicodeBlockHashMapSeeds:array[0..1289] of smallint=(
 1,
 1,
 5,
@@ -9967,7 +9977,9 @@ const FLREUnicodeBlockHashMapSeedSize=1290;
 'InCopticEpactNumbers'
 );
 
-      FLREUnicodeBlockHashMapValues:array[0..1289] of longint=(
+      FLREUnicodeBlockHashMapValueBits=16;
+
+      FLREUnicodeBlockHashMapValues:array[0..1289] of word=(
 14,
 61,
 16,
@@ -11264,7 +11276,9 @@ const FLREUnicodeAdditionalBlockHashMapSeedSize=24;
       FLREUnicodeAdditionalBlockHashMapValueSize=24;
       FLREUnicodeAdditionalBlockHashMapSize=24;
 
-      FLREUnicodeAdditionalBlockHashMapSeeds:array[0..23] of longint=(
+      FLREUnicodeAdditionalBlockHashMapSeedBits=8;
+
+      FLREUnicodeAdditionalBlockHashMapSeeds:array[0..23] of shortint=(
 -24,
 0,
 2,
@@ -11318,7 +11332,9 @@ const FLREUnicodeAdditionalBlockHashMapSeedSize=24;
 'xmlD'
 );
 
-      FLREUnicodeAdditionalBlockHashMapValues:array[0..23] of longint=(
+      FLREUnicodeAdditionalBlockHashMapValueBits=8;
+
+      FLREUnicodeAdditionalBlockHashMapValues:array[0..23] of byte=(
 0,
 2,
 0,
@@ -11349,7 +11365,9 @@ const FLREUnicodeClassLowerCaseHashMapSeedSize=297;
       FLREUnicodeClassLowerCaseHashMapValueSize=297;
       FLREUnicodeClassLowerCaseHashMapSize=297;
 
-      FLREUnicodeClassLowerCaseHashMapSeeds:array[0..296] of longint=(
+      FLREUnicodeClassLowerCaseHashMapSeedBits=16;
+
+      FLREUnicodeClassLowerCaseHashMapSeeds:array[0..296] of smallint=(
 0,
 0,
 1,
@@ -11949,7 +11967,9 @@ const FLREUnicodeClassLowerCaseHashMapSeedSize=297;
 'ismodifierletter'
 );
 
-      FLREUnicodeClassLowerCaseHashMapValues:array[0..296] of longint=(
+      FLREUnicodeClassLowerCaseHashMapValueBits=32;
+
+      FLREUnicodeClassLowerCaseHashMapValues:array[0..296] of longword=(
 4,
 4,
 3584,
@@ -12253,7 +12273,9 @@ const FLREUnicodeScriptLowerCaseHashMapSeedSize=495;
       FLREUnicodeScriptLowerCaseHashMapValueSize=495;
       FLREUnicodeScriptLowerCaseHashMapSize=495;
 
-      FLREUnicodeScriptLowerCaseHashMapSeeds:array[0..494] of longint=(
+      FLREUnicodeScriptLowerCaseHashMapSeedBits=16;
+
+      FLREUnicodeScriptLowerCaseHashMapSeeds:array[0..494] of smallint=(
 1,
 0,
 0,
@@ -13249,7 +13271,9 @@ const FLREUnicodeScriptLowerCaseHashMapSeedSize=495;
 'sundanese'
 );
 
-      FLREUnicodeScriptLowerCaseHashMapValues:array[0..494] of longint=(
+      FLREUnicodeScriptLowerCaseHashMapValueBits=8;
+
+      FLREUnicodeScriptLowerCaseHashMapValues:array[0..494] of byte=(
 25,
 104,
 96,
@@ -13751,7 +13775,9 @@ const FLREUnicodeBlockLowerCaseHashMapSeedSize=1290;
       FLREUnicodeBlockLowerCaseHashMapValueSize=1290;
       FLREUnicodeBlockLowerCaseHashMapSize=1290;
 
-      FLREUnicodeBlockLowerCaseHashMapSeeds:array[0..1289] of longint=(
+      FLREUnicodeBlockLowerCaseHashMapSeedBits=16;
+
+      FLREUnicodeBlockLowerCaseHashMapSeeds:array[0..1289] of smallint=(
 -1290,
 1,
 -1289,
@@ -16337,7 +16363,9 @@ const FLREUnicodeBlockLowerCaseHashMapSeedSize=1290;
 'supplemental_punctuation'
 );
 
-      FLREUnicodeBlockLowerCaseHashMapValues:array[0..1289] of longint=(
+      FLREUnicodeBlockLowerCaseHashMapValueBits=16;
+
+      FLREUnicodeBlockLowerCaseHashMapValues:array[0..1289] of word=(
 55,
 145,
 2,
@@ -17634,7 +17662,9 @@ const FLREUnicodeAdditionalBlockLowerCaseHashMapSeedSize=24;
       FLREUnicodeAdditionalBlockLowerCaseHashMapValueSize=24;
       FLREUnicodeAdditionalBlockLowerCaseHashMapSize=24;
 
-      FLREUnicodeAdditionalBlockLowerCaseHashMapSeeds:array[0..23] of longint=(
+      FLREUnicodeAdditionalBlockLowerCaseHashMapSeedBits=8;
+
+      FLREUnicodeAdditionalBlockLowerCaseHashMapSeeds:array[0..23] of shortint=(
 0,
 1,
 -23,
@@ -17688,7 +17718,9 @@ const FLREUnicodeAdditionalBlockLowerCaseHashMapSeedSize=24;
 'xmlw'
 );
 
-      FLREUnicodeAdditionalBlockLowerCaseHashMapValues:array[0..23] of longint=(
+      FLREUnicodeAdditionalBlockLowerCaseHashMapValueBits=8;
+
+      FLREUnicodeAdditionalBlockLowerCaseHashMapValues:array[0..23] of byte=(
 1,
 1,
 3,
