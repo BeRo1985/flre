@@ -655,7 +655,6 @@ var LowerUpperCaseUnicodeCharClass:TFLREUnicodeCharClass;
     UnicodeBlockLowerCaseHashMap:TFLREStringIntegerPairHashMap;
     UnicodeAdditionalBlockLowerCaseHashMap:TFLREStringIntegerPairHashMap;
 
-
 constructor TFLREUnicodeCharClassRange.Create(ACharClass:TFLREUnicodeCharClass;ALo,AHi:longword);
 begin
  inherited Create;
@@ -2328,8 +2327,9 @@ begin
 
    UnitSourceList.Add('const FLRE'+HashTableName+'SeedSize='+IntToStr(length(Seeds))+';');
    UnitSourceList.Add('      FLRE'+HashTableName+'ValueSize='+IntToStr(length(Values))+';');
+   UnitSourceList.Add('      FLRE'+HashTableName+'Size='+IntToStr(Size)+';');
    UnitSourceList.Add('');
-   UnitSourceList.Add('      FLRE'+HashTableName+'Seed:array[0..'+IntToStr(length(Seeds)-1)+'] of longint=(');
+   UnitSourceList.Add('      FLRE'+HashTableName+'Seeds:array[0..'+IntToStr(length(Seeds)-1)+'] of longint=(');
    for Index:=0 to length(Seeds)-1 do begin
     if (Index+1)<length(Seeds) then begin
      UnitSourceList.Add(IntToStr(Seeds[Index])+',');
@@ -2393,7 +2393,9 @@ begin
  end;
 end;
 
-var i,j,k:longint;
+var i,j,k,Size:longint;
+    s:TFLRERawByteString;
+    UnicodeCharClassRange:TFLREUnicodeCharClassRange;
 begin
  UnitSourceList:=TStringList.Create;
  try
@@ -2424,6 +2426,9 @@ begin
   UnitSourceList.Add('type PFLREUnicodeCharRange=^TFLREUnicodeCharRange;');
   UnitSourceList.Add('     TFLREUnicodeCharRange=array[0..1] of longword;');
   UnitSourceList.Add('');                                                   
+  UnitSourceList.Add('     PFLREUnicodeCharRanges=^TFLREUnicodeCharRanges;');
+  UnitSourceList.Add('     TFLREUnicodeCharRanges=array[0..0] of TFLREUnicodeCharRange;');
+  UnitSourceList.Add('');
 
   for i:=0 to length(UnicodeCharRangeClasses)-1 do begin
    UnitSourceList.Add('const FLREUnicodeCharRangeClasses'+IntToStr(i)+':array[0..'+IntToStr(length(UnicodeCharRangeClasses[i])-1)+'] of TFLREUnicodeCharRange=(');
@@ -2494,6 +2499,28 @@ begin
    end else begin
     UnitSourceList.Add(IntToStr(length(UnicodeAdditionalBlocks[i])));
    end;
+  end;
+  UnitSourceList.Add(');');
+  UnitSourceList.Add('');
+
+  Size:=0;
+  UnicodeCharClassRange:=LowerUpperCaseUnicodeCharClass.First;
+  while assigned(UnicodeCharClassRange) do begin
+   inc(Size);
+   UnicodeCharClassRange:=UnicodeCharClassRange.Next;
+  end;
+  UnitSourceList.Add('const FLRELowerUpperCaseUnicodeCharClassSize='+IntToStr(Size)+';');
+  UnitSourceList.Add('');
+
+  UnitSourceList.Add('      FLRELowerUpperCaseUnicodeCharClass:array[0..'+IntToStr(Size-1)+',0..1] of longword=(');
+  UnicodeCharClassRange:=LowerUpperCaseUnicodeCharClass.First;
+  while assigned(UnicodeCharClassRange) do begin
+   s:='('+IntToStr(UnicodeCharClassRange.Lo)+','+IntToStr(UnicodeCharClassRange.Hi)+')';
+   UnicodeCharClassRange:=UnicodeCharClassRange.Next;
+   if assigned(UnicodeCharClassRange) then begin
+    s:=s+',';
+   end;
+   UnitSourceList.Add(s);
   end;
   UnitSourceList.Add(');');
   UnitSourceList.Add('');
