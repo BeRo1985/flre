@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.03.05.09.0000';
+      FLREVersionString='1.00.2016.01.03.05.44.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -10684,6 +10684,7 @@ var SourcePosition,SourceLength:longint;
     Source:TFLRERawByteString;
     GroupIndexIntegerStack:TFLREIntegerList;
     GroupNameStringStack:TStringList;
+    BackReferenceComparisonGroup:boolean;
  function Hex2Value(const c:ansichar):longword;
  begin
   case c of
@@ -12040,7 +12041,7 @@ var SourcePosition,SourceLength:longint;
  end;
  function ParseAtom:PFLRENode;
  var Value,Index:longint;
-     Negate,Done,IsNegative:boolean;
+     Negate,Done,IsNegative,OldBackReferenceComparisonGroup:boolean;
      UnicodeChar,LowerCaseUnicodeChar,UpperCaseUnicodeChar:longword;
      UnicodeCharClass:TFLREUnicodeCharClass;
      OldFlags:TFLREFlags;
@@ -12171,7 +12172,11 @@ var SourcePosition,SourceLength:longint;
            end else begin
             raise EFLRE.Create('Syntax error');
            end;
-           result:=NewNamedGroup(Name);
+           if BackReferenceComparisonGroup then begin
+            result:=ParseDisjunction;
+           end else begin
+            result:=NewNamedGroup(Name);
+           end;
           end;
           '!','=':begin
            Negate:=Source[SourcePosition]='!';
@@ -12243,7 +12248,11 @@ var SourcePosition,SourceLength:longint;
             end else begin
              raise EFLRE.Create('Syntax error');
             end;
-            result:=NewNamedGroup(Name);
+            if BackReferenceComparisonGroup then begin
+             result:=ParseDisjunction;
+            end else begin
+             result:=NewNamedGroup(Name);
+            end;
            end;
           end;
           'P':begin
@@ -12260,7 +12269,13 @@ var SourcePosition,SourceLength:longint;
               if (SourcePosition<=SourceLength) and (Source[SourcePosition]=':') then begin
                inc(SourcePosition);
                result:=NewBackReferencePerName(Name,true);
-               result^.Left:=ParseDisjunction;
+               OldBackReferenceComparisonGroup:=BackReferenceComparisonGroup;
+               BackReferenceComparisonGroup:=true;
+               try
+                result^.Left:=ParseDisjunction;
+               finally
+                BackReferenceComparisonGroup:=OldBackReferenceComparisonGroup;
+               end;
               end else begin
                result:=NewBackReferencePerName(Name,false);
               end;
@@ -12277,7 +12292,11 @@ var SourcePosition,SourceLength:longint;
               end else begin
                raise EFLRE.Create('Syntax error');
               end;          
-              result:=NewNamedGroup(Name);
+              if BackReferenceComparisonGroup then begin
+               result:=ParseDisjunction;
+              end else begin
+               result:=NewNamedGroup(Name);
+              end;
              end
              else begin
               raise EFLRE.Create('Syntax error');
@@ -12295,7 +12314,11 @@ var SourcePosition,SourceLength:longint;
          raise EFLRE.Create('Syntax error');
         end;
        end else begin
-        result:=NewNumberedGroup;
+        if BackReferenceComparisonGroup then begin
+         result:=ParseDisjunction;
+        end else begin
+         result:=NewNumberedGroup;
+        end;
        end;
        if (SourcePosition<=SourceLength) and (Source[SourcePosition]=')') then begin
         inc(SourcePosition);
@@ -12867,6 +12890,7 @@ begin
   CapturesToSubMatchesMap[0]:=0;
   GroupIndexIntegerStack:=TFLREIntegerList.Create;
   GroupNameStringStack:=TStringList.Create;
+  BackReferenceComparisonGroup:=false;
   try
    if rfMULTIMATCH in Flags then begin
     AnchoredRootNode:=NewNode(ntPAREN,ParseMultiMatch,nil,0);
