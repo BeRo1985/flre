@@ -2426,7 +2426,7 @@ begin
   UnitSourceList.Add('');                                                   
 
   for i:=0 to length(UnicodeCharRangeClasses)-1 do begin
-   UnitSourceList.Add('const FLREUnicodeCharRangeClasses'+IntToStr(i)+'=array[0..'+IntToStr(length(UnicodeCharRangeClasses[i])-1)+'] of TFLREUnicodeCharRange=(');
+   UnitSourceList.Add('const FLREUnicodeCharRangeClasses'+IntToStr(i)+':array[0..'+IntToStr(length(UnicodeCharRangeClasses[i])-1)+'] of TFLREUnicodeCharRange=(');
    for j:=0 to length(UnicodeCharRangeClasses[i])-1 do begin
     if (j+1)<length(UnicodeCharRangeClasses[i]) then begin
      UnitSourceList.Add('('+IntToStr(UnicodeCharRangeClasses[i,j,0])+','+IntToStr(UnicodeCharRangeClasses[i,j,1])+'),');
@@ -2438,7 +2438,7 @@ begin
    UnitSourceList.Add('');
   end;
 
-  UnitSourceList.Add('const FLREUnicodeCharRangeClassesData=array[0..'+IntToStr(length(UnicodeCharRangeClasses)-1)+'] of pointer=(');
+  UnitSourceList.Add('const FLREUnicodeCharRangeClassesData:array[0..'+IntToStr(length(UnicodeCharRangeClasses)-1)+'] of pointer=(');
   for i:=0 to length(UnicodeCharRangeClasses)-1 do begin
    if (i+1)<length(UnicodeCharRangeClasses) then begin
     UnitSourceList.Add('@FLREUnicodeCharRangeClasses'+IntToStr(i)+',');
@@ -2449,12 +2449,50 @@ begin
   UnitSourceList.Add(');');
   UnitSourceList.Add('');
 
-  UnitSourceList.Add('const FLREUnicodeCharRangeClassesCounts=array[0..'+IntToStr(length(UnicodeCharRangeClasses)-1)+'] of longint=(');
+  UnitSourceList.Add('const FLREUnicodeCharRangeClassesCounts:array[0..'+IntToStr(length(UnicodeCharRangeClasses)-1)+'] of longint=(');
   for i:=0 to length(UnicodeCharRangeClasses)-1 do begin
    if (i+1)<length(UnicodeCharRangeClasses) then begin
     UnitSourceList.Add(IntToStr(length(UnicodeCharRangeClasses[i]))+',');
    end else begin
     UnitSourceList.Add(IntToStr(length(UnicodeCharRangeClasses[i])));
+   end;
+  end;
+  UnitSourceList.Add(');');
+  UnitSourceList.Add('');
+
+  UnitSourceList.Add('const FLRECountUnicodeAdditionalBlocks='+IntToStr(length(UnicodeAdditionalBlocks)-1)+';');
+  UnitSourceList.Add('');
+
+  for i:=0 to length(UnicodeAdditionalBlocks)-1 do begin
+   UnitSourceList.Add('const FLREUnicodeAdditionalBlocks'+IntToStr(i)+':array[0..'+IntToStr(length(UnicodeAdditionalBlocks[i])-1)+'] of TFLREUnicodeCharRange=(');
+   for j:=0 to length(UnicodeAdditionalBlocks[i])-1 do begin
+    if (j+1)<length(UnicodeAdditionalBlocks[i]) then begin
+     UnitSourceList.Add('('+IntToStr(UnicodeAdditionalBlocks[i,j].FromChar)+','+IntToStr(UnicodeAdditionalBlocks[i,j].ToChar)+'),');
+    end else begin
+     UnitSourceList.Add('('+IntToStr(UnicodeAdditionalBlocks[i,j].FromChar)+','+IntToStr(UnicodeAdditionalBlocks[i,j].ToChar)+')');
+    end;
+   end;
+   UnitSourceList.Add(');');
+   UnitSourceList.Add('');
+  end;
+
+  UnitSourceList.Add('const FLREUnicodeAdditionalBlocksData:array[0..'+IntToStr(length(UnicodeAdditionalBlocks)-1)+'] of pointer=(');
+  for i:=0 to length(UnicodeAdditionalBlocks)-1 do begin
+   if (i+1)<length(UnicodeAdditionalBlocks) then begin
+    UnitSourceList.Add('@FLREUnicodeAdditionalBlocks'+IntToStr(i)+',');
+   end else begin
+    UnitSourceList.Add('@FLREUnicodeAdditionalBlocks'+IntToStr(i));
+   end;
+  end;
+  UnitSourceList.Add(');');
+  UnitSourceList.Add('');
+
+  UnitSourceList.Add('const FLREUnicodeAdditionalBlocksCounts:array[0..'+IntToStr(length(UnicodeAdditionalBlocks)-1)+'] of longint=(');
+  for i:=0 to length(UnicodeAdditionalBlocks)-1 do begin
+   if (i+1)<length(UnicodeAdditionalBlocks) then begin
+    UnitSourceList.Add(IntToStr(length(UnicodeAdditionalBlocks[i]))+',');
+   end else begin
+    UnitSourceList.Add(IntToStr(length(UnicodeAdditionalBlocks[i])));
    end;
   end;
   UnitSourceList.Add(');');
@@ -2468,44 +2506,6 @@ begin
   MakeMinimalPerfectHashTable(UnicodeScriptLowerCaseHashMap,'UnicodeScriptLowerCaseHashMap');
   MakeMinimalPerfectHashTable(UnicodeBlockLowerCaseHashMap,'UnicodeBlockLowerCaseHashMap');
   MakeMinimalPerfectHashTable(UnicodeAdditionalBlockLowerCaseHashMap,'UnicodeAdditionalBlockLowerCaseHashMap');
-
-  UnitSourceList.Add('const FLRECountUnicodeAdditionalBlocks='+IntToStr(length(UnicodeAdditionalBlocks)-1)+';');
-  UnitSourceList.Add('');
-
-  for i:=0 to length(UnicodeAdditionalBlocks)-1 do begin
-   UnitSourceList.Add('const FLREUnicodeAdditionalBlocks'+IntToStr(i)+'=array[0..'+IntToStr(length(UnicodeCharRangeClasses[i])-1)+'] of TFLREUnicodeCharRange=(');
-   for j:=0 to length(UnicodeAdditionalBlocks[i])-1 do begin
-    if (j+1)<length(UnicodeAdditionalBlocks[i]) then begin
-     UnitSourceList.Add('('+IntToStr(UnicodeAdditionalBlocks[i,j].FromChar)+','+IntToStr(UnicodeAdditionalBlocks[i,j].ToChar)+'),');
-    end else begin
-     UnitSourceList.Add('('+IntToStr(UnicodeAdditionalBlocks[i,j].FromChar)+','+IntToStr(UnicodeAdditionalBlocks[i,j].ToChar)+'),');
-    end;
-   end;
-   UnitSourceList.Add(');');
-   UnitSourceList.Add('');
-  end;
-
-  UnitSourceList.Add('const FLREUnicodeAdditionalBlocksData=array[0..'+IntToStr(length(UnicodeAdditionalBlocks)-1)+'] of pointer=(');
-  for i:=0 to length(UnicodeAdditionalBlocks)-1 do begin
-   if (i+1)<length(UnicodeAdditionalBlocks) then begin
-    UnitSourceList.Add('@FLREUnicodeAdditionalBlocks'+IntToStr(i)+',');
-   end else begin
-    UnitSourceList.Add('@FLREUnicodeAdditionalBlocks'+IntToStr(i));
-   end;
-  end;
-  UnitSourceList.Add(');');
-  UnitSourceList.Add('');
-
-  UnitSourceList.Add('const FLREUnicodeAdditionalBlocksCounts=array[0..'+IntToStr(length(UnicodeAdditionalBlocks)-1)+'] of longint=(');
-  for i:=0 to length(UnicodeAdditionalBlocks)-1 do begin
-   if (i+1)<length(UnicodeAdditionalBlocks) then begin
-    UnitSourceList.Add(IntToStr(length(UnicodeAdditionalBlocks[i]))+',');
-   end else begin
-    UnitSourceList.Add(IntToStr(length(UnicodeAdditionalBlocks[i])));
-   end;
-  end;
-  UnitSourceList.Add(');');
-  UnitSourceList.Add('');
 
   UnitSourceList.Add('implementation');
   UnitSourceList.Add('end.');
