@@ -1,0 +1,7 @@
+
+1. First compile and run FLREConvertUnicode
+2. Then !!!!recompile!!! and run FLREBuildUnicode
+3. Delete no more needed FLREUnicode.pas from the same directory as the FLREConvertUnicode and FLREBuildUnicode binaries 
+
+
+ 
