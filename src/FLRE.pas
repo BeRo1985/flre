@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.04.00.45.0000';
+      FLREVersionString='1.00.2016.01.10.07.19.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -11997,7 +11997,7 @@ var SourcePosition,SourceLength:longint;
    if CountCaptures>length(CapturesToSubMatchesMap) then begin
     SetLength(CapturesToSubMatchesMap,CountCaptures*2);
    end;
-   CapturesToSubMatchesMap[CountCaptures]:=GroupIndex;
+   CapturesToSubMatchesMap[GroupIndex]:=SubMatchIndex;
    NamedGroupStringIntegerPairHashMap.Add(Name,GroupIndex);
    if NamedGroupStringList.IndexOf(String(Name))<0 then begin
     NamedGroupStringList.Add(String(Name));

@@ -12,7 +12,7 @@ procedure ExecuteReplaceTests;
 implementation
 
 procedure ExecuteReplaceTests;
-begin
+begin 
  ExecuteReplaceTest('(qu|[b-df-hj-np-tv-z]*)([a-z]+)',
                     '\2\1ay',
                     'the quick brown fox jumps over the lazy dogs.',
@@ -97,6 +97,31 @@ begin
                     '(aba)'#10'(aba)',
                     2,
                     []);
+ ExecuteReplaceTest('\d\d\d',
+                    '123',
+                    'AB13JK246XYZ567',
+                    'AB13JK123XYZ567',
+                    'AB13JK123XYZ123',
+                    2,
+                    []);
+
+
+ // Named groups
+ ExecuteReplaceTest('(?<N1>\d)(?<N2>\d)(?<N3>\d)',
+                    '123',
+                    'AB13JK246XYZ567',
+                    'AB13JK123XYZ567',
+                    'AB13JK123XYZ123',
+                    2,
+                    []);
+ ExecuteReplaceTest('(?<N1>\d)(?<N2>\d)(?<N3>\d)',
+                    '${N1}-${N2}${N3}',
+                    'AB13JK246XYZ567',
+                    'AB13JK2-46XYZ567',
+                    'AB13JK2-46XYZ5-67',
+                    2,
+                    []);
+
 end;
 
 end.
