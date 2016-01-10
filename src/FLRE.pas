@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.10.07.19.0000';
+      FLREVersionString='1.00.2016.01.10.07.23.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -16436,9 +16436,7 @@ var Counter:longint;
 begin
  result:=PtrMatch(PFLRERawByteChar(@Input[1]),length(Input),Captures,StartPosition-1);
  for Counter:=0 to length(Captures)-1 do begin
-  if Captures[Counter].Length>0 then begin
-   inc(Captures[Counter].Start);
-  end;
+  inc(Captures[Counter].Start);
   if (rfMULTIMATCH in Flags) and (Counter=0) then begin
    break;
   end;
@@ -16450,9 +16448,7 @@ var Counter:longint;
 begin
  result:=PtrMatchNext(PFLRERawByteChar(@Input[1]),length(Input),Captures,StartPosition-1);
  for Counter:=0 to length(Captures)-1 do begin
-  if Captures[Counter].Length>0 then begin
-   inc(Captures[Counter].Start);
-  end;
+  inc(Captures[Counter].Start);
   if (rfMULTIMATCH in Flags) and (Counter=0) then begin
    break;
   end;
@@ -16465,9 +16461,7 @@ begin
  result:=PtrMatchAll(PFLRERawByteChar(@Input[1]),length(Input),MultiCaptures,StartPosition-1,Limit);
  for Counter:=0 to length(MultiCaptures)-1 do begin
   for SubCounter:=0 to length(MultiCaptures[Counter])-1 do begin
-   if MultiCaptures[Counter,SubCounter].Length>0 then begin
-    inc(MultiCaptures[Counter,SubCounter].Start);
-   end;
+   inc(MultiCaptures[Counter,SubCounter].Start);
    if (rfMULTIMATCH in Flags) and (SubCounter=0) then begin
     break;
    end;
@@ -16515,9 +16509,7 @@ var Counter:longint;
 begin
  result:=PtrMatch(PFLRERawByteChar(@Input[1]),length(Input),Captures,StartPosition-1);
  for Counter:=0 to length(Captures)-1 do begin
-  if Captures[Counter].Length>0 then begin
-   inc(Captures[Counter].Start);
-  end;
+  inc(Captures[Counter].Start);
   if (rfMULTIMATCH in Flags) and (Counter=0) then begin
    break;
   end;
@@ -16529,9 +16521,7 @@ var Counter:longint;
 begin
  result:=PtrMatchNext(PFLRERawByteChar(@Input[1]),length(Input),Captures,StartPosition-1);
  for Counter:=0 to length(Captures)-1 do begin
-  if Captures[Counter].Length>0 then begin
-   inc(Captures[Counter].Start);
-  end;
+  inc(Captures[Counter].Start);
   if (rfMULTIMATCH in Flags) and (Counter=0) then begin
    break;
   end;
@@ -16544,9 +16534,7 @@ begin
  result:=PtrMatchAll(PFLRERawByteChar(@Input[1]),length(Input),MultiCaptures,StartPosition-1,Limit);
  for Counter:=0 to length(MultiCaptures)-1 do begin
   for SubCounter:=0 to length(MultiCaptures[Counter])-1 do begin
-   if MultiCaptures[Counter,SubCounter].Length>0 then begin
-    inc(MultiCaptures[Counter,SubCounter].Start);
-   end;
+   inc(MultiCaptures[Counter,SubCounter].Start);
    if (rfMULTIMATCH in Flags) and (SubCounter=0) then begin
     break;
    end;
