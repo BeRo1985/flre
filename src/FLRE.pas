@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.02.04.11.54.0000';
+      FLREVersionString='1.00.2016.02.04.13.17.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -14094,13 +14094,7 @@ begin
    if not assigned(FixedStringPatternBitMasks) then begin
     GetMem(FixedStringPatternBitMasks,SizeOf(TFLRECharPatternBitMasks));
    end;
-{$if true}
    FillChar(FixedStringPatternBitMasks^,SizeOf(TFLRECharPatternBitMasks),#$0);
-{$else}
-   for c:=low(ansichar) to high(ansichar) do begin
-    FixedStringPatternBitMasks^[c]:=0;
-   end;
-{$ifend}
    for i:=1 to FixedStringLength do begin
     FixedStringPatternBitMasks^[FixedString[i]]:=FixedStringPatternBitMasks^[FixedString[i]] or (1 shl (i-1));
    end;
@@ -14108,13 +14102,7 @@ begin
    if not assigned(FixedStringBoyerMooreSkip) then begin
     GetMem(FixedStringBoyerMooreSkip,SizeOf(TFLRECharPatternBitMasks));
    end;
-{$if true}
    FillChar(FixedStringBoyerMooreSkip^,SizeOf(TFLRECharPatternBitMasks),#$0);
-{$else}
-   for c:=low(ansichar) to high(ansichar) do begin
-    FixedStringBoyerMooreSkip^[c]:=FixedStringLength;
-   end;
-{$ifend}
    for i:=1 to FixedStringLength do begin
     FixedStringBoyerMooreSkip^[FixedString[i]]:=((FixedStringLength-(i-1))-1);
    end;
@@ -14197,13 +14185,7 @@ var CurrentPosition:longint;
   if not assigned(PrefixPatternBitMasks) then begin
    GetMem(PrefixPatternBitMasks,SizeOf(TFLRECharPatternBitMasks));
   end;
-{$if true}
   FillChar(PrefixPatternBitMasks^,SizeOf(TFLRECharPatternBitMasks),#$0);
-{$else}
-  for CurrentChar:=low(ansichar) to high(ansichar) do begin
-   PrefixPatternBitMasks^[CurrentChar]:=0;
-  end;
-{$ifend}
   for CurrentPosition:=0 to CountPrefixCharClasses-1 do begin
    for CurrentChar:=low(ansichar) to high(ansichar) do begin
     if CurrentChar in PrefixCharClasses[CurrentPosition] then begin
