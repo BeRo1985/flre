@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.02.04.10.33.0000';
+      FLREVersionString='1.00.2016.02.04.11.13.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -263,6 +263,26 @@ type EFLRE=class(Exception);
      TFLRELookAssertionString=TFLRERawByteString;
 
      TFLRELookAssertionStrings=array of TFLRELookAssertionString;
+
+     TFLREInternalFlag=(fifCanMatchEmptyStrings,
+                        fifOnePassNFAReady,
+                        fifBitStateNFAReady,
+                        fifDFAReady,
+                        fifDFANeedVerification,
+                        fifDFAFast,
+                        fifDFAFastBeginningSearch,
+                        fifBeginTextAnchor,
+                        fifEndTextAnchor,
+                        fifBeginningWildcardLoop,
+                        fifHasWordBoundaries,
+                        fifHasNewLineAssertions,
+                        fifHasLookAssertions,
+                        fifHasBackReferences,
+                        fifHaveUnanchoredStart,
+                        fifHasRange,
+                        fifHasPrefilter);
+
+     TFLREInternalFlags=set of TFLREInternalFlag;
 
      PPFLREInstruction=^PFLREInstruction;
      PFLREInstruction=^TFLREInstruction;
@@ -816,6 +836,8 @@ type EFLRE=class(Exception);
 
        Flags:TFLREFlags;
 
+       InternalFlags:TFLREInternalFlags;
+
        AnchoredRootNode:PFLRENode;
 
        UnanchoredRootNode:PFLRENode;
@@ -833,8 +855,6 @@ type EFLRE=class(Exception);
        CountMultiSubMatches:longint;
 
        CapturesToSubMatchesMap:TFLRECapturesToSubMatchesMap;
-
-       CanMatchEmptyStrings:longbool;
 
        ForwardInstructions:TFLREInstructions;
        CountForwardInstructions:longint;
@@ -876,26 +896,6 @@ type EFLRE=class(Exception);
        OnePassNFAStart:PFLREOnePassNFAState;
        OnePassNFAStateSize:longint;
        OnePassNFACharClassActions:PFLREOnePassNFAStateCharClassAction;
-       OnePassNFAReady:longbool;
-
-       BitStateNFAReady:longbool;
-
-       DFAReady:longbool;
-       DFANeedVerification:longbool;
-       DFAFast:longbool;
-       DFAFastBeginningSearch:longbool;
-
-       BeginTextAnchor:longbool;
-       EndTextAnchor:longbool;
-       BeginningWildcardLoop:longbool;
-
-       HasWordBoundaries:longbool;
-       HasNewLineAssertions:longbool;
-
-       HasLookAssertions:longbool;
-       HasBackReferences:longbool;
-
-       HaveUnanchoredStart:longbool;
 
        NamedGroupStringList:TStringList;
        NamedGroupStringIntegerPairHashMap:TFLREStringIntegerPairHashMap;
@@ -909,10 +909,8 @@ type EFLRE=class(Exception);
 
        RangeLow:TFLRERawByteString;
        RangeHigh:TFLRERawByteString;
-       HasRange:boolean;
 
        PrefilterRootNode:TFLREPrefilterNode;
-       HasPrefilter:boolean;
 
        function NewCharClass(const CharClass:TFLRECharClass;const FromRegularExpression:boolean):longint;
        function GetCharClass(const CharClass:longint):TFLRECharClass;
@@ -7616,7 +7614,7 @@ begin
 
  IsUnanchored:=false;
 
- DoFastDFA:=Instance.DFAFast and not (MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch]);
+ DoFastDFA:=(fifDFAFast in Instance.InternalFlags) and not (MatchMode in [mmLongestMatch,mmFullMatch,mmMultiMatch]);
 
  StackInstructions:=nil;
  StateCache:=TFLREDFAStateHashMap.Create;
@@ -7697,7 +7695,7 @@ begin
    GetMem(DFAState,StateSize);
    FillChar(DFAState^,StateSize,AnsiChar(#0));
    FastAddInstructionThread(DFAState,Instance.UnanchoredStartInstruction);
-   if Instance.DFAFastBeginningSearch then begin
+   if fifDFAFastBeginningSearch in Instance.InternalFlags then begin
     DFAState.Flags:=DFAState.Flags or sfDFAStart;
    end;
    StateCache.Add(DFAState);
@@ -8409,7 +8407,7 @@ begin
     if (Instruction^.IDandOpcode and $ff)=opZEROWIDTH then begin
      NeedFlags:=NeedFlags or longword(Instruction^.Value);
     end;
-    if ((Instruction^.IDandOpcode and $ff)=opMATCH) and not Instance.EndTextAnchor then begin
+    if ((Instruction^.IDandOpcode and $ff)=opMATCH) and not (fifEndTextAnchor in Instance.InternalFlags) then begin
      SawMatch:=true;
     end;
    end;
@@ -8588,7 +8586,7 @@ begin
      end;
     end;
     opMATCH:begin
-     if not (Instance.EndTextAnchor and (CurrentChar<>256)) then begin
+     if not ((fifEndTextAnchor in Instance.InternalFlags) and (CurrentChar<>256)) then begin
       IsMatch:=true;
       if MatchMode=mmFirstMatch then begin
        exit;
@@ -8789,7 +8787,7 @@ begin
   end;
 
   if UnanchoredStart then begin
-   if Instance.DFAFastBeginningSearch then begin
+   if fifDFAFastBeginningSearch in Instance.InternalFlags then begin
     Flags:=Flags or sfDFAStart;
    end;
    StartInstruction:=Instance.UnanchoredStartInstruction;
@@ -9295,19 +9293,19 @@ begin
 
  ParallelNFA:=TFLREParallelNFA.Create(self);
 
- if Instance.OnePassNFAReady then begin
+ if fifOnePassNFAReady in Instance.InternalFlags then begin
   OnePassNFA:=TFLREOnePassNFA.Create(self);
  end else begin
   OnePassNFA:=nil;
  end;
 
- if Instance.BitStateNFAReady then begin
+ if fifBitStateNFAReady in Instance.InternalFlags then begin
   BitStateNFA:=TFLREBitStateNFA.Create(self);
  end else begin
   BitStateNFA:=nil;
  end;
 
- if Instance.DFAReady then begin
+ if fifDFAReady in Instance.InternalFlags then begin
   DFA:=TFLREDFA.Create(self,false,Instance.MaximalDFAStates);
   ReversedDFA:=TFLREDFA.Create(self,true,Instance.MaximalDFAStates);
  end else begin
@@ -9503,6 +9501,8 @@ begin
 
  MaximalDFAStates:=4096;
 
+ InternalFlags:=[fifDFAFast];
+
  CountCaptures:=0;
 
  CountInternalCaptures:=0;
@@ -9653,25 +9653,6 @@ begin
  OnePassNFAStart:=nil;
  OnePassNFAStateSize:=0;
  OnePassNFACharClassActions:=nil;
- OnePassNFAReady:=false;
-
- BitStateNFAReady:=false;
-
- CanMatchEmptyStrings:=false;
-
- DFAReady:=false;
- DFANeedVerification:=false;
- DFAFast:=true;
- DFAFastBeginningSearch:=false;
-
- BeginTextAnchor:=false;
- EndTextAnchor:=false;
-
- HasWordBoundaries:=false;
- HasNewLineAssertions:=false;
-
- HasLookAssertions:=false;
- HasBackReferences:=false;
 
  NamedGroupStringList:=TStringList.Create;
  NamedGroupStringIntegerPairHashMap:=TFLREStringIntegerPairHashMap.Create;
@@ -9687,10 +9668,8 @@ begin
 
  RangeLow:='';
  RangeHigh:='';
- HasRange:=false;
 
  PrefilterRootNode:=nil;
- HasPrefilter:=false;
 
  CountMultiSubMatches:=0;
 
@@ -9721,19 +9700,25 @@ begin
 
   CompileByteMapForOnePassNFAAndDFA;
 
-  DFAReady:=not (HasLookAssertions or HasBackReferences);
+  if not ((fifHasLookAssertions in InternalFlags) or (fifHasBackReferences in InternalFlags)) then begin
+   Include(InternalFlags,fifDFAReady);
+  end;
 
-  if HasLookAssertions or HasBackReferences then begin
-   OnePassNFAReady:=false;
+  if (fifHasLookAssertions in InternalFlags) or (fifHasBackReferences in InternalFlags) then begin
+   Include(InternalFlags,fifOnePassNFAReady);
   end else begin
    CompileOnePassNFA;
   end;
 
-  BitStateNFAReady:=(CountForwardInstructions>0) and (CountForwardInstructions<512);
+  if (CountForwardInstructions>0) and (CountForwardInstructions<512) then begin
+   Include(InternalFlags,fifBitStateNFAReady);
+  end;
 
-  HaveUnanchoredStart:=not BeginTextAnchor;
+  if not (fifBeginTextAnchor in InternalFlags) then begin
+   Include(InternalFlags,fifHaveUnanchoredStart);
+  end;
 
-  if CanMatchEmptyStrings then begin
+  if fifCanMatchEmptyStrings in InternalFlags then begin
    if RegularExpressionHasCharClasses then begin
     ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
     try
@@ -9743,7 +9728,7 @@ begin
      try
       SetLength(Captures,CountCaptures);
       if not ThreadLocalStorageInstance.ParallelNFA.SearchMatch(Captures,0,1,false) then begin
-       CanMatchEmptyStrings:=false;
+       Exclude(InternalFlags,fifCanMatchEmptyStrings);
       end;
      finally
       SetLength(Captures,0);
@@ -12991,34 +12976,28 @@ begin
   end else begin
    UnanchoredRootNode:=NewNode(ntCAT,NewNode(ntSTAR,NewNode(ntCHAR,nil,nil,NewCharClass(AllCharClass,false)),nil,qkLAZY),AnchoredRootNode,0);
   end;
-  DFANeedVerification:=false;
-  HasWordBoundaries:=false;
-  HasNewLineAssertions:=false;
-  HasLookAssertions:=false;
-  HasBackReferences:=false;
+  InternalFlags:=InternalFlags-[fifDFANeedVerification,fifHasWordBoundaries,fifHasNewLineAssertions,fifHasLookAssertions,fifHasBackReferences];
   for Counter:=0 to Nodes.Count-1 do begin
    Node:=Nodes[Counter];
    case Node^.NodeType of
     ntMULTIMATCH:begin
-     DFANeedVerification:=true;
+     Include(InternalFlags,fifDFANeedVerification);
     end;
     ntZEROWIDTH:begin
      //DFANeedVerification:=true;
-     DFAFast:=false;
+     Exclude(InternalFlags,fifDFAFast);
      if (Node^.Value and (sfEmptyBeginLine or sfEmptyEndLine or sfEmptyBeginText or sfEmptyEndText))<>0 then begin
-      HasNewLineAssertions:=true;
+      Include(InternalFlags,fifHasNewLineAssertions);
      end;
      if (Node^.Value and (sfEmptyWordBoundary or sfEmptyNonWordBoundary))<>0 then begin
-      HasWordBoundaries:=true;
+      Include(InternalFlags,fifHasWordBoundaries);
      end;
     end;
     ntLOOKBEHINDNEGATIVE,ntLOOKBEHINDPOSITIVE,ntLOOKAHEADNEGATIVE,ntLOOKAHEADPOSITIVE:begin
-     DFANeedVerification:=true;
-     HasLookAssertions:=true;
+     InternalFlags:=InternalFlags+[fifDFANeedVerification,fifHasLookAssertions];
     end;
     ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
-     DFANeedVerification:=true;
-     HasBackReferences:=true;
+     InternalFlags:=InternalFlags+[fifDFANeedVerification,fifHasBackReferences];
      if Node^.Group<0 then begin
       Node^.Group:=NamedGroupStringIntegerPairHashMap[Node^.Name];
       Node^.Name:='';
@@ -13851,7 +13830,7 @@ var LowRangeString,HighRangeString:TFLRERawByteString;
 begin
  LowRangeString:='';
  HighRangeString:='';
- if not HasRange then begin
+ if not (fifHasRange in InternalFlags) then begin
   RangeLow:=#$00;
   RangeHigh:=#$ff;
   RangeStringLength:=0;
@@ -13898,7 +13877,7 @@ begin
    SetLength(HighRangeString,RangeStringLength);
    RangeLow:=LowRangeString;
    RangeHigh:=HighRangeString;
-   HasRange:=true;
+   Include(InternalFlags,fifHasRange);
   finally
    LowRangeString:='';
    HighRangeString:='';
@@ -14337,13 +14316,21 @@ begin
    case CountPrefixCharClasses of
     0..2:begin
      // For so short prefixes it would be overkill in the most cases, and SBNDMQ2 do need a prefix pattern of length 3 at least 
-     DFAFastBeginningSearch:=false;
+     Exclude(InternalFlags,fifDFAFastBeginningSearch);
     end;
     3..15:begin
-     DFAFastBeginningSearch:=AveragePrefixCharClassesVariance<(((CountPrefixCharClasses*128)+8) shr 4);
+     if AveragePrefixCharClassesVariance<(((CountPrefixCharClasses*128)+8) shr 4) then begin
+      Include(InternalFlags,fifDFAFastBeginningSearch);
+     end else begin
+      Exclude(InternalFlags,fifDFAFastBeginningSearch);
+     end;
     end;
     else begin
-     DFAFastBeginningSearch:=AveragePrefixCharClassesVariance<128;
+     if AveragePrefixCharClassesVariance<128 then begin
+      Include(InternalFlags,fifDFAFastBeginningSearch);
+     end else begin
+      Exclude(InternalFlags,fifDFAFastBeginningSearch);
+     end;
     end;
    end;
 
@@ -14454,7 +14441,7 @@ var Instruction:PFLREInstruction;
     CharClassAction:PFLREOnePassNFAStateCharClassAction;
     DestCharClassAction:PFLREOnePassNFAStateCharClassAction;
 begin
- OnePassNFAReady:=true;
+ Include(InternalFlags,fifOnePassNFAReady);
  Node:=nil;
  Instruction:=AnchoredStartInstruction;
  Len:=CountForwardInstructions;
@@ -14481,7 +14468,7 @@ begin
      try
       ToVisit.Add(AnchoredStartInstruction);
       ToVisitIndex:=0;
-      while OnePassNFAReady and (ToVisitIndex<ToVisit.Count) do begin
+      while (fifOnePassNFAReady in InternalFlags) and (ToVisitIndex<ToVisit.Count) do begin
        Instruction:=ToVisit[ToVisitIndex];
        inc(ToVisitIndex);
        if assigned(Instruction) then begin
@@ -14496,7 +14483,7 @@ begin
         Stack[0].Instruction:=Instruction;
         Stack[0].Condition:=0;
         StackPointer:=1;
-        while OnePassNFAReady and (StackPointer>0) do begin
+        while (fifOnePassNFAReady in InternalFlags) and (StackPointer>0) do begin
          dec(StackPointer);
          Instruction:=Stack[StackPointer].Instruction;
          Condition:=Stack[StackPointer].Condition;
@@ -14517,7 +14504,7 @@ begin
            NextIndex:=NodeByID[Instruction^.Next^.IDandOpcode shr 8];
            if NextIndex<0 then begin
             if NodesCount>=MaxNodes then begin
-             OnePassNFAReady:=false;
+             Exclude(InternalFlags,fifOnePassNFAReady);
              break;
             end;
             NextIndex:=NodesCount;
@@ -14555,7 +14542,7 @@ begin
             end;
             if assigned(DestCharClassAction) then begin
              if DestCharClassAction^.Condition<>NewAction then begin
-              OnePassNFAReady:=false;
+              Exclude(InternalFlags,fifOnePassNFAReady);
               break;
              end;
             end else begin
@@ -14572,7 +14559,7 @@ begin
            begin
             case Instruction^.IDandOpcode and $ff of
              opNONE:begin
-              OnePassNFAReady:=false;
+              Exclude(InternalFlags,fifOnePassNFAReady);
               break;
              end;
              opSINGLECHAR:begin
@@ -14581,7 +14568,7 @@ begin
               if (Action and sfImpossible)=sfImpossible then begin
                Node^.Action[b]:=NewAction;
               end else if Action<>NewAction then begin
-               OnePassNFAReady:=false;
+               Exclude(InternalFlags,fifOnePassNFAReady);
                break;
               end;
              end;
@@ -14592,7 +14579,7 @@ begin
                 if (Action and sfImpossible)=sfImpossible then begin
                  Node^.Action[i]:=NewAction;
                 end else if Action<>NewAction then begin
-                 OnePassNFAReady:=false;
+                 Exclude(InternalFlags,fifOnePassNFAReady);
                  break;
                 end;
                end;
@@ -14604,13 +14591,13 @@ begin
                  if (Action and sfImpossible)=sfImpossible then begin
                   Node^.Action[b]:=NewAction;
                  end else if Action<>NewAction then begin
-                  OnePassNFAReady:=false;
+                  Exclude(InternalFlags,fifOnePassNFAReady);
                   break;
                  end;
                 end;
                end;
               end;
-              if not OnePassNFAReady then begin
+              if not (fifOnePassNFAReady in InternalFlags) then begin
                break;
               end;
              end;
@@ -14620,11 +14607,11 @@ begin
                if (Action and sfImpossible)=sfImpossible then begin
                 Node^.Action[i]:=NewAction;
                end else if Action<>NewAction then begin
-                OnePassNFAReady:=false;
+                Exclude(InternalFlags,fifOnePassNFAReady);
                 break;
                end;
               end;
-              if not OnePassNFAReady then begin
+              if not (fifOnePassNFAReady in InternalFlags) then begin
                break;
               end;
              end;
@@ -14633,14 +14620,14 @@ begin
           end;
           opMATCH:begin
            if Matched or (Instruction^.Value>=0) then begin
-            OnePassNFAReady:=false;
+            Exclude(InternalFlags,fifOnePassNFAReady);
             break;
            end;
            Matched:=true;
            HasMatch:=true;
            Node^.MatchCondition:=Condition;
            if NodesCount>=MaxNodes then begin
-            OnePassNFAReady:=false;
+            Exclude(InternalFlags,fifOnePassNFAReady);
             break;
            end else begin
             NextIndex:=0;
@@ -14649,7 +14636,7 @@ begin
              if (Node^.NoAction and sfImpossible)=sfImpossible then begin
               Node^.NoAction:=NewAction;
              end else if Node^.NoAction<>NewAction then begin
-              OnePassNFAReady:=false;
+              Exclude(InternalFlags,fifOnePassNFAReady);
               break;
              end;
             end;
@@ -14659,7 +14646,7 @@ begin
               if (Action and sfImpossible)=sfImpossible then begin
                Node^.Action[i]:=NewAction;
               end else if Action<>NewAction then begin
-               OnePassNFAReady:=false;
+               Exclude(InternalFlags,fifOnePassNFAReady);
                break;
               end;
              end;
@@ -14669,7 +14656,7 @@ begin
           opSPLIT,opSPLITMATCH:begin
            if (WorkQueue.IndexOf(Instruction^.Next)>=0) or
               (WorkQueue.IndexOf(Instruction^.OtherNext)>=0) then begin
-            OnePassNFAReady:=false;
+            Exclude(InternalFlags,fifOnePassNFAReady);
             break;
            end;
            WorkQueue.Add(Instruction^.Next);
@@ -14684,12 +14671,12 @@ begin
           opSAVE:begin
            IndexValue:=Instruction^.Value;
            if IndexValue>=sfMaxCap then begin
-            OnePassNFAReady:=false;
+            Exclude(InternalFlags,fifOnePassNFAReady);
             break;
            end;
            Condition:=Condition or ((1 shl sfCapShift) shl IndexValue);
            if WorkQueue.IndexOf(Instruction^.Next)>=0 then begin
-            OnePassNFAReady:=false;
+            Exclude(InternalFlags,fifOnePassNFAReady);
             break;
            end;
            WorkQueue.Add(Instruction^.Next);
@@ -14700,7 +14687,7 @@ begin
           opZEROWIDTH:begin
            Condition:=Condition or longword(Instruction^.Value);
            if WorkQueue.IndexOf(Instruction^.Next)>=0 then begin
-            OnePassNFAReady:=false;
+            Exclude(InternalFlags,fifOnePassNFAReady);
             break;
            end;
            WorkQueue.Add(Instruction^.Next);
@@ -14709,11 +14696,11 @@ begin
            inc(StackPointer);
           end;
           opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
-           OnePassNFAReady:=false;
+           Exclude(InternalFlags,fifOnePassNFAReady);
            break;
           end;
           else begin
-           OnePassNFAReady:=false;
+           Exclude(InternalFlags,fifOnePassNFAReady);
            break;
           end;
          end;
@@ -14723,11 +14710,11 @@ begin
        end;
       end;
       if not HasMatch then begin
-       OnePassNFAReady:=false;
+       Exclude(InternalFlags,fifOnePassNFAReady);
       end;
-      if OnePassNFAReady then begin
+      if fifOnePassNFAReady in InternalFlags then begin
        if NodesCount>=MaxNodes then begin
-        OnePassNFAReady:=false;
+        Exclude(InternalFlags,fifOnePassNFAReady);
        end else begin
         NextIndex:=0;
         NewAction:=longword(NextIndex shl sfIndexShift) or (Condition or sfMatchWins);
@@ -14735,17 +14722,17 @@ begin
          if (Node^.NoAction and sfImpossible)=sfImpossible then begin
           Node^.NoAction:=NewAction;
          end else if Node^.NoAction<>NewAction then begin
-          OnePassNFAReady:=false;
+          Exclude(InternalFlags,fifOnePassNFAReady);
          end;
         end;
-        if OnePassNFAReady then begin
+        if fifOnePassNFAReady in InternalFlags then begin
          for i:=0 to ByteMapCount-1 do begin
           Action:=Node^.Action[i];
           if (Action shr sfIndexShift)=0 then begin
            if (Action and sfImpossible)=sfImpossible then begin
             Node^.Action[i]:=NewAction;
            end else if Action<>NewAction then begin
-            OnePassNFAReady:=false;
+            Exclude(InternalFlags,fifOnePassNFAReady);
             break;
            end;
           end;
@@ -14753,7 +14740,7 @@ begin
         end;
        end;
       end;
-      if OnePassNFAReady then begin
+      if fifOnePassNFAReady in InternalFlags then begin
        GetMem(OnePassNFANodes,NodesCount*StateSize);
        OnePassNFANodesCount:=NodesCount;
        Move(Nodes^,OnePassNFANodes^,NodesCount*StateSize);
@@ -14941,12 +14928,12 @@ var CurrentPosition:longint;
       ntZEROWIDTH:begin
        if Beginning then begin
         if ((Node^.Value and sfEmptyBeginText)<>0) and Alternative then begin
-         BeginTextAnchor:=false;
+         Exclude(InternalFlags,fifBeginTextAnchor);
          StackSize:=0;
         end;
        end else begin
         if ((Node^.Value and sfEmptyEndText)<>0) and Alternative then begin
-         EndTextAnchor:=false;
+         Exclude(InternalFlags,fifEndTextAnchor);
          StackSize:=0;
         end;
        end;
@@ -14984,10 +14971,7 @@ begin
  BeginningAnchor:=false;
  EndingAnchor:=false;
 
- BeginTextAnchor:=false;
- EndTextAnchor:=false;
-
- CanMatchEmptyStrings:=false;
+ InternalFlags:=InternalFlags-[fifBeginTextAnchor,fifEndTextAnchor,fifCanMatchEmptyStrings];
 
  HaveBeginningAnchorWithoutBeginningSplit:=false;
  HaveBeginningAnchorWithBeginningSplit:=false;
@@ -15076,7 +15060,7 @@ begin
        end;
        opMATCH:begin
         if CurrentPosition=0 then begin
-         CanMatchEmptyStrings:=true;
+         Include(InternalFlags,fifCanMatchEmptyStrings);
         end;
         if PossibleEndingAnchor then begin
          if PossibleEndingSplit then begin
@@ -15116,20 +15100,28 @@ begin
  end;
 
  if HaveBeginningAnchorWithoutBeginningSplit and not (HaveBeginningWithoutBeginningAnchor or HaveBeginningAnchorWithBeginningSplit) then begin
-  BeginTextAnchor:=BeginningAnchor and not BeginningSplit;
-  if BeginTextAnchor then begin
+  if BeginningAnchor and not BeginningSplit then begin
+   Include(InternalFlags,fifBeginTextAnchor);
    SearchForZeroWidthEmptyBeginningEndingTextInsideAlternative(AnchoredRootNode,true);
+  end else begin
+   Exclude(InternalFlags,fifBeginTextAnchor);
   end;
  end;
 
  if HaveEndingAnchorWithoutEndingSplit and not (HaveEndingWithoutEndingAnchor or HaveEndingAnchorWithEndingSplit) then begin
-  EndTextAnchor:=EndingAnchor and not EndingSplit;
-  if EndTextAnchor then begin
+  if EndingAnchor and not EndingSplit then begin
+   Include(InternalFlags,fifEndTextAnchor);
    SearchForZeroWidthEmptyBeginningEndingTextInsideAlternative(AnchoredRootNode,false);
+  end else begin
+   Exclude(InternalFlags,fifEndTextAnchor);
   end;
  end;
-  
- BeginningWildcardLoop:=BeginningJump and BeginningSplit and BeginningWildcard;
+
+ if BeginningJump and BeginningSplit and BeginningWildcard then begin
+  Include(InternalFlags,fifBeginningWildcardLoop);
+ end else begin
+  Exclude(InternalFlags,fifBeginningWildcardLoop);
+ end;
 
 end;
 
@@ -15647,7 +15639,7 @@ begin
 
  // First try to find the next possible match start with heuristic magic and so on (but only at regular expressions, which can't match also
  // empty strings)
- if (CountPrefixCharClasses>0) and not CanMatchEmptyStrings then begin
+ if (CountPrefixCharClasses>0) and not (fifCanMatchEmptyStrings in InternalFlags) then begin
   Len:=UntilExcludingPosition-StartPosition;
   if FixedStringIsWholeRegExp and not UnanchoredStart then begin
    if Len>=FixedStringLength then begin
@@ -15676,7 +15668,7 @@ begin
  end;
 
  // Then try DFA
- if DFAReady then begin
+ if fifDFAReady in InternalFlags then begin
   ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
   case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
    DFAMatch:begin
@@ -15687,7 +15679,7 @@ begin
        if MatchBegin<StartPosition then begin
         MatchBegin:=StartPosition;
        end;
-       if (CountCaptures=1) and not DFANeedVerification then begin
+       if (CountCaptures=1) and not (fifDFANeedVerification in InternalFlags) then begin
         // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
         Captures[0].Start:=MatchBegin;
         Captures[0].Length:=(MatchEnd-MatchBegin)+1;
@@ -15701,7 +15693,7 @@ begin
       end;
      end;
     end;
-    if (CountCaptures=1) and not (DFANeedVerification or UnanchoredStart) then begin
+    if (CountCaptures=1) and not ((fifDFANeedVerification in InternalFlags) or UnanchoredStart) then begin
      // If we have only the root group capture without the need for the verification of the found, then don't execute the slower *NFA algorithms
      Captures[0].Start:=StartPosition;
      Captures[0].Length:=(MatchEnd-StartPosition)+1;
@@ -15715,7 +15707,7 @@ begin
     end;
    end;
    DFAFail:begin
-    if not CanMatchEmptyStrings then begin
+    if not (fifCanMatchEmptyStrings in InternalFlags) then begin
      // No DFA match => stop
      result:=false;
      exit;
@@ -15728,13 +15720,13 @@ begin
  end;
 
  // Then the NFA stuff
- if OnePassNFAReady and not UnanchoredStart then begin
+ if (fifOnePassNFAReady in InternalFlags) and not UnanchoredStart then begin
   if ThreadLocalStorageInstance.OnePassNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition) then begin
    result:=true;
    exit;
   end;
  end else begin
-  if BitStateNFAReady then begin
+  if fifBitStateNFAReady in InternalFlags then begin
    case ThreadLocalStorageInstance.BitStateNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
     BitStateNFAFail:begin
      result:=false;
@@ -15809,7 +15801,7 @@ begin
     Count:=CountCaptures;
    end;
    SetLength(Captures,Count);
-   result:=SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,HaveUnanchoredStart);
+   result:=SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,fifHaveUnanchoredStart in InternalFlags);
    if result and (rfMULTIMATCH in Flags) then begin
     for Index:=0 to CountMultiSubMatches-1 do begin
      Captures[Index+1].Start:=Index;
@@ -15854,7 +15846,7 @@ begin
     end;
     //SetLength(MultiCaptures,0,Count);
     SetLength(MatchResult,Count);
-    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,MatchResult,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
+    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,MatchResult,CurrentPosition,InputLength,fifHaveUnanchoredStart in InternalFlags) do begin
      Next:=CurrentPosition+1;
      CurrentPosition:=MatchResult[0].Start+MatchResult[0].Length;
      if CurrentPosition<Next then begin
@@ -15918,7 +15910,7 @@ begin
     Count:=CountCaptures;
     //SetLength(MultiExtractions,0,Count);
     SetLength(MatchResult,Count);
-    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,MatchResult,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
+    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,MatchResult,CurrentPosition,InputLength,fifHaveUnanchoredStart in InternalFlags) do begin
      Next:=CurrentPosition+1;
      CurrentPosition:=MatchResult[0].Start+MatchResult[0].Length;
      if CurrentPosition<Next then begin
@@ -15971,7 +15963,7 @@ begin
     ThreadLocalStorageInstance.InputLength:=InputLength;
     LastEnd:=-1;
     SetLength(Captures,CountCaptures);
-    while (CurrentPosition<=InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
+    while (CurrentPosition<=InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,fifHaveUnanchoredStart in InternalFlags) do begin
      if CurrentPosition<Captures[0].Start then begin
       result:=result+FLREPtrCopy(PFLRERawByteChar(Input),CurrentPosition,Captures[0].Start-CurrentPosition);
      end;
@@ -16199,7 +16191,7 @@ begin
     ThreadLocalStorageInstance.Input:=Input;
     ThreadLocalStorageInstance.InputLength:=InputLength;
     SetLength(Captures,CountCaptures);
-    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,HaveUnanchoredStart) do begin
+    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,fifHaveUnanchoredStart in InternalFlags) do begin
      Next:=CurrentPosition+1;
      if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
       CurrentPosition:=Captures[0].Start+Captures[0].Length;
@@ -16270,7 +16262,7 @@ begin
 
      if InputLength=0 then begin
 
-      if WithEmpty and not SearchMatch(ThreadLocalStorageInstance,Captures,MatchPosition,InputLength,HaveUnanchoredStart) then begin
+      if WithEmpty and not SearchMatch(ThreadLocalStorageInstance,Captures,MatchPosition,InputLength,fifHaveUnanchoredStart in InternalFlags) then begin
        Count:=1;
        SetLength(SplittedStrings,Count);
        SplittedStrings[0]:='';
@@ -16283,7 +16275,7 @@ begin
 
       while MatchPosition<InputLength do begin
 
-       if not SearchMatch(ThreadLocalStorageInstance,Captures,MatchPosition,InputLength,HaveUnanchoredStart) then begin
+       if not SearchMatch(ThreadLocalStorageInstance,Captures,MatchPosition,InputLength,fifHaveUnanchoredStart in InternalFlags) then begin
         break;
        end;
 
@@ -16428,7 +16420,7 @@ begin
     Count:=CountCaptures;
    end;
    SetLength(Captures,Count);
-   result:=SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,HaveUnanchoredStart);
+   result:=SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,fifHaveUnanchoredStart in InternalFlags);
   finally
    SetLength(Captures,0);
   end;
@@ -16621,10 +16613,10 @@ begin
  result:=false;
  ParallelLockEnter(@ParallelLock);
  try
-  if not HasRange then begin
+  if not (fifHasRange in InternalFlags) then begin
    CompileRange;
   end;
-  if HasRange then begin
+  if fifHasRange in InternalFlags then begin
    LowRange:=RangeLow;
    HighRange:=RangeHigh;
    result:=true;
@@ -16834,10 +16826,10 @@ begin
  result:='';
  ParallelLockEnter(@ParallelLock);
  try
-  if not HasPrefilter then begin
+  if not (fifHasPrefilter in InternalFlags) then begin
    PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
    PrefilterRootNode:=PrefilterOptimize(PrefilterRootNode);
-   HasPrefilter:=true;
+   Include(InternalFlags,fifHasPrefilter);
   end;
   if assigned(PrefilterRootNode) then begin
    result:=PrefilterRootNode.Expression;
@@ -16855,10 +16847,10 @@ begin
  result:='';
  ParallelLockEnter(@ParallelLock);
  try
-  if not HasPrefilter then begin
+  if not (fifHasPrefilter in InternalFlags) then begin
    PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
    PrefilterRootNode:=PrefilterOptimize(PrefilterRootNode);
-   HasPrefilter:=true;
+   Include(InternalFlags,fifHasPrefilter);
   end;
   if assigned(PrefilterRootNode) then begin
    result:=PrefilterRootNode.ShortExpression;
@@ -16879,10 +16871,10 @@ begin
  result:='';
  ParallelLockEnter(@ParallelLock);
  try
-  if not HasPrefilter then begin
+  if not (fifHasPrefilter in InternalFlags) then begin
    PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
    PrefilterRootNode:=PrefilterOptimize(PrefilterRootNode);
-   HasPrefilter:=true;
+   Include(InternalFlags,fifHasPrefilter);
   end;
   if assigned(PrefilterRootNode) then begin
    result:=PrefilterRootNode.SQLBooleanFullTextExpression;
@@ -16900,10 +16892,10 @@ begin
  result:='';
  ParallelLockEnter(@ParallelLock);
  try
-  if not HasPrefilter then begin
+  if not (fifHasPrefilter in InternalFlags) then begin
    PrefilterRootNode:=CompilePrefilterTree(AnchoredRootNode);
    PrefilterRootNode:=PrefilterOptimize(PrefilterRootNode);
-   HasPrefilter:=true;
+   Include(InternalFlags,fifHasPrefilter);
   end;
   if assigned(PrefilterRootNode) then begin
    if length(trim(String(Field)))=0 then begin
