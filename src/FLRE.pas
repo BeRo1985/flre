@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.01.10.07.23.0000';
+      FLREVersionString='1.00.2016.02.04.10.33.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -486,6 +486,7 @@ type EFLRE=class(Exception);
 
      TFLREDFAWorkQueues=array[0..1] of TFLREDFAWorkQueue;
 
+     PFLRECharPatternBitMasks=^TFLRECharPatternBitMasks;
      TFLRECharPatternBitMasks=array[ansichar] of longword;
 
      TFLREBoyerMooreNext=array of longint;
@@ -855,15 +856,15 @@ type EFLRE=class(Exception);
 
        FixedString:TFLRERawByteString;
        FixedStringIsWholeRegExp:longbool;
-       FixedStringLength:longint;
-       FixedStringPatternBitMasks:TFLRECharPatternBitMasks;
-       FixedStringBoyerMooreSkip:TFLRECharPatternBitMasks;
+       FixedStringLength:longint;  
+       FixedStringPatternBitMasks:PFLRECharPatternBitMasks;
+       FixedStringBoyerMooreSkip:PFLRECharPatternBitMasks;
        FixedStringBoyerMooreNext:TFLREBoyerMooreNext;
 
        PrefixCharClasses:TFLREPrefixCharClasses;
        CountPrefixCharClasses:longint;
        AveragePrefixCharClassesVariance:longint;
-       PrefixPatternBitMasks:TFLRECharPatternBitMasks;
+       PrefixPatternBitMasks:PFLRECharPatternBitMasks;
 
        ByteMap:TFLREByteMap;
        UnByteMap:TFLREByteMap;
@@ -9532,6 +9533,11 @@ begin
  LookAssertionStrings:=nil;
  CountLookAssertionStrings:=0;
 
+ FixedStringPatternBitMasks:=nil;
+ FixedStringBoyerMooreSkip:=nil;
+
+ PrefixPatternBitMasks:=nil;
+
  RegularExpression:=ARegularExpression;
 
  Flags:=AFlags;
@@ -9788,6 +9794,18 @@ begin
   end;
  end;
  FreeAndNil(Nodes);
+
+ if assigned(FixedStringPatternBitMasks) then begin
+  FreeMem(FixedStringPatternBitMasks);
+ end;
+
+ if assigned(FixedStringBoyerMooreSkip) then begin
+  FreeMem(FixedStringBoyerMooreSkip);
+ end;
+
+ if assigned(PrefixPatternBitMasks) then begin
+  FreeMem(PrefixPatternBitMasks);
+ end;
 
  SetLength(CapturesToSubMatchesMap,0);
 
@@ -14079,18 +14097,32 @@ begin
  FixedStringLength:=length(FixedString);
  if FixedStringLength>1 then begin
   if FixedStringLength<32 then begin
-   for c:=low(ansichar) to high(ansichar) do begin
-    FixedStringPatternBitMasks[c]:=0;
+   if not assigned(FixedStringPatternBitMasks) then begin
+    GetMem(FixedStringPatternBitMasks,SizeOf(TFLRECharPatternBitMasks));
    end;
+{$if true}
+   FillChar(FixedStringPatternBitMasks^,SizeOf(TFLRECharPatternBitMasks),#$0);
+{$else}
+   for c:=low(ansichar) to high(ansichar) do begin
+    FixedStringPatternBitMasks^[c]:=0;
+   end;
+{$ifend}
    for i:=1 to FixedStringLength do begin
-    FixedStringPatternBitMasks[FixedString[i]]:=FixedStringPatternBitMasks[FixedString[i]] or (1 shl (i-1));
+    FixedStringPatternBitMasks^[FixedString[i]]:=FixedStringPatternBitMasks^[FixedString[i]] or (1 shl (i-1));
    end;
   end else begin
-   for c:=low(ansichar) to high(ansichar) do begin
-    FixedStringBoyerMooreSkip[c]:=FixedStringLength;
+   if not assigned(FixedStringBoyerMooreSkip) then begin
+    GetMem(FixedStringBoyerMooreSkip,SizeOf(TFLRECharPatternBitMasks));
    end;
+{$if true}
+   FillChar(FixedStringBoyerMooreSkip^,SizeOf(TFLRECharPatternBitMasks),#$0);
+{$else}
+   for c:=low(ansichar) to high(ansichar) do begin
+    FixedStringBoyerMooreSkip^[c]:=FixedStringLength;
+   end;
+{$ifend}
    for i:=1 to FixedStringLength do begin
-    FixedStringBoyerMooreSkip[FixedString[i]]:=((FixedStringLength-(i-1))-1);
+    FixedStringBoyerMooreSkip^[FixedString[i]]:=((FixedStringLength-(i-1))-1);
    end;
    SetLength(FixedStringBoyerMooreNext,FixedStringLength+1);
    for j:=0 to FixedStringLength do begin
@@ -14168,13 +14200,20 @@ var CurrentPosition:longint;
  var CurrentPosition:longint;
      CurrentChar:ansichar;
  begin
-  for CurrentChar:=#0 to #255 do begin
-   PrefixPatternBitMasks[CurrentChar]:=0;
+  if not assigned(PrefixPatternBitMasks) then begin
+   GetMem(PrefixPatternBitMasks,SizeOf(TFLRECharPatternBitMasks));
   end;
+{$if true}
+  FillChar(PrefixPatternBitMasks^,SizeOf(TFLRECharPatternBitMasks),#$0);
+{$else}
+  for CurrentChar:=low(ansichar) to high(ansichar) do begin
+   PrefixPatternBitMasks^[CurrentChar]:=0;
+  end;
+{$ifend}
   for CurrentPosition:=0 to CountPrefixCharClasses-1 do begin
-   for CurrentChar:=#0 to #255 do begin
+   for CurrentChar:=low(ansichar) to high(ansichar) do begin
     if CurrentChar in PrefixCharClasses[CurrentPosition] then begin
-     PrefixPatternBitMasks[CurrentChar]:=PrefixPatternBitMasks[CurrentChar] or longword(longword(1) shl CurrentPosition);
+     PrefixPatternBitMasks^[CurrentChar]:=PrefixPatternBitMasks^[CurrentChar] or longword(longword(1) shl CurrentPosition);
     end;
    end;
   end;
@@ -15548,13 +15587,13 @@ begin
      result:=PtrPosChar(FixedString[1],Input,InputLength,0);
     end;
     2:begin
-     result:=PtrPosPatternSBNDMQ1(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks,0);
+     result:=PtrPosPatternSBNDMQ1(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks^,0);
     end;
     3..31:begin
-     result:=PtrPosPatternSBNDMQ2(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks,0);
+     result:=PtrPosPatternSBNDMQ2(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks^,0);
     end;
     else begin
-     result:=PtrPosBoyerMoore(FixedString,Input,InputLength,FixedStringBoyerMooreSkip,FixedStringBoyerMooreNext,0);
+     result:=PtrPosBoyerMoore(FixedString,Input,InputLength,FixedStringBoyerMooreSkip^,FixedStringBoyerMooreNext,0);
     end;
    end;
   end else begin
@@ -15566,10 +15605,10 @@ begin
      result:=PtrPosPatternCharClass(Input,InputLength,PrefixCharClasses[0],0);
     end;
     2:begin
-     result:=PtrPosPatternSBNDMQ1(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
+     result:=PtrPosPatternSBNDMQ1(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks^,0);
     end;
     else begin
-     result:=PtrPosPatternSBNDMQ2(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
+     result:=PtrPosPatternSBNDMQ2(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks^,0);
     end;
    end;
   end;
@@ -15588,10 +15627,10 @@ begin
    result:=PtrPosPatternCharClass(Input,InputLength,PrefixCharClasses[0],0);
   end;
   2:begin
-   result:=PtrPosPatternSBNDMQ1(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
+   result:=PtrPosPatternSBNDMQ1(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks^,0);
   end;
   else begin
-   result:=PtrPosPatternSBNDMQ2(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks,0);
+   result:=PtrPosPatternSBNDMQ2(CountPrefixCharClasses,Input,InputLength,PrefixPatternBitMasks^,0);
   end;
  end;
 end;
