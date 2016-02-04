@@ -287,6 +287,14 @@ begin
  ExecuteSearchFailTest('([a-c])\1(x)(y)\3','aBxyy',[]);
  ExecuteSearchFailTest('([a-c])\1(x)(y)\3','abxyy',[rfIGNORECASE]);
 
+ // https://github.com/BeRo1985/flre/issues/19
+ ExecuteSearchTest('([A-Za-z0-9+/]){4}','0FB7',[]);
+ ExecuteSearchTest('([A-Za-z0-9+/]){4}(|=)','0FB7',[]);
+ ExecuteSearchTest('([A-Za-z0-9+/]){4}(|=)A','0FB7A',[]);
+ ExecuteSearchTest('([A-Za-z0-9+/]){4}(|=)A','0FB7=A',[]);
+ ExecuteSearchFailTest('([A-Za-z0-9+/]){4}(|=)A','0FB7B',[]);
+ ExecuteSearchFailTest('([A-Za-z0-9+/]){4}(|=)A','0FB7=B',[]);
+
 end;
 
 end.

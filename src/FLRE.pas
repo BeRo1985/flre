@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.02.04.11.13.0000';
+      FLREVersionString='1.00.2016.02.04.11.54.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -1189,6 +1189,7 @@ const MaxGeneration=int64($4000000000000000);
       opLOOKAHEADPOSITIVE=13;
       opBACKREFERENCE=14;
       opBACKREFERENCEIGNORECASE=15;
+      opNOP=16;
 
       // Split kind
       skALT=0;
@@ -6969,6 +6970,10 @@ begin
        break;
       end;
      end;
+     opNOP:begin
+      Instruction:=Instruction^.Next;
+      continue;
+     end;
      else begin
       Thread:=@ThreadList^.Threads[ThreadList^.CountThreads];
       inc(ThreadList^.CountThreads);
@@ -7520,6 +7525,12 @@ var LocalInputLength,BasePosition,Len:longint;
        end;
       end;
      end;
+     opNOP:begin
+      Instruction:=Instruction^.Next;
+      if ShouldVisit(Instruction,Position) then begin
+       continue;
+      end;
+     end;
     end;
 
     break;
@@ -7934,7 +7945,8 @@ begin
     opSAVE,
     opZEROWIDTH,
     opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,
-    opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    opBACKREFERENCE,opBACKREFERENCEIGNORECASE,
+    opNOP:begin
      // No-ops at DFA
      Instruction:=Instruction^.Next;
     end;
@@ -8389,7 +8401,7 @@ begin
    continue;
   end;
   case Instruction^.IDandOpcode and $ff of
-   opNONE,opSINGLECHAR,opCHAR,opANY,opMATCH,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
+   opNONE,opSINGLECHAR,opCHAR,opANY,opMATCH,opSPLIT,opSPLITMATCH,opZEROWIDTH,opNOP:begin
 {   if (Instruction^.IDandOpcode and $ff)=opSPLITMATCH then begin
      if (MatchMode<>mmMultiMatch) and
         ((MatchMode<>mmFirstMatch) or ((Index=0) and IsInstructionGreedy(Instruction))) and
@@ -8500,7 +8512,7 @@ begin
     opNONE,opSINGLECHAR,opCHAR,opANY,opMATCH:begin
      // Just save onto the queue
     end;
-    {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opNOP:begin
      // No-ops at DFA
      if (StackPointer+1)>length(QueueStack) then begin
       SetLength(QueueStack,(StackPointer+1)*2);
@@ -8564,7 +8576,7 @@ begin
    NewWorkQueue.Mark;
   end else begin
    case Instruction^.IDandOpcode and $ff of
-    {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opSPLIT,opSPLITMATCH,opZEROWIDTH:begin
+    {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opSPLIT,opSPLITMATCH,opZEROWIDTH,opNOP:begin
      // Already processed
     end;
     opNONE:begin
@@ -13537,7 +13549,10 @@ procedure TFLRE.Compile;
          i0:=NewInstruction(opZEROWIDTH);
          Instructions[i0].Value:=Flags;
          Instructions[i0].Next:=pointer(ptrint(CountInstructions));
-        end; 
+        end else begin
+         i0:=NewInstruction(opNOP);
+         Instructions[i0].Next:=pointer(ptrint(CountInstructions));
+        end;
        end;
        ntLOOKBEHINDNEGATIVE:begin
         i0:=NewInstruction(opLOOKBEHINDNEGATIVE);
@@ -13809,7 +13824,7 @@ var LowRangeString,HighRangeString:TFLRERawByteString;
      inc(Index);
      Instruction:=Instruction^.Next;
     end;
-    {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+    {$ifdef UseOpcodeJMP}opJMP,{$endif}opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opNOP:begin
      Instruction:=Instruction^.Next;
     end;
     opMATCH:begin
@@ -14162,7 +14177,7 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.OtherNext;
       continue;
      end;
-     opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+     opSAVE,opZEROWIDTH,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opNOP:begin
       Instruction:=Instruction^.Next;
       continue;
      end;
@@ -14491,7 +14506,7 @@ begin
 {$ifdef UseOpcodeJMP}
           opJMP:begin
            if WorkQueue.IndexOf(Instruction^.Next)>=0 then begin
-            OnePassNFAReady:=false;
+            Exclude(InternalFlags,fifOnePassNFAReady);
             break;
            end;
            WorkQueue.Add(Instruction^.Next);
@@ -14699,6 +14714,16 @@ begin
            Exclude(InternalFlags,fifOnePassNFAReady);
            break;
           end;
+          opNOP:begin
+           if WorkQueue.IndexOf(Instruction^.Next)>=0 then begin
+            Exclude(InternalFlags,fifOnePassNFAReady);
+            break;
+           end;
+           WorkQueue.Add(Instruction^.Next);
+           Stack[StackPointer].Instruction:=Instruction^.Next;
+           Stack[StackPointer].Condition:=Condition;
+           inc(StackPointer);
+          end;
           else begin
            Exclude(InternalFlags,fifOnePassNFAReady);
            break;
@@ -14843,7 +14868,7 @@ var CurrentPosition:longint;
       Instruction:=Instruction^.Next;
       continue;
      end;
-     opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE:begin
+     opSAVE,opLOOKBEHINDNEGATIVE,opLOOKBEHINDPOSITIVE,opLOOKAHEADNEGATIVE,opLOOKAHEADPOSITIVE,opBACKREFERENCE,opBACKREFERENCEIGNORECASE,opNOP:begin
       Instruction:=Instruction^.Next;
       continue;
      end;
