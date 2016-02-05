@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.02.05.05.00.0000';
+      FLREVersionString='1.00.2016.02.05.07.06.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -247,6 +247,14 @@ type EFLRE=class(Exception);
      TFLRECharClass=set of TFLRERawByteChar;
 
      TPFLRECharClasses=array of PFLRECharClass;
+
+     PFLRECharRange=^TFLRECharRange;
+     TFLRECharRange=record
+      FromChar:TFLRERawByteChar;
+      ToChar:TFLRERawByteChar;
+     end;
+
+     TFLRECharRanges=array of TFLRECharRange;
 
      TFLRECharClassChars=array of TFLRERawByteChar;
 
@@ -888,6 +896,8 @@ type EFLRE=class(Exception);
 
        FirstPrefixCharClass:PFLRECharClass;
        FirstPrefixCharClassSize:longint;
+       FirstPrefixCharRanges:TFLRECharRanges;
+       CountFirstPrefixCharRanges:longint;
        FirstPrefixCharClassChars:TFLRECharClassChars;
        CountPrefixCharClasses:longint;
        AveragePrefixCharClassesVariance:longint;
@@ -4393,6 +4403,213 @@ begin
  end;
 end;
 
+function PtrPosCharPairSearch(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx,r9
+{$endif}
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ pxor xmm2,xmm2
+ movdqa xmm3,[XMM1Constant]
+ pshufb xmm0,xmm2
+ pshufb xmm1,xmm3
+
+ mov ecx,edi
+ and rdi,-32
+ and ecx,31
+ movdqa xmm2,[rdi]
+ movdqa xmm3,[rdi]
+ movdqa xmm4,[rdi+16]
+ movdqa xmm5,[rdi+16]
+ pcmpeqb xmm2,xmm0
+ pcmpeqb xmm3,xmm1
+ pcmpeqb xmm4,xmm0
+ pcmpeqb xmm5,xmm1
+
+ pmovmskb r8d,xmm2
+ pmovmskb r9d,xmm3
+ pmovmskb r10d,xmm4
+ pmovmskb r11d,xmm5
+
+ shl r10,17
+ shl r11d,16
+ add ecx,1 // inc ecx
+ or r9d,r11d
+ lea rax,[r10+r8*2]
+
+ and r9d,eax
+ shr r9,cl
+ bsf eax,r9d
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ sub rax,1 // dec rax
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,32
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm2,[rdi+rdx]
+ movdqa xmm3,[rdi+rdx]
+ movdqa xmm4,[rdi+rdx+16]
+ movdqa xmm5,[rdi+rdx+16]
+
+ shr rax,32
+
+ pcmpeqb xmm2,xmm0
+ pcmpeqb xmm3,xmm1
+ pcmpeqb xmm4,xmm0
+ pcmpeqb xmm5,xmm1
+
+ pmovmskb r8d,xmm2
+ pmovmskb r9d,xmm3
+ pmovmskb r10d,xmm4
+ pmovmskb r11d,xmm5
+
+ lea rax,[rax+r8*2]
+ shl r10,17
+ shl r11d,16
+ add rax,r10
+ or r9d,r11d
+
+ and r9d,eax
+ jne @Found
+ add rdi,32
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ bsf eax,r9d
+ sub rdx,1 // dec rdx
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharPair(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ result:=PtrPosCharPairSearch(@Text[Offset],(TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),@Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
+function PtrPosCharRangeSearch(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM126Constant:array[0..1] of TFLREQWord=(TFLREQWord($7e7e7e7e7e7e7e7e),TFLREQWord($7e7e7e7e7e7e7e7e));
+      XMM127Constant:array[0..1] of TFLREQWord=(TFLREQWord($7f7f7f7f7f7f7f7f),TFLREQWord($7f7f7f7f7f7f7f7f));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx,r9
+{$endif}
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+
+ mov ecx,edi
+ pxor xmm4,xmm4
+ movdqa xmm5,[XMM1Constant]
+ movdqa xmm6,[XMM126Constant]
+ movdqa xmm7,[XMM127Constant]
+
+ and rdi,-32
+ and ecx,31
+
+ pshufb xmm0,xmm4
+ pshufb xmm1,xmm5
+ psubb xmm6,xmm1
+ psubb xmm7,xmm1
+ paddb xmm6,xmm0
+
+ movdqa xmm2,[rdi]
+ movdqa xmm3,[rdi+16]
+ paddb xmm2,xmm7
+ paddb xmm3,xmm7
+ pcmpgtb xmm2,xmm6
+ pcmpgtb xmm3,xmm6
+ pmovmskb eax,xmm2
+ pmovmskb r10d,xmm3
+ shl r10d,16
+ or eax,r10d
+ shr eax,cl
+ bsf eax,eax
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,32
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm2,[rdi+rdx]
+ movdqa xmm3,[rdi+rdx+16]
+ paddb xmm2,xmm7
+ paddb xmm3,xmm7
+ pcmpgtb xmm2,xmm6
+ pcmpgtb xmm3,xmm6
+ por xmm3,xmm2
+ pmovmskb eax,xmm3
+ test eax,eax
+ jne @Found
+ add rdi,32
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ pmovmskb r10d,xmm2
+ shl eax,16
+ or eax,r10d
+ bsf eax,eax
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharRange(const SearchFromChar,SearchToChar:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ result:=PtrPosCharRangeSearch(@Text[Offset],(TFLREQWord(byte(TFLRERawByteChar(SearchToChar))) shl 8) or TFLREQWord(byte(TFLRERawByteChar(SearchFromChar))),@Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
 {$else}
 function PtrPosChar(const SearchChar:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):longint;
 type pptruint=^ptruint;
@@ -5872,6 +6089,38 @@ begin
   end;
 
  end;
+end;
+
+function PtrPosCharPair(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ Index:=Offset;
+ while Index<(TextLength-1) do begin
+  result:=PtrPosChar(SearchChar0,Text,TextLength,Index);
+  if result<0 then begin
+   exit;
+  end else begin
+   if Text[result+1]=SearchChar1 then begin
+    exit;
+   end;
+  end;
+ end;
+ result:=-1;
+end;
+
+function PtrPosCharRange(const SearchFromChar,SearchToChar:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ for Index:=Offset to TextLength-1 do begin
+  CurrentChar:=Text[Index];
+  if (CurrentChar>=SearchFromChar) and (CurrentChar<=SearchToChar) then begin
+   result:=Index;
+   exit;
+  end;
+ end;
+ result:=-1;
 end;
 {$endif}
 
@@ -11892,6 +12141,10 @@ begin
 
  FirstPrefixCharClass:=nil;
  FirstPrefixCharClassSize:=0;
+
+ FirstPrefixCharRanges:=nil;
+ CountFirstPrefixCharRanges:=0;
+
  FirstPrefixCharClassChars:=nil;
 
  RegularExpression:=ARegularExpression;
@@ -12153,6 +12406,8 @@ begin
  if assigned(FirstPrefixCharClass) then begin
   FreeMem(FirstPrefixCharClass);
  end;
+
+ SetLength(FirstPrefixCharRanges,0);
 
  SetLength(FirstPrefixCharClassChars,0);
 
@@ -16551,7 +16806,7 @@ var ThreadIndex,Count,TotalCount,Index:longint;
     CurrentThreadList,NewThreadList,TemporaryThreadList:PThreadList;
     CurrentThread:PThread;
     Instruction:PFLREInstruction;
-    CurrentChar:TFLRERawByteChar;
+    CurrentChar,LowChar,HighChar:TFLRERawByteChar;
     ThreadLists:TThreadLists;
     HasCountPrefixCharClasses:boolean;
 begin
@@ -16705,10 +16960,65 @@ begin
        end;
       end;
       else begin
-       if not assigned(FirstPrefixCharClass) then begin
-        GetMem(FirstPrefixCharClass,SizeOf(TFLRECharClass));
+       Count:=0;
+       LowChar:=#$ff;
+       HighChar:=#$00;
+       for CurrentChar:=low(TFLRERawByteChar) to high(TFLRERawByteChar) do begin
+        if CurrentChar in PrefixCharClasses[0] then begin
+         if LowChar<=HighChar then begin
+          if (byte(TFLRERawByteChar(HighChar))+1)=byte(TFLRERawByteChar(CurrentChar)) then begin
+           HighChar:=CurrentChar;
+          end else begin
+           inc(Count);
+           LowChar:=CurrentChar;
+           HighChar:=CurrentChar;
+          end;
+         end else begin
+          LowChar:=CurrentChar;
+          HighChar:=CurrentChar;
+         end;
+        end;
        end;
-       FirstPrefixCharClass^:=PrefixCharClasses[0];
+       if LowChar<=HighChar then begin
+        inc(Count);
+       end;
+       CountFirstPrefixCharRanges:=Count;
+       case CountFirstPrefixCharRanges of
+        1:begin
+         SetLength(FirstPrefixCharRanges,CountFirstPrefixCharRanges);
+         Count:=0;
+         LowChar:=#$ff;
+         HighChar:=#$00;
+         for CurrentChar:=low(TFLRERawByteChar) to high(TFLRERawByteChar) do begin
+          if CurrentChar in PrefixCharClasses[0] then begin
+           if LowChar<=HighChar then begin
+            if (byte(TFLRERawByteChar(HighChar))+1)=byte(TFLRERawByteChar(CurrentChar)) then begin
+             HighChar:=CurrentChar;
+            end else begin
+             FirstPrefixCharRanges[Count].FromChar:=LowChar;
+             FirstPrefixCharRanges[Count].ToChar:=HighChar;
+             inc(Count);
+             LowChar:=CurrentChar;
+             HighChar:=CurrentChar;
+            end;
+           end else begin
+            LowChar:=CurrentChar;
+            HighChar:=CurrentChar;
+           end;
+          end;
+         end;
+         if LowChar<=HighChar then begin
+          FirstPrefixCharRanges[Count].FromChar:=LowChar;
+          FirstPrefixCharRanges[Count].ToChar:=HighChar;
+         end;
+        end;
+        else begin
+         if not assigned(FirstPrefixCharClass) then begin
+          GetMem(FirstPrefixCharClass,SizeOf(TFLRECharClass));
+         end;
+         FirstPrefixCharClass^:=PrefixCharClasses[0];
+        end;
+       end;
       end;
      end;
     end;
@@ -17971,7 +18281,11 @@ begin
      result:=PtrPosChar(FixedString[1],Input,InputLength,0);
     end;
     2:begin
+{$ifdef cpux86_64}
+     result:=PtrPosCharPair(FixedString[1],FixedString[2],Input,InputLength,0);
+{$else}
      result:=PtrPosPatternSBNDMQ1(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks^,0);
+{$endif}
     end;
     3..31:begin
      result:=PtrPosPatternSBNDMQ2(FixedStringLength,Input,InputLength,FixedStringPatternBitMasks^,0);
@@ -18061,7 +18375,18 @@ begin
                                 0);
       end;
       else begin
-       result:=PtrPosPatternCharClass(Input,InputLength,FirstPrefixCharClass^,0);
+       case CountFirstPrefixCharRanges of
+        1:begin
+         result:=PtrPosCharRange(FirstPrefixCharRanges[0].FromChar,
+                                 FirstPrefixCharRanges[0].ToChar,
+                                 Input,
+                                 InputLength,
+                                 0);
+        end;
+        else begin
+         result:=PtrPosPatternCharClass(Input,InputLength,FirstPrefixCharClass^,0);
+        end;
+       end;
       end;
      end;
     end;
@@ -18160,7 +18485,18 @@ begin
                               0);
     end;
     else begin
-     result:=PtrPosPatternCharClass(Input,InputLength,FirstPrefixCharClass^,0);
+     case CountFirstPrefixCharRanges of
+      1:begin
+       result:=PtrPosCharRange(FirstPrefixCharRanges[0].FromChar,
+                               FirstPrefixCharRanges[0].ToChar,
+                               Input,
+                               InputLength,
+                               0);
+      end;
+      else begin
+       result:=PtrPosPatternCharClass(Input,InputLength,FirstPrefixCharClass^,0);
+      end;
+     end;
     end;
    end;
   end;
