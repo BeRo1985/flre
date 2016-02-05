@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.02.05.08.51.0000';
+      FLREVersionString='1.00.2016.02.05.14.59.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -6814,6 +6814,165 @@ end;
 {$endif}
 
 function PtrPosBoyerMoore(const Pattern:TFLRERawByteString;const Text:PFLRERawByteChar;const TextLength:longint;const Skip:TFLRECharPatternBitMasks;const Next:TFLREBoyerMooreNext;Position:longint=0):longint;
+{$if defined(cpux86_64) and defined(Windows) and not defined(fpc)}assembler; register;
+asm
+ // r15 = Pattern
+ // r14 = Text
+ // eax = TextLength
+ // r13 = Skip
+ // r12 = Next
+ // edi = Position
+ // esi = result
+ // ecx = PatternPosition
+ // eax = BadSkip
+ // edx = GoodSkip
+ // ebx = PatternLength
+
+ lea rsp,qword ptr [rsp-96]
+ mov qword ptr [rbp-64],rbx
+ mov qword ptr [rbp-56],rdi
+ mov qword ptr [rbp-48],rsi
+ mov qword ptr [rbp-40],r12
+ mov qword ptr [rbp-32],r13
+ mov qword ptr [rbp-24],r14
+ mov qword ptr [rbp-16],r15
+ mov r15,rcx
+ mov r14,rdx
+ mov eax,r8d
+ mov qword ptr [rbp-8],rax
+ mov r13,r9
+ mov r12,qword ptr [rbp+48]
+ mov edi,dword ptr [rbp+56]
+
+ // PatternLength:=length(Pattern);
+ mov rax,r15
+ test rax,rax
+ je @SkipPatternLengthRead
+ mov rax,qword ptr [rax-8]
+ @SkipPatternLengthRead:
+
+ mov ebx,eax
+
+ // result:=-1;
+ mov esi,-1
+
+ // if PatternLength<>0 then begin
+ test ebx,ebx
+ je @Done
+
+ // Position:=PtrPosChar(Pattern[1],Text,TextLength,Position);
+ mov r9d,edi
+ mov eax,dword ptr [rbp-8]
+ mov r8d,eax
+ mov rdx,r14
+ movzx ecx,byte ptr [r15]
+
+ call PtrPosChar
+ mov edi,eax
+
+ // if Position>=0 then begin
+ cmp edi,0
+ jnge @Done
+
+ // inc(Position,PatternLength-1);
+ lea eax,dword ptr [ebx-1]
+ add edi,eax
+
+ // while Position<TextLength do begin
+ jmp @Loop0Start
+
+ .align 8
+@Loop0:
+
+ // PatternPosition:=0;
+ mov ecx,0
+
+ // while (PatternPosition<PatternLength) and (Text[Position-PatternPosition]=Pattern[PatternLength-PatternPosition]) do begin
+ jmp @Loop1Start
+
+ .align 8
+@Loop1:
+
+ // inc(PatternPosition);
+ add ecx,1
+
+@Loop1Start:
+ cmp ecx,ebx
+ jnl @Loop1Break
+
+ movsxd r9,edi
+ movsxd r8,ecx
+ sub r9,r8
+ mov r10,r9
+ movsxd r9,ebx
+ sub r9,r8
+ mov r8b,byte ptr [r14+r10*1]
+ cmp r8b,byte ptr [r15+r9*1-1]
+ je @Loop1
+
+@Loop1Break:
+
+ // if PatternPosition<>PatternLength then begin
+ cmp ecx,ebx
+ je @Break
+
+ // BadSkip:=Skip[Text[Position-PatternPosition]];
+ movsxd r8,edi
+ movsxd r9,ecx
+ sub r8,r9
+ movzx r8d,byte ptr [r14+r8*1]
+ mov eax,dword ptr [r13+r8*4]
+
+ // GoodSkip:=Next[PatternPosition];
+ movsxd r8,ecx
+ mov edx,dword ptr [r12+r8*4]
+
+ // if BadSkip>GoodSkip then begin
+ cmp eax,edx
+ jng @GoodSkip
+
+ // inc(Position,BadSkip-PatternPosition);
+ mov r8d,eax
+ sub r8d,ecx
+ add edi,r8d
+ jmp @NextInLoop0
+
+@GoodSkip:
+
+ // inc(Position,GoodSkip);
+ add edi,edx
+ jmp @NextInLoop0
+
+@Break:
+ // result:=(Position-PatternLength)+1;
+ mov r8d,edi
+ sub r8d,ebx
+ lea r8d,dword ptr [r8d+1]
+ mov esi,r8d
+
+ // exit;
+ jmp @Done
+
+@NextInLoop0:
+@Loop0Start:
+
+ mov r8d,dword ptr [rbp-8]
+ cmp edi,r8d
+ jl @Loop0
+
+@Done:
+
+ // end;
+ mov eax,esi
+ mov rbx,qword ptr [rbp-64]
+ mov rdi,qword ptr [rbp-56]
+ mov rsi,qword ptr [rbp-48]
+ mov r12,qword ptr [rbp-40]
+ mov r13,qword ptr [rbp-32]
+ mov r14,qword ptr [rbp-24]
+ mov r15,qword ptr [rbp-16]
+end;
+{$else}
 var PatternPosition,BadSkip,GoodSkip,PatternLength:longint;
 begin
  PatternLength:=length(Pattern);
@@ -6843,8 +7002,52 @@ begin
   end;
  end;
 end;
+{$ifend}
 
-function PtrPosPatternCharClass(const Text:PFLRERawByteChar;TextLength:longint;const PatternCharClass:TFLRECharClass;Position:longint=0):longint; {$ifdef cpu386}register;{$endif}
+function PtrPosPatternCharClass(const Text:PFLRERawByteChar;TextLength:longint;const PatternCharClass:TFLRECharClass;Position:longint=0):longint;
+{$if defined(cpux86_64) and defined(Windows) and not defined(fpc)}assembler; register;
+asm
+ // rcx = Text
+ // edx = TextLength
+ // r8 = PatternCharClass
+ // r9d = Position
+ // eax = result
+ // r9d = Index
+
+ // for Index:=Position to TextLength-1 do begin
+ lea edx,dword ptr [edx-1]
+ cmp edx,r9d
+ jl @Fail
+ sub r9d,1
+
+ .align 8
+@Loop:
+ add r9d,1
+
+ // if Text[Index] in PatternCharClass then begin
+ movsxd r10,r9d
+ movzx r10d,byte ptr [rcx+r10*1]
+ bt dword ptr [r8],r10d
+ jnc @NextInLoop
+
+ // result:=Index;
+ mov eax,r9d
+
+ // exit;
+ jmp @Done
+
+@NextInLoop:
+ cmp edx,r9d
+ jg @Loop
+
+@Fail:
+ // result:=-1;
+ mov eax,-1
+
+@Done:
+end;
+{$else}
+{$ifdef cpu386}register;{$endif}
 var Index:longint;
 begin
  for Index:=Position to TextLength-1 do begin
@@ -6855,8 +7058,104 @@ begin
  end;
  result:=-1;
 end;
+{$ifend}
 
 function PtrPosPatternSBNDMQ1(PatternLength:longint;const Text:PFLRERawByteChar;TextLength:longint;const PatternBitMasks:TFLRECharPatternBitMasks;Position:longint=0):longint;
+{$if defined(cpux86_64) and defined(Windows) and not defined(fpc)}assembler; register;
+asm
+ // ecx = PatternLength
+ // rdx = Text
+ // r8d = TextLength
+ // r9 = PatternBitMasks
+ // r11d = Position
+ // eax = result
+ // ebx = CheckPosition
+ // esi = State
+ lea rsp,qword ptr [rsp-32]
+ mov qword ptr [rbp-24],rbx
+ mov qword ptr [rbp-16],rdi
+ mov qword ptr [rbp-8],rsi
+ mov r11d,dword ptr [rbp+48]
+
+ // inc(Position,PatternLength-1);
+ lea eax,dword ptr [ecx-1]
+ add r11d,eax
+
+ // while Position<TextLength do begin
+ jmp @Loop0Start
+
+ .align 8
+@Loop0:
+
+ // State:=PatternBitMasks[Text[Position]];
+ movsxd r10,r11d
+ movzx r10d,byte ptr [rdx+r10*1]
+ mov esi,dword ptr [r9+r10*4]
+
+ // if State<>0 then begin
+ test esi,esi
+ je @NextPosition
+
+ // CheckPosition:=Position-PatternLength;
+ mov r10d,r11d
+ sub r10d,ecx
+ mov ebx,r10d
+
+ .align 8
+ @Loop1:
+
+ // dec(Position);
+ sub r11d,1
+
+ // if Position<0 then begin
+ js @Loop1Break
+//cmp r11d,0
+//jl @Loop1Break
+
+ // State:=(State shr 1) and PatternBitMasks[Text[Position]];
+ movsxd r10,r11d
+ movzx edi,byte ptr [rdx+r10*1]
+ mov r10d,esi
+ shr r10d,1
+ mov edi,dword ptr [r9+rdi*4]
+ and r10d,edi
+ mov esi,r10d
+
+ // until State=0;
+ test esi,esi
+ jne @Loop1
+@Loop1Break:
+
+ // if Position=CheckPosition then begin
+ cmp r11d,ebx
+ jne @NextPosition
+
+ // result:=CheckPosition+1;
+ lea r10d,dword ptr [ebx+1]
+ mov eax,r10d
+
+ // exit;
+ jmp @Done
+
+@NextPosition:
+ // inc(Position,PatternLength);
+ add r11d,ecx
+
+@Loop0Start:
+ cmp r11d,r8d
+ jl @Loop0
+
+ // result:=-1;
+ mov eax,-1
+
+@Done:
+
+ // end;
+ mov rbx,qword ptr [rbp-24]
+ mov rdi,qword ptr [rbp-16]
+ mov rsi,qword ptr [rbp-8]
+end;
+{$else}
 var CheckPosition:longint;
     State:longword;
 begin
@@ -6881,8 +7180,115 @@ begin
  end;
  result:=-1;
 end;
+{$ifend}
 
 function PtrPosPatternSBNDMQ2(PatternLength:longint;const Text:PFLRERawByteChar;TextLength:longint;const PatternBitMasks:TFLRECharPatternBitMasks;Position:longint=0):longint;
+{$if defined(cpux86_64) and defined(Windows) and not defined(fpc)}assembler; register;
+asm
+ // ecx = PatternLength
+ // rdx = Text
+ // r8d = TextLength
+ // r9 = PatternBitMasks
+ // r11d = Position
+ // eax = result
+ // esi = CheckPosition
+ // edi = State
+ lea rsp,qword ptr [rsp-32]
+ mov qword ptr [rbp-24],rbx
+ mov qword ptr [rbp-16],rdi
+ mov qword ptr [rbp-8],rsi
+ mov r11d,dword ptr [rbp+48]
+
+ // inc(Position,PatternLength-2);
+ lea eax,dword ptr [ecx-2]
+ add r11d,eax
+
+ // dec(TextLength):
+ sub r8d,1
+
+ // while Position<TextLength do begin
+ jmp @Loop0Start
+
+ .align 8
+@Loop0:
+
+ // State:=(PatternBitMasks[Text[Position+1]] shr 1) and PatternBitMasks[Text[Position]];
+ movsxd r10,r11d
+ movzx ebx,byte ptr [rdx+r10*1+1]
+ mov ebx,dword ptr [r9+rbx*4]
+ shr ebx,1
+ movzx r10d,byte ptr [rdx+r10*1]
+ mov r10d,dword ptr [r9+r10*4]
+ and r10d,ebx
+ mov edi,r10d
+
+ // if State<>0 then begin
+ test edi,edi
+ je @NextPosition
+
+ // CheckPosition:=Position-(PatternLength-1);
+ lea ebx,dword ptr [ecx-1]
+ mov r10d,r11d
+ sub r10d,ebx
+ mov esi,r10d
+
+ .align 8
+@Loop1:
+
+ // dec(Position);
+ sub r11d,1
+
+ // if Position<0 then begin
+ js @Loop1Break
+//cmp r11d,0
+//jl @Loop1Break
+
+ // State:=(State shr 1) and PatternBitMasks[Text[Position]];
+ movsxd r10,r11d
+ movzx ebx,byte ptr [rdx+r10*1]
+ mov r10d,edi
+ shr r10d,1
+ mov ebx,dword ptr [r9+rbx*4]
+ and r10d,ebx
+ mov edi,r10d
+
+ // until State=0;
+ test edi,edi
+ jne @Loop1
+@Loop1Break:
+
+ // if Position=CheckPosition then begin
+ cmp r11d,esi
+ jne @NextPosition
+
+ // result:=CheckPosition+1;
+ lea r10d,dword ptr [esi+1]
+ mov eax,r10d
+
+ // exit;
+ jmp @Done
+
+@NextPosition:
+
+ // inc(Position,PatternLength-1);
+ lea r10d,dword ptr [ecx-1]
+ add r11d,r10d
+
+@Loop0Start:
+ cmp r11d,r8d
+ jl @Loop0
+
+ // result:=-1;
+ mov eax,-1
+
+@Done:
+
+ // end;
+ mov rbx,qword ptr [rbp-24]
+ mov rdi,qword ptr [rbp-16]
+ mov rsi,qword ptr [rbp-8]
+end;
+{$else}
 var CheckPosition:longint;
     State:longword;
 begin
@@ -6908,6 +7314,7 @@ begin
  end;
  result:=-1;
 end;
+{$ifend}
 
 function FLREPtrCopy(const Src:PFLRERawByteChar;const From,Len:longint):TFLRERawByteString;
 begin
@@ -12995,9 +13402,7 @@ begin
 
   CompileFixedStringSearch;
 
-  if not FixedStringIsWholeRegExp then begin
-   CompilePrefixCharClasses;
-  end;
+  CompilePrefixCharClasses;
 
   CompileByteMapForOnePassNFAAndDFA;
 
