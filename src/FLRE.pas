@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.02.05.07.06.0000';
+      FLREVersionString='1.00.2016.02.05.08.23.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -896,6 +896,7 @@ type EFLRE=class(Exception);
 
        FirstPrefixCharClass:PFLRECharClass;
        FirstPrefixCharClassSize:longint;
+       FirstPrefixCharClassRepeatedCount:longint;
        FirstPrefixCharRanges:TFLRECharRanges;
        CountFirstPrefixCharRanges:longint;
        FirstPrefixCharClassChars:TFLRECharClassChars;
@@ -4514,6 +4515,461 @@ begin
  end;
 end;
 
+function PtrPosCharSetOf2Of2Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx,r9
+{$endif}
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ movq xmm2,rsi
+ movq xmm3,rsi
+
+ mov ecx,edi
+ pxor xmm4,xmm4
+ movdqa xmm5,[XMM1Constant]
+ movdqa xmm6,[XMM2Constant]
+ movdqa xmm7,[XMM3Constant]
+
+ and rdi,-32
+ and ecx,31
+
+ movdqa xmm8,[rdi]
+ movdqa xmm9,[rdi]
+ movdqa xmm10,[rdi]
+ movdqa xmm11,[rdi]
+
+ pshufb xmm0,xmm4
+ pshufb xmm1,xmm5
+ pshufb xmm2,xmm6
+ pshufb xmm3,xmm7
+
+ movdqa xmm12,[rdi+16]
+ movdqa xmm13,[rdi+16]
+ movdqa xmm14,[rdi+16]
+ movdqa xmm15,[rdi+16]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm0
+ pcmpeqb xmm13,xmm1
+ pcmpeqb xmm14,xmm2
+ pcmpeqb xmm15,xmm3
+
+ por xmm8,xmm9
+ por xmm10,xmm11
+ por xmm12,xmm13
+ por xmm14,xmm15
+
+ pmovmskb r8d,xmm8
+ pmovmskb r9d,xmm10
+ pmovmskb r10d,xmm12
+ pmovmskb r11d,xmm14
+
+ shl r10,17
+ shl r11d,16
+ add ecx,1 // inc ecx
+ or r9d,r11d
+ lea rax,[r10+r8*2]
+
+ and r9d,eax
+ shr r9,cl
+ bsf eax,r9d
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ sub rax,1 // dec rax
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,32
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm8,[rdi+rdx]
+ movdqa xmm9,[rdi+rdx]
+ movdqa xmm10,[rdi+rdx]
+ movdqa xmm11,[rdi+rdx]
+ movdqa xmm12,[rdi+rdx+16]
+ movdqa xmm13,[rdi+rdx+16]
+ movdqa xmm14,[rdi+rdx+16]
+ movdqa xmm15,[rdi+rdx+16]
+
+ shr rax,32
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm0
+ pcmpeqb xmm13,xmm1
+ pcmpeqb xmm14,xmm2
+ pcmpeqb xmm15,xmm3
+
+ por xmm8,xmm9
+ por xmm10,xmm11
+ por xmm12,xmm13
+ por xmm14,xmm15
+
+ pmovmskb r8d,xmm8
+ pmovmskb r9d,xmm10
+ pmovmskb r10d,xmm12
+ pmovmskb r11d,xmm14
+
+ lea rax,[rax+r8*2]
+ shl r10,17
+ shl r11d,16
+ add rax,r10
+ or r9d,r11d
+
+ and r9d,eax
+ jne @Found
+ add rdi,32
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ bsf eax,r9d
+ sub rdx,1 // dec rdx
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharSetOf2Of2(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ result:=PtrPosCharSetOf2Of2Search(@Text[Offset],
+                                   (TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or
+                                   TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),
+                                   @Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
+function PtrPosCharSetOf2Of3Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
+      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx,r9
+{$endif}
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ movq xmm2,rsi
+ movq xmm3,rsi
+ movq xmm4,rsi
+ movq xmm5,rsi
+
+ mov ecx,edi
+ pxor xmm6,xmm6
+ movdqa xmm7,[XMM1Constant]
+ movdqa xmm8,[XMM2Constant]
+ movdqa xmm9,[XMM3Constant]
+ movdqa xmm10,[XMM4Constant]
+ movdqa xmm11,[XMM5Constant]
+
+ and rdi,-16
+ and ecx,15
+
+ pshufb xmm0,xmm6
+ pshufb xmm1,xmm7
+ pshufb xmm2,xmm8
+ pshufb xmm3,xmm9
+ pshufb xmm4,xmm10
+ pshufb xmm5,xmm11
+
+ movdqa xmm8,[rdi]
+ movdqa xmm9,[rdi]
+ movdqa xmm10,[rdi]
+ movdqa xmm11,[rdi]
+ movdqa xmm12,[rdi]
+ movdqa xmm13,[rdi]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+
+ por xmm8,xmm9
+ por xmm11,xmm12
+ por xmm8,xmm10
+ por xmm11,xmm13
+
+ pmovmskb r8d,xmm8
+ pmovmskb r10d,xmm11
+
+ add ecx,1 // inc ecx
+ lea rax,[r8+r8]
+
+ and r10d,eax
+ shr r10d,cl
+ bsf eax,r10d
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ sub rax,1 // dec rax
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,16
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm8,[rdi+rdx]
+ movdqa xmm9,[rdi+rdx]
+ movdqa xmm10,[rdi+rdx]
+ movdqa xmm11,[rdi+rdx]
+ movdqa xmm12,[rdi+rdx]
+ movdqa xmm13,[rdi+rdx]
+
+ shr rax,16
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+
+ por xmm8,xmm9
+ por xmm11,xmm12
+ por xmm8,xmm10
+ por xmm11,xmm13
+
+ pmovmskb r8d,xmm8
+ pmovmskb r10d,xmm11
+
+ lea rax,[rax+r8*2]
+
+ and r10d,eax
+ jne @Found
+ add rdi,16
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ bsf eax,r10d
+ sub rdx,1 // dec rdx
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharSetOf2Of3(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ result:=PtrPosCharSetOf2Of3Search(@Text[Offset],
+                                   (TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or
+                                   TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),
+                                   @Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
+function PtrPosCharSetOf2Of4Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
+      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
+      XMM6Constant:array[0..1] of TFLREQWord=(TFLREQWord($0606060606060606),TFLREQWord($0606060606060606));
+      XMM7Constant:array[0..1] of TFLREQWord=(TFLREQWord($0707070707070707),TFLREQWord($0707070707070707));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx,r9
+{$endif}
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ movq xmm2,rsi
+ movq xmm3,rsi
+ movq xmm4,rsi
+ movq xmm5,rsi
+ movq xmm6,rsi
+ movq xmm7,rsi
+
+ mov ecx,edi
+ pxor xmm8,xmm8
+ movdqa xmm9,[XMM1Constant]
+ movdqa xmm10,[XMM2Constant]
+ movdqa xmm11,[XMM3Constant]
+ movdqa xmm12,[XMM4Constant]
+ movdqa xmm13,[XMM5Constant]
+ movdqa xmm14,[XMM6Constant]
+ movdqa xmm15,[XMM7Constant]
+
+ and rdi,-16
+ and ecx,15
+
+ pshufb xmm0,xmm8
+ pshufb xmm1,xmm9
+ pshufb xmm2,xmm10
+ pshufb xmm3,xmm11
+ pshufb xmm4,xmm12
+ pshufb xmm5,xmm13
+ pshufb xmm6,xmm14
+ pshufb xmm7,xmm15
+
+ movdqa xmm8,[rdi]
+ movdqa xmm9,[rdi]
+ movdqa xmm10,[rdi]
+ movdqa xmm11,[rdi]
+ movdqa xmm12,[rdi]
+ movdqa xmm13,[rdi]
+ movdqa xmm14,[rdi]
+ movdqa xmm15,[rdi]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+ pcmpeqb xmm14,xmm6
+ pcmpeqb xmm15,xmm7
+
+ por xmm8,xmm9
+ por xmm10,xmm11
+ por xmm12,xmm13
+ por xmm14,xmm15
+ por xmm8,xmm10
+ por xmm12,xmm14
+
+ pmovmskb r8d,xmm8
+ pmovmskb r10d,xmm12
+
+ add ecx,1 // inc ecx
+ lea rax,[r8+r8]
+
+ and r10d,eax
+ shr r10d,cl
+ bsf eax,r10d
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ sub rax,1 // dec rax
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,16
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm8,[rdi+rdx]
+ movdqa xmm9,[rdi+rdx]
+ movdqa xmm10,[rdi+rdx]
+ movdqa xmm11,[rdi+rdx]
+ movdqa xmm12,[rdi+rdx]
+ movdqa xmm13,[rdi+rdx]
+ movdqa xmm14,[rdi+rdx]
+ movdqa xmm15,[rdi+rdx]
+
+ shr rax,16
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+ pcmpeqb xmm14,xmm6
+ pcmpeqb xmm15,xmm7
+
+ por xmm8,xmm9
+ por xmm10,xmm11
+ por xmm12,xmm13
+ por xmm14,xmm15
+ por xmm8,xmm10
+ por xmm12,xmm14
+
+ pmovmskb r8d,xmm8
+ pmovmskb r10d,xmm12
+
+ lea rax,[rax+r8*2]
+
+ and r10d,eax
+ jne @Found
+ add rdi,16
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ bsf eax,r10d
+ sub rdx,1 // dec rdx
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharSetOf2Of4(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ result:=PtrPosCharSetOf2Of4Search(@Text[Offset],
+                                   (TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or
+                                   TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),
+                                   @Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
 function PtrPosCharRangeSearch(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
 const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
       XMM126Constant:array[0..1] of TFLREQWord=(TFLREQWord($7e7e7e7e7e7e7e7e),TFLREQWord($7e7e7e7e7e7e7e7e));
@@ -6100,10 +6556,75 @@ begin
   result:=PtrPosChar(SearchChar0,Text,TextLength,Index);
   if result<0 then begin
    exit;
+  end else if result>=(TextLength-1) then begin
+   break;
+  end else if Text[result+1]=SearchChar1 then begin
+   exit;
   end else begin
-   if Text[result+1]=SearchChar1 then begin
-    exit;
-   end;
+   Index:=result+1;
+  end;
+ end;
+ result:=-1;
+end;
+
+function PtrPosCharSetOf2Of2(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ Index:=Offset;
+ while Index<(TextLength-1) do begin
+  result:=PtrPosCharSetOf2(SearchChar0,SearchChar1,Text,TextLength,Index);
+  if result<0 then begin
+   exit;
+  end else if result>=(TextLength-1) then begin
+   break;
+  end else if (Text[result+1]=SearchChar0) or (Text[result+1]=SearchChar1) then begin
+   exit;
+  end else begin
+   Index:=result+1;
+  end;
+ end;
+ result:=-1;
+end;
+
+function PtrPosCharSetOf2Of3(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ Index:=Offset;
+ while Index<(TextLength-2) do begin
+  result:=PtrPosCharSetOf2(SearchChar0,SearchChar1,Text,TextLength,Index);
+  if result<0 then begin
+   exit;
+  end else if result>=(TextLength-2) then begin
+   break;
+  end else if ((Text[result+1]=SearchChar0) or (Text[result+1]=SearchChar1)) and
+              ((Text[result+2]=SearchChar0) or (Text[result+2]=SearchChar1)) then begin
+   exit;
+  end else begin
+   Index:=result+1;
+  end;
+ end;
+ result:=-1;
+end;
+
+function PtrPosCharSetOf2Of4(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+var Index:longint;
+    CurrentChar:TFLRERawByteChar;
+begin
+ Index:=Offset;
+ while Index<(TextLength-3) do begin
+  result:=PtrPosCharSetOf2(SearchChar0,SearchChar1,Text,TextLength,Index);
+  if result<0 then begin
+   exit;
+  end else if result>=(TextLength-3) then begin
+   break;
+  end else if ((Text[result+1]=SearchChar0) or (Text[result+1]=SearchChar1)) and
+              ((Text[result+2]=SearchChar0) or (Text[result+2]=SearchChar1)) and
+              ((Text[result+3]=SearchChar0) or (Text[result+3]=SearchChar1)) then begin
+   exit;
+  end else begin
+   Index:=result+1;
   end;
  end;
  result:=-1;
@@ -12141,6 +12662,7 @@ begin
 
  FirstPrefixCharClass:=nil;
  FirstPrefixCharClassSize:=0;
+ FirstPrefixCharClassRepeatedCount:=0;
 
  FirstPrefixCharRanges:=nil;
  CountFirstPrefixCharRanges:=0;
@@ -16946,6 +17468,31 @@ begin
 
     CompilePrefixPattern;
 
+    FirstPrefixCharClassRepeatedCount:=1;
+
+    if TotalCount=2 then begin
+     case CountPrefixCharClasses of
+      2:begin
+       if PrefixCharClasses[0]=PrefixCharClasses[1] then begin
+        FirstPrefixCharClassRepeatedCount:=2;
+        CountPrefixCharClasses:=1;
+       end;
+      end;
+      3:begin
+       if (PrefixCharClasses[0]=PrefixCharClasses[1]) and (PrefixCharClasses[0]=PrefixCharClasses[2]) then begin
+        FirstPrefixCharClassRepeatedCount:=3;
+        CountPrefixCharClasses:=1;
+       end;
+      end;
+      4:begin
+       if (PrefixCharClasses[0]=PrefixCharClasses[1]) and (PrefixCharClasses[0]=PrefixCharClasses[2]) and (PrefixCharClasses[0]=PrefixCharClasses[3]) then begin
+        FirstPrefixCharClassRepeatedCount:=4;
+        CountPrefixCharClasses:=1;
+       end;
+      end;
+     end;
+    end;
+
     if CountPrefixCharClasses=1 then begin
      FirstPrefixCharClassSize:=TotalCount;
      case FirstPrefixCharClassSize of
@@ -18305,11 +18852,39 @@ begin
        result:=PtrPosChar(FirstPrefixCharClassChars[0],Input,InputLength,0);
       end;
       2:begin
-       result:=PtrPosCharSetOf2(FirstPrefixCharClassChars[0],
-                                FirstPrefixCharClassChars[1],
-                                Input,
-                                InputLength,
-                                0);
+       case FirstPrefixCharClassRepeatedCount of
+        1:begin
+         result:=PtrPosCharSetOf2(FirstPrefixCharClassChars[0],
+                                  FirstPrefixCharClassChars[1],
+                                  Input,
+                                  InputLength,
+                                  0);
+        end;
+        2:begin
+         result:=PtrPosCharSetOf2Of2(FirstPrefixCharClassChars[0],
+                                     FirstPrefixCharClassChars[1],
+                                     Input,
+                                     InputLength,
+                                     0);
+        end;
+        3:begin
+         result:=PtrPosCharSetOf2Of3(FirstPrefixCharClassChars[0],
+                                     FirstPrefixCharClassChars[1],
+                                     Input,
+                                     InputLength,
+                                     0);
+        end;
+        4:begin
+         result:=PtrPosCharSetOf2Of4(FirstPrefixCharClassChars[0],
+                                     FirstPrefixCharClassChars[1],
+                                     Input,
+                                     InputLength,
+                                     0);
+        end;
+        else begin
+         result:=0;
+        end;
+       end;
       end;
       3:begin
        result:=PtrPosCharSetOf3(FirstPrefixCharClassChars[0],
@@ -18415,11 +18990,39 @@ begin
      result:=PtrPosChar(FirstPrefixCharClassChars[0],Input,InputLength,0);
     end;
     2:begin
-     result:=PtrPosCharSetOf2(FirstPrefixCharClassChars[0],
-                              FirstPrefixCharClassChars[1],
-                              Input,
-                              InputLength,
-                              0);
+     case FirstPrefixCharClassRepeatedCount of
+      1:begin
+       result:=PtrPosCharSetOf2(FirstPrefixCharClassChars[0],
+                                FirstPrefixCharClassChars[1],
+                                Input,
+                                InputLength,
+                                0);
+      end;
+      2:begin
+       result:=PtrPosCharSetOf2Of2(FirstPrefixCharClassChars[0],
+                                   FirstPrefixCharClassChars[1],
+                                   Input,
+                                   InputLength,
+                                   0);
+      end;
+      3:begin
+       result:=PtrPosCharSetOf2Of3(FirstPrefixCharClassChars[0],
+                                   FirstPrefixCharClassChars[1],
+                                   Input,
+                                   InputLength,
+                                   0);
+      end;
+      4:begin
+       result:=PtrPosCharSetOf2Of4(FirstPrefixCharClassChars[0],
+                                   FirstPrefixCharClassChars[1],
+                                   Input,
+                                   InputLength,
+                                   0);
+      end;
+      else begin
+       result:=0;
+      end;
+     end;
     end;
     3:begin
      result:=PtrPosCharSetOf3(FirstPrefixCharClassChars[0],
