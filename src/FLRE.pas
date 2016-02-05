@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.02.05.04.57.0000';
+      FLREVersionString='1.00.2016.02.05.05.00.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -3426,7 +3426,7 @@ asm
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
-//mov rcx, r9
+//mov rcx,r9
 {$endif}
 
  mov ecx,edi
@@ -3474,13 +3474,13 @@ asm
  jmp @Done
 
 @Found:
- pmovmskb r10d, xmm1
- shl eax, 16
- or eax, r10d
- bsf eax, eax
- add rax, rdi
+ pmovmskb r10d,xmm1
+ shl eax,16
+ or eax,r10d
+ bsf eax,eax
+ add rax,rdi
  jc @Fail
- add rax, rdx
+ add rax,rdx
 @Done:
 end;
 
@@ -3502,7 +3502,7 @@ asm
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
-//mov rcx, r9
+//mov rcx,r9
 {$endif}
 
  movq xmm0,rsi
@@ -3595,7 +3595,7 @@ asm
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
-//mov rcx, r9
+//mov rcx,r9
 {$endif}
 
  mov ecx,edi
@@ -3714,7 +3714,7 @@ asm
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
-//mov rcx, r9
+//mov rcx,r9
 {$endif}
 
  mov ecx,edi
@@ -3850,7 +3850,7 @@ asm
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
-//mov rcx, r9
+//mov rcx,r9
 {$endif}
 
  mov ecx,edi
@@ -3973,7 +3973,7 @@ asm
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
-//mov rcx, r9
+//mov rcx,r9
 {$endif}
 
  mov ecx,edi
@@ -4107,7 +4107,7 @@ asm
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
-//mov rcx, r9
+//mov rcx,r9
 {$endif}
 
  mov ecx,edi
@@ -4252,7 +4252,7 @@ asm
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
-//mov rcx, r9
+//mov rcx,r9
 {$endif}
 
  mov ecx,edi
