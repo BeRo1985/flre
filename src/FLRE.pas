@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.02.05.03.53.0000';
+      FLREVersionString='1.00.2016.02.05.04.57.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -3415,7 +3415,7 @@ end;
 {$endif}
 {$endif}
 
-{$ifdef cpux86_64_incomplete}
+{$ifdef cpux86_64}
 
 // Thanks to Jeffrey Lim
 
@@ -3544,10 +3544,10 @@ asm
  jnc @Fail
 
 @MainLoop:
- movdqa xmm2,[rdx+rdi]
- movdqa xmm3,[rdx+rdi]
- movdqa xmm4,[rdx+rdi+16]
- movdqa xmm5,[rdx+rdi+16]
+ movdqa xmm2,[rdi+rdx]
+ movdqa xmm3,[rdi+rdx]
+ movdqa xmm4,[rdi+rdx+16]
+ movdqa xmm5,[rdi+rdx+16]
  pcmpeqb xmm2,xmm0
  pcmpeqb xmm3,xmm1
  pcmpeqb xmm4,xmm0
@@ -3579,6 +3579,813 @@ end;
 function PtrPosCharSetOf2(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
 begin
  result:=PtrPosCharSetOf2Search(@Text[Offset],(TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),@Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
+function PtrPosCharSetOf3Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx, r9
+{$endif}
+
+ mov ecx,edi
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ movq xmm2,rsi
+
+ and rdi,-32
+ and ecx,31
+
+ pxor xmm9,xmm9
+ movdqa xmm10,[XMM1Constant]
+ movdqa xmm11,[XMM2Constant]
+
+ movdqa xmm3,[rdi]
+ movdqa xmm4,[rdi]
+ movdqa xmm5,[rdi]
+
+ pshufb xmm0,xmm9
+ pshufb xmm1,xmm10
+ pshufb xmm2,xmm11
+
+ movdqa xmm6,[rdi+16]
+ movdqa xmm7,[rdi+16]
+ movdqa xmm8,[rdi+16]
+
+ pcmpeqb xmm3,xmm0
+ pcmpeqb xmm4,xmm1
+ pcmpeqb xmm5,xmm2
+ pcmpeqb xmm6,xmm0
+ pcmpeqb xmm7,xmm1
+ pcmpeqb xmm8,xmm2
+ por xmm4,xmm3
+ por xmm7,xmm6
+ por xmm5,xmm4
+ por xmm8,xmm7
+ pmovmskb eax,xmm5
+ pmovmskb r10d,xmm8
+ shl r10d,16
+ or eax,r10d
+ shr eax,cl
+ bsf eax,eax
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,32
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm3,[rdi+rdx]
+ movdqa xmm4,[rdi+rdx]
+ movdqa xmm5,[rdi+rdx]
+ movdqa xmm6,[rdi+rdx+16]
+ movdqa xmm7,[rdi+rdx+16]
+ movdqa xmm8,[rdi+rdx+16]
+ pcmpeqb xmm3,xmm0
+ pcmpeqb xmm4,xmm1
+ pcmpeqb xmm5,xmm2
+ pcmpeqb xmm6,xmm0
+ pcmpeqb xmm7,xmm1
+ pcmpeqb xmm8,xmm2
+ por xmm4,xmm3
+ por xmm7,xmm6
+ por xmm5,xmm4
+ por xmm8,xmm7
+ por xmm8,xmm5
+ pmovmskb eax,xmm8
+ test eax,eax
+ jne @Found
+ add rdi,32
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ pmovmskb r10d,xmm5
+ shl eax,16
+ or eax,r10d
+ bsf eax,eax
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharSetOf3(const SearchChar0,SearchChar1,SearchChar2:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+begin
+ result:=PtrPosCharSetOf3Search(@Text[Offset],
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar2))) shl 16) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or
+                               TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),
+                               @Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
+function PtrPosCharSetOf4Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx, r9
+{$endif}
+
+ mov ecx,edi
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ movq xmm2,rsi
+ movq xmm3,rsi
+
+ and rdi,-32
+ and ecx,31
+
+ pxor xmm12,xmm12
+ movdqa xmm13,[XMM1Constant]
+ movdqa xmm14,[XMM2Constant]
+ movdqa xmm15,[XMM3Constant]
+
+ movdqa xmm4,[rdi]
+ movdqa xmm5,[rdi]
+ movdqa xmm6,[rdi]
+ movdqa xmm7,[rdi]
+
+ pshufb xmm0,xmm12
+ pshufb xmm1,xmm13
+ pshufb xmm2,xmm14
+ pshufb xmm3,xmm15
+
+ movdqa xmm8,[rdi+16]
+ movdqa xmm9,[rdi+16]
+ movdqa xmm10,[rdi+16]
+ movdqa xmm11,[rdi+16]
+
+ pcmpeqb xmm4,xmm0
+ pcmpeqb xmm5,xmm1
+ pcmpeqb xmm6,xmm2
+ pcmpeqb xmm7,xmm3
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ por xmm5,xmm4
+ por xmm7,xmm6
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm7,xmm5
+ por xmm11,xmm9
+ pmovmskb eax,xmm7
+ pmovmskb r10d,xmm11
+ shl r10d,16
+ or eax,r10d
+ shr eax,cl
+ bsf eax,eax
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,32
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm4,[rdi+rdx]
+ movdqa xmm5,[rdi+rdx]
+ movdqa xmm6,[rdi+rdx]
+ movdqa xmm7,[rdi+rdx]
+ movdqa xmm8,[rdi+rdx+16]
+ movdqa xmm9,[rdi+rdx+16]
+ movdqa xmm10,[rdi+rdx+16]
+ movdqa xmm11,[rdi+rdx+16]
+ pcmpeqb xmm4,xmm0
+ pcmpeqb xmm5,xmm1
+ pcmpeqb xmm6,xmm2
+ pcmpeqb xmm7,xmm3
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ por xmm5,xmm4
+ por xmm7,xmm6
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm7,xmm5
+ por xmm11,xmm9
+ por xmm11,xmm7
+ pmovmskb eax,xmm11
+ test eax,eax
+ jne @Found
+ add rdi,32
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ pmovmskb r10d,xmm7
+ shl eax,16
+ or eax,r10d
+ bsf eax,eax
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharSetOf4(const SearchChar0,SearchChar1,SearchChar2,SearchChar3:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+begin
+ result:=PtrPosCharSetOf4Search(@Text[Offset],
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar3))) shl 24) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar2))) shl 16) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or
+                               TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),
+                               @Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
+function PtrPosCharSetOf5Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx, r9
+{$endif}
+
+ mov ecx,edi
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ movq xmm2,rsi
+ movq xmm3,rsi
+ movq xmm4,rsi
+
+ and rdi,-16
+ and ecx,15
+
+ pxor xmm11,xmm11
+ movdqa xmm12,[XMM1Constant]
+ movdqa xmm13,[XMM2Constant]
+ movdqa xmm14,[XMM3Constant]
+ movdqa xmm15,[XMM4Constant]
+
+ pshufb xmm0,xmm11
+ pshufb xmm1,xmm12
+ pshufb xmm2,xmm13
+ pshufb xmm3,xmm14
+ pshufb xmm4,xmm15
+
+ movdqa xmm8,[rdi]
+ movdqa xmm9,[rdi]
+ movdqa xmm10,[rdi]
+ movdqa xmm11,[rdi]
+ movdqa xmm12,[rdi]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm9,xmm12
+ por xmm9,xmm11
+
+ pmovmskb eax,xmm9
+
+ shr eax,cl
+ bsf eax,eax
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,16
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm8,[rdi+rdx]
+ movdqa xmm9,[rdi+rdx]
+ movdqa xmm10,[rdi+rdx]
+ movdqa xmm11,[rdi+rdx]
+ movdqa xmm12,[rdi+rdx]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm9,xmm12
+ por xmm9,xmm11
+
+ pmovmskb eax,xmm9
+ test eax,eax
+ jne @Found
+ add rdi,16
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ bsf eax,eax
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharSetOf5(const SearchChar0,SearchChar1,SearchChar2,SearchChar3,SearchChar4:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+begin
+ result:=PtrPosCharSetOf5Search(@Text[Offset],
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar4))) shl 32) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar3))) shl 24) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar2))) shl 16) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or
+                               TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),
+                               @Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
+function PtrPosCharSetOf6Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
+      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx, r9
+{$endif}
+
+ mov ecx,edi
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ movq xmm2,rsi
+ movq xmm3,rsi
+ movq xmm4,rsi
+ movq xmm5,rsi
+
+ and rdi,-16
+ and ecx,15
+
+ pxor xmm10,xmm10
+ movdqa xmm11,[XMM1Constant]
+ movdqa xmm12,[XMM2Constant]
+ movdqa xmm13,[XMM3Constant]
+ movdqa xmm14,[XMM4Constant]
+ movdqa xmm15,[XMM5Constant]
+
+ pshufb xmm0,xmm10
+ pshufb xmm1,xmm11
+ pshufb xmm2,xmm12
+ pshufb xmm3,xmm13
+ pshufb xmm4,xmm14
+ pshufb xmm5,xmm15
+
+ movdqa xmm8,[rdi]
+ movdqa xmm9,[rdi]
+ movdqa xmm10,[rdi]
+ movdqa xmm11,[rdi]
+ movdqa xmm12,[rdi]
+ movdqa xmm13,[rdi]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm13,xmm12
+ por xmm11,xmm9
+ por xmm13,xmm11
+
+ pmovmskb eax,xmm13
+
+ shr eax,cl
+ bsf eax,eax
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,16
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm8,[rdi+rdx]
+ movdqa xmm9,[rdi+rdx]
+ movdqa xmm10,[rdi+rdx]
+ movdqa xmm11,[rdi+rdx]
+ movdqa xmm12,[rdi+rdx]
+ movdqa xmm13,[rdi+rdx]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm13,xmm12
+ por xmm11,xmm9
+ por xmm13,xmm11
+
+ pmovmskb eax,xmm13
+ test eax,eax
+ jne @Found
+ add rdi,16
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ bsf eax,eax
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharSetOf6(const SearchChar0,SearchChar1,SearchChar2,SearchChar3,SearchChar4,SearchChar5:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+begin
+ result:=PtrPosCharSetOf6Search(@Text[Offset],
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar5))) shl 40) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar4))) shl 32) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar3))) shl 24) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar2))) shl 16) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or
+                               TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),
+                               @Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
+function PtrPosCharSetOf7Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
+      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
+      XMM6Constant:array[0..1] of TFLREQWord=(TFLREQWord($0606060606060606),TFLREQWord($0606060606060606));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx, r9
+{$endif}
+
+ mov ecx,edi
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ movq xmm2,rsi
+ movq xmm3,rsi
+ movq xmm4,rsi
+ movq xmm5,rsi
+ movq xmm6,rsi
+
+ and rdi,-16
+ and ecx,15
+
+ pxor xmm9,xmm9
+ movdqa xmm10,[XMM1Constant]
+ movdqa xmm11,[XMM2Constant]
+ movdqa xmm12,[XMM3Constant]
+ movdqa xmm13,[XMM4Constant]
+ movdqa xmm14,[XMM5Constant]
+ movdqa xmm15,[XMM6Constant]
+
+ pshufb xmm0,xmm9
+ pshufb xmm1,xmm10
+ pshufb xmm2,xmm11
+ pshufb xmm3,xmm12
+ pshufb xmm4,xmm13
+ pshufb xmm5,xmm14
+ pshufb xmm6,xmm15
+
+ movdqa xmm8,[rdi]
+ movdqa xmm9,[rdi]
+ movdqa xmm10,[rdi]
+ movdqa xmm11,[rdi]
+ movdqa xmm12,[rdi]
+ movdqa xmm13,[rdi]
+ movdqa xmm14,[rdi]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+ pcmpeqb xmm14,xmm6
+
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm13,xmm12
+ por xmm9,xmm14
+ por xmm13,xmm11
+ por xmm13,xmm9
+
+ pmovmskb eax,xmm13
+
+ shr eax,cl
+ bsf eax,eax
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,16
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm8,[rdi+rdx]
+ movdqa xmm9,[rdi+rdx]
+ movdqa xmm10,[rdi+rdx]
+ movdqa xmm11,[rdi+rdx]
+ movdqa xmm12,[rdi+rdx]
+ movdqa xmm13,[rdi+rdx]
+ movdqa xmm14,[rdi+rdx]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+ pcmpeqb xmm14,xmm6
+
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm13,xmm12
+ por xmm9,xmm14
+ por xmm13,xmm11
+ por xmm13,xmm9
+
+ pmovmskb eax,xmm13
+ test eax,eax
+ jne @Found
+ add rdi,16
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ bsf eax,eax
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharSetOf7(const SearchChar0,SearchChar1,SearchChar2,SearchChar3,SearchChar4,SearchChar5,SearchChar6:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+begin
+ result:=PtrPosCharSetOf7Search(@Text[Offset],
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar6))) shl 48) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar5))) shl 40) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar4))) shl 32) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar3))) shl 24) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar2))) shl 16) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or
+                               TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),
+                               @Text[TextLength]);
+ if result=0 then begin
+  result:=-1;
+ end else begin
+  dec(result,ptrint(pointer(@Text[Offset])));
+ end;
+end;
+
+function PtrPosCharSetOf8Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):ptrint; assembler; register;
+const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
+      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
+      XMM6Constant:array[0..1] of TFLREQWord=(TFLREQWord($0606060606060606),TFLREQWord($0606060606060606));
+      XMM7Constant:array[0..1] of TFLREQWord=(TFLREQWord($0707070707070707),TFLREQWord($0707070707070707));
+asm
+{$ifdef Windows}
+ // Win64 ABI to System-V ABI wrapper
+ mov rdi,rcx
+ mov rsi,rdx
+ mov rdx,r8
+//mov rcx, r9
+{$endif}
+
+ mov ecx,edi
+
+ movq xmm0,rsi
+ movq xmm1,rsi
+ movq xmm2,rsi
+ movq xmm3,rsi
+ movq xmm4,rsi
+ movq xmm5,rsi
+ movq xmm6,rsi
+ movq xmm7,rsi
+
+ and rdi,-16
+ and ecx,15
+
+ pxor xmm8,xmm8
+ movdqa xmm9,[XMM1Constant]
+ movdqa xmm10,[XMM2Constant]
+ movdqa xmm11,[XMM3Constant]
+ movdqa xmm12,[XMM4Constant]
+ movdqa xmm13,[XMM5Constant]
+ movdqa xmm14,[XMM6Constant]
+ movdqa xmm15,[XMM7Constant]
+
+ pshufb xmm0,xmm8
+ pshufb xmm1,xmm9
+ pshufb xmm2,xmm10
+ pshufb xmm3,xmm11
+ pshufb xmm4,xmm12
+ pshufb xmm5,xmm13
+ pshufb xmm6,xmm14
+ pshufb xmm7,xmm15
+
+ movdqa xmm8,[rdi]
+ movdqa xmm9,[rdi]
+ movdqa xmm10,[rdi]
+ movdqa xmm11,[rdi]
+ movdqa xmm12,[rdi]
+ movdqa xmm13,[rdi]
+ movdqa xmm14,[rdi]
+ movdqa xmm15,[rdi]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+ pcmpeqb xmm14,xmm6
+ pcmpeqb xmm15,xmm7
+
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm13,xmm12
+ por xmm15,xmm14
+ por xmm11,xmm9
+ por xmm15,xmm13
+ por xmm15,xmm11
+
+ pmovmskb eax,xmm15
+
+ shr eax,cl
+ bsf eax,eax
+ jz @DoMainLoop
+ add rdi,rcx
+ add rax,rdi
+ cmp rax,rdx
+ jae @Fail
+ jmp @Done
+
+@DoMainLoop:
+ add rdi,16
+ sub rdi,rdx
+ jnc @Fail
+
+@MainLoop:
+ movdqa xmm8,[rdi+rdx]
+ movdqa xmm9,[rdi+rdx]
+ movdqa xmm10,[rdi+rdx]
+ movdqa xmm11,[rdi+rdx]
+ movdqa xmm12,[rdi+rdx]
+ movdqa xmm13,[rdi+rdx]
+ movdqa xmm14,[rdi+rdx]
+ movdqa xmm15,[rdi+rdx]
+
+ pcmpeqb xmm8,xmm0
+ pcmpeqb xmm9,xmm1
+ pcmpeqb xmm10,xmm2
+ pcmpeqb xmm11,xmm3
+ pcmpeqb xmm12,xmm4
+ pcmpeqb xmm13,xmm5
+ pcmpeqb xmm14,xmm6
+ pcmpeqb xmm15,xmm7
+
+ por xmm9,xmm8
+ por xmm11,xmm10
+ por xmm13,xmm12
+ por xmm15,xmm14
+ por xmm11,xmm9
+ por xmm15,xmm13
+ por xmm15,xmm11
+
+ pmovmskb eax,xmm15
+ test eax,eax
+ jne @Found
+ add rdi,16
+ jnc @MainLoop
+
+@Fail:
+ xor eax,eax
+ jmp @Done
+
+@Found:
+ bsf eax,eax
+ add rax,rdi
+ jc @Fail
+ add rax,rdx
+@Done:
+end;
+
+function PtrPosCharSetOf8(const SearchChar0,SearchChar1,SearchChar2,SearchChar3,SearchChar4,SearchChar5,SearchChar6,SearchChar7:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:longint;Offset:longint=0):ptrint;
+begin
+ result:=PtrPosCharSetOf8Search(@Text[Offset],
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar7))) shl 56) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar6))) shl 48) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar5))) shl 40) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar4))) shl 32) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar3))) shl 24) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar2))) shl 16) or
+                               (TFLREQWord(byte(TFLRERawByteChar(SearchChar1))) shl 8) or
+                               TFLREQWord(byte(TFLRERawByteChar(SearchChar0))),
+                               @Text[TextLength]);
  if result=0 then begin
   result:=-1;
  end else begin
