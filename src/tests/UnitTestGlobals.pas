@@ -63,9 +63,9 @@ begin
     inc(i);
    end;
    else begin
-    case s[i] of
-     #$0000..#$0007,#$000e..#$001f,#$007d..#$009f,#$00ad:begin
-      c:=byte(ansichar(s[i]));
+    c:=byte(ansichar(s[i]));
+    case c of
+     $0000..$0007,$000e..$001f,$007d..$009f,$00ad:begin
       result:=result+'\x'+HexChars[false,(c shr 4) and $f]+HexChars[false,c and $f];
       inc(i);
      end;
