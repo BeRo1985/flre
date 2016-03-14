@@ -295,6 +295,11 @@ begin
  ExecuteSearchFailTest('([A-Za-z0-9+/]){4}(|=)A','0FB7B',[]);
  ExecuteSearchFailTest('([A-Za-z0-9+/]){4}(|=)A','0FB7=B',[]);
 
+ // Unicode classes
+ ExecuteSearchTest('^[^\p{Nd}\p{Nl}\p{No}\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}]$','.',[rfUTF8]);
+ ExecuteSearchTest('^[\p{Nd}\p{Nl}\p{No}\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}]$','0',[rfUTF8]);
+ ExecuteSearchTest('^(\p{Nd}|\p{Nl}|\p{No}|\p{Lu}|\p{Ll}|\p{Lt}|\p{Lm}|\p{Lo})$','0',[rfUTF8]);
+
 end;
 
 end.
