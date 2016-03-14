@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.03.14.17.09.0000';
+      FLREVersionString='1.00.2016.03.14.17.55.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -161,7 +161,8 @@ const FLREVersion=$00000004;
       carfLONGEST=1 shl 7;
       carfMULTIMATCH=1 shl 8;
       carfUTF8=1 shl 9;
-      carfDELIMITERS=1 shl 10;
+      carfONLYFASTOPTIMIZATIONS=1 shl 10;
+      carfDELIMITERS=1 shl 11;
 
 type EFLRE=class(Exception);
 
@@ -219,6 +220,7 @@ type EFLRE=class(Exception);
                 rfLONGEST,
                 rfMULTIMATCH,
                 rfUTF8,
+                rfONLYFASTOPTIMIZATIONS,
                 rfDELIMITERS);
 
      PFLREMatchMode=^TFLREMatchMode;
@@ -13354,6 +13356,13 @@ begin
       Include(Flags,rfLONGEST);
      end;
     end;
+    'o':begin
+     if rfONLYFASTOPTIMIZATIONS in Flags then begin
+      raise EFLRE.Create('Too many only fast optimization regular expression modifier flags');
+     end else begin
+      Include(Flags,rfONLYFASTOPTIMIZATIONS);
+     end;
+    end;
     else begin
      raise EFLRE.Create('Unknown regular expression modifier flag');
     end;
@@ -13746,7 +13755,7 @@ begin
 end;
 
 function TFLRE.Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
-begin                                                    
+begin
  if assigned(NodeLeft) and assigned(NodeRight) then begin
   if (NodeLeft^.NodeType=ntZEROWIDTH) and (NodeRight^.NodeType=ntZEROWIDTH) then begin
    NodeLeft^.Value:=NodeLeft^.Value or NodeRight^.Value;
@@ -13778,44 +13787,46 @@ begin
   end else begin
    result:=nil;
   end;
- end;              
- while (assigned(result) and (result^.NodeType=ntCAT)) and (assigned(result^.Left) and assigned(result^.Right)) do begin
-  if (result^.Left^.NodeType=ntCAT) and (result^.Right^.NodeType=ntZEROWIDTH) and assigned(result^.Left^.Right) and (result^.Left^.Right^.NodeType=ntZEROWIDTH) then begin
-   result^.Left^.Right^.Value:=result^.Left^.Right^.Value or result^.Right^.Value;
-   result:=result^.Left;
-   continue;
-  end else if (result^.Left^.NodeType=ntZEROWIDTH) and (result^.Right^.NodeType=ntCAT) and assigned(result^.Right^.Left) and (result^.Right^.Left^.NodeType=ntZEROWIDTH) then begin
-   result^.Right^.Left^.Value:=result^.Right^.Left^.Value or result^.Left^.Value;
-   result:=result^.Right;
-   continue;
-  end else if (result^.Left^.NodeType=ntCAT) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and assigned(result^.Left^.Right) and (result^.Right^.Value=0) then begin
-   if ((result^.Left^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Right^.Left,result^.Right^.Left) then begin
-    result^.Left^.Right:=result^.Right;
+ end;
+ if not (rfONLYFASTOPTIMIZATIONS in Flags) then begin
+  while (assigned(result) and (result^.NodeType=ntCAT)) and (assigned(result^.Left) and assigned(result^.Right)) do begin
+   if (result^.Left^.NodeType=ntCAT) and (result^.Right^.NodeType=ntZEROWIDTH) and assigned(result^.Left^.Right) and (result^.Left^.Right^.NodeType=ntZEROWIDTH) then begin
+    result^.Left^.Right^.Value:=result^.Left^.Right^.Value or result^.Right^.Value;
     result:=result^.Left;
     continue;
-   end else if ((result^.Left^.Right^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Right^.Left,result^.Right^.Left) then begin
-    result:=result^.Left;
-    continue;
-   end;
-  end else if (result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntCAT) and assigned(result^.Right^.Left) and (result^.Left^.Value=0) then begin
-   if ((result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.Left^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left^.Left) and (result^.Right^.Left^.Value=0) then begin
+   end else if (result^.Left^.NodeType=ntZEROWIDTH) and (result^.Right^.NodeType=ntCAT) and assigned(result^.Right^.Left) and (result^.Right^.Left^.NodeType=ntZEROWIDTH) then begin
+    result^.Right^.Left^.Value:=result^.Right^.Left^.Value or result^.Left^.Value;
     result:=result^.Right;
     continue;
-   end else if ((result^.Left^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.Left^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left^.Left) and (result^.Right^.Left^.Value=0) then begin
-    result^.Right^.Left:=result^.Left;
-    result:=result^.Right;
-    continue;
+   end else if (result^.Left^.NodeType=ntCAT) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and assigned(result^.Left^.Right) and (result^.Right^.Value=0) then begin
+    if ((result^.Left^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Right^.Left,result^.Right^.Left) then begin
+     result^.Left^.Right:=result^.Right;
+     result:=result^.Left;
+     continue;
+    end else if ((result^.Left^.Right^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Right^.Left,result^.Right^.Left) then begin
+     result:=result^.Left;
+     continue;
+    end;
+   end else if (result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntCAT) and assigned(result^.Right^.Left) and (result^.Left^.Value=0) then begin
+    if ((result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.Left^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left^.Left) and (result^.Right^.Left^.Value=0) then begin
+     result:=result^.Right;
+     continue;
+    end else if ((result^.Left^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.Left^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left^.Left) and (result^.Right^.Left^.Value=0) then begin
+     result^.Right^.Left:=result^.Left;
+     result:=result^.Right;
+     continue;
+    end;
+   end else if (result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Left^.Value=0) and (result^.Right^.Value=0) then begin
+    if ((result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left) then begin
+     result:=result^.Right;
+     continue;
+    end else if ((result^.Left^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left) then begin
+     result:=result^.Left;
+     continue;
+    end;
    end;
-  end else if (result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Left^.Value=0) and (result^.Right^.Value=0) then begin
-   if ((result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left) then begin
-    result:=result^.Right;
-    continue;
-   end else if ((result^.Left^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left) then begin
-    result:=result^.Left;
-    continue;
-   end;
+   break;
   end;
-  break;
  end;
 end;
 
@@ -13829,7 +13840,7 @@ var NodeEx,pl,pr:PPFLRENode;
     Node,l,r:PFLRENode;
 begin
  if assigned(NodeLeft) and assigned(NodeRight) then begin
-  if (NodeLeft^.NodeType=ntCAT) and (NodeRight^.NodeType=ntCAT) then begin
+  if (NodeLeft^.NodeType=ntCAT) and (NodeRight^.NodeType=ntCAT) and not (rfONLYFASTOPTIMIZATIONS in Flags) then begin
    result:=NewNode(ntALT,NodeLeft,NodeRight,0);
    NodeEx:=@result;
    while (((assigned(NodeEx) and assigned(NodeEx^)) and (NodeEx^^.NodeType=ntALT)) and (assigned(NodeEx^^.Left) and assigned(NodeEx^^.Right))) and ((NodeEx^^.Left^.NodeType=ntCAT) and (NodeEx^^.Right^.NodeType=ntCAT)) do begin
@@ -16690,7 +16701,7 @@ begin
    GroupNameStringStack.Free;
   end;
   FreeUnusedNodes(AnchoredRootNode);
-  if assigned(AnchoredRootNode) then begin
+  if assigned(AnchoredRootNode) and not (rfONLYFASTOPTIMIZATIONS in Flags) then begin
    if OptimizeNode(@AnchoredRootNode) then begin
     FreeUnusedNodes(AnchoredRootNode);
    end;
@@ -21381,6 +21392,9 @@ begin
   end;
   if (Flags and carfUTF8)<>0 then begin
    Include(RealFlags,rfUTF8);
+  end;
+  if (Flags and carfONLYFASTOPTIMIZATIONS)<>0 then begin
+   Include(RealFlags,rfONLYFASTOPTIMIZATIONS);
   end;
   if (Flags and carfDELIMITERS)<>0 then begin
    Include(RealFlags,rfDELIMITERS);
