@@ -125,15 +125,15 @@ type PFLRERawByteChar=^TFLRERawByteChar;
      PUnicodeCharRangeClasses=^TUnicodeCharRangeClasses;
      TUnicodeCharRangeClasses=array[0..ucrLAST] of TUnicodeCharRanges;
 
-     PUnicodeAdditionalBlockRange=^TUnicodeAdditionalBlockRange;
-     TUnicodeAdditionalBlockRange=record
+     PUnicodeCharClassRange=^TUnicodeCharClassRange;
+     TUnicodeCharClassRange=record
       FromChar:longword;
       ToChar:longword;
      end;
 
-     TUnicodeAdditionalBlock=array of TUnicodeAdditionalBlockRange;
+     TUnicodeCharClassBlock=array of TUnicodeCharClassRange;
 
-     TUnicodeAdditionalBlocks=array of TUnicodeAdditionalBlock;
+     TUnicodeCharClassBlocks=array of TUnicodeCharClassBlock;
 
      TFLREStringIntegerPairHashMapData=int64;
 
@@ -643,7 +643,20 @@ var LowerUpperCaseUnicodeCharClass:TFLREUnicodeCharClass;
 
     UnicodeCharRangeClasses:TUnicodeCharRangeClasses;
 
-    UnicodeAdditionalBlocks:TUnicodeAdditionalBlocks;
+    UnicodeCategoryBlocks:TUnicodeCharClassBlocks;
+    UnicodeIgnoreCaseCategoryBlocks:TUnicodeCharClassBlocks;
+    CountUnicodeCategoryBlocks:longint;
+
+    UnicodeScriptBlocks:TUnicodeCharClassBlocks;
+    UnicodeIgnoreCaseScriptBlocks:TUnicodeCharClassBlocks;
+    CountUnicodeScriptBlocks:longint;
+
+    UnicodeBlockBlocks:TUnicodeCharClassBlocks;
+    UnicodeIgnoreCaseBlockBlocks:TUnicodeCharClassBlocks;
+    CountUnicodeBlockBlocks:longint;
+
+    UnicodeAdditionalBlocks:TUnicodeCharClassBlocks;
+    UnicodeIgnoreCaseAdditionalBlocks:TUnicodeCharClassBlocks;
     CountUnicodeAdditionalBlocks:longint;
 
     UnicodeClassHashMap:TFLREStringIntegerPairHashMap;
@@ -1493,33 +1506,117 @@ var i,l,h,cl,cu:longword;
    UnicodeBlockHashMap.SetValue(UTF8Correct('Is'+s),i);
   end;
  end;
- procedure AddUnicodeAdditionalBlock(const Name:TFLRERawByteString;const Ranges:array of longword);
+ function AddUnicodeCharClassBlockEx(var Blocks,IgnoreCaseBlocks:TUnicodeCharClassBlocks;var CountBlocks:longint;const ACharClass:TFLREUnicodeCharClass):longint;
  var BlockIndex,CountRanges,Index:longint;
-     Range:PUnicodeAdditionalBlockRange;
+     Range:PUnicodeCharClassRange;
+     CharClass:TFLREUnicodeCharClass;
+     CharClassRange:TFLREUnicodeCharClassRange;
+ begin
+
+  BlockIndex:=CountBlocks;
+  inc(CountBlocks);
+
+  result:=BlockIndex;
+
+  if CountBlocks>length(Blocks) then begin
+   SetLength(Blocks,CountBlocks*2);
+  end;
+
+  if CountBlocks>length(IgnoreCaseBlocks) then begin
+   SetLength(IgnoreCaseBlocks,CountBlocks*2);
+  end;
+
+  CharClass:=TFLREUnicodeCharClass.Create;
+  try
+
+   CharClass.Append(ACharClass);
+
+   CharClass.Optimize;
+
+   CountRanges:=0;
+   CharClassRange:=CharClass.First;
+   while assigned(CharClassRange) do begin
+    inc(CountRanges);
+    CharClassRange:=CharClassRange.Next;
+   end;
+
+   SetLength(Blocks[BlockIndex],CountRanges);
+
+   CountRanges:=0;
+   CharClassRange:=CharClass.First;
+   while assigned(CharClassRange) do begin
+    Range:=@Blocks[BlockIndex,CountRanges];
+    inc(CountRanges);
+    Range^.FromChar:=CharClassRange.Lo;
+    Range^.ToChar:=CharClassRange.Hi;
+    CharClassRange:=CharClassRange.Next;
+   end;
+
+   SetLength(Blocks[BlockIndex],CountRanges);
+
+   CharClass.Canonicalize;
+
+   CharClass.Optimize;
+
+   CountRanges:=0;
+   CharClassRange:=CharClass.First;
+   while assigned(CharClassRange) do begin
+    inc(CountRanges);
+    CharClassRange:=CharClassRange.Next;
+   end;
+
+   SetLength(IgnoreCaseBlocks[BlockIndex],CountRanges);
+
+   CountRanges:=0;
+   CharClassRange:=CharClass.First;
+   while assigned(CharClassRange) do begin
+    Range:=@IgnoreCaseBlocks[BlockIndex,CountRanges];
+    inc(CountRanges);
+    Range^.FromChar:=CharClassRange.Lo;
+    Range^.ToChar:=CharClassRange.Hi;
+    CharClassRange:=CharClassRange.Next;
+   end;
+
+   SetLength(IgnoreCaseBlocks[BlockIndex],CountRanges);
+
+  finally
+   CharClass.Free;
+  end;
+
+ end;
+ function AddUnicodeCharClassBlock(var Blocks,IgnoreCaseBlocks:TUnicodeCharClassBlocks;var CountBlocks:longint;const Ranges:array of longword):longint;
+ var Index:longint;
+     CharClass:TFLREUnicodeCharClass;
+ begin
+
+  CharClass:=TFLREUnicodeCharClass.Create;
+  try
+
+   Index:=0;
+   while Index<length(Ranges) do begin
+    if (Index+1)<length(Ranges) then begin
+     CharClass.AddRange(Ranges[Index],Ranges[Index+1],false);
+     inc(Index,2);
+    end else begin
+     CharClass.AddRange(Ranges[Index],Ranges[Index],false);
+     break;
+    end;
+   end;
+
+   CharClass.Optimize;
+
+   result:=AddUnicodeCharClassBlockEx(Blocks,IgnoreCaseBlocks,CountBlocks,CharClass);
+
+  finally
+   CharClass.Free;
+  end;
+
+ end;
+ procedure AddUnicodeAdditionalBlock(const Name:TFLRERawByteString;const Ranges:array of longword);
+ var BlockIndex:longint;
      s:TFLRERawByteString;
  begin
-  BlockIndex:=CountUnicodeAdditionalBlocks;
-  inc(CountUnicodeAdditionalBlocks);
-  if CountUnicodeAdditionalBlocks>length(UnicodeAdditionalBlocks) then begin
-   SetLength(UnicodeAdditionalBlocks,CountUnicodeAdditionalBlocks*2);
-  end;
-  SetLength(UnicodeAdditionalBlocks[BlockIndex],(length(Ranges)+1) shr 1);
-  CountRanges:=0;
-  Index:=0;
-  while Index<length(Ranges) do begin
-   Range:=@UnicodeAdditionalBlocks[BlockIndex,CountRanges];
-   inc(CountRanges);
-   if (Index+1)<length(Ranges) then begin
-    Range^.FromChar:=Ranges[Index];
-    Range^.ToChar:=Ranges[Index+1];
-    inc(Index,2);
-   end else begin
-    Range^.FromChar:=Ranges[Index];
-    Range^.ToChar:=Ranges[Index];
-    break;
-   end;
-  end;
-  SetLength(UnicodeAdditionalBlocks[BlockIndex],CountRanges);
+  BlockIndex:=AddUnicodeCharClassBlock(UnicodeAdditionalBlocks,UnicodeIgnoreCaseAdditionalBlocks,CountUnicodeAdditionalBlocks,Ranges);
   s:=TFLRERawByteString(StringReplace(String(Name),' ','_',[rfREPLACEALL]));
   UnicodeAdditionalBlockHashMap.SetValue(UTF8Correct(s),BlockIndex);
   UnicodeAdditionalBlockHashMap.SetValue(UTF8Correct('In'+s),BlockIndex);
@@ -1529,6 +1626,7 @@ var i,l,h,cl,cu:longword;
   UnicodeAdditionalBlockHashMap.SetValue(UTF8Correct('In'+s),BlockIndex);
   UnicodeAdditionalBlockHashMap.SetValue(UTF8Correct('Is'+s),BlockIndex);
  end;
+var CharClass:TFLREUnicodeCharClass;
 begin
  FillChar(UnicodeCharRangeClasses,SizeOf(TUnicodeCharRangeClasses),#0);
  begin
@@ -1988,7 +2086,56 @@ begin
   AddUnicodeBlockAliasTo('Combining Marks for Symbols','Combining Diacritical Marks for Symbols');
  end;
  begin
+  UnicodeCategoryBlocks:=nil;
+  UnicodeIgnoreCaseCategoryBlocks:=nil;
+  CountUnicodeCategoryBlocks:=0;
+  for i:=0 to FLREUnicodeCategoryCount-1 do begin
+   CharClass:=TFLREUnicodeCharClass.Create;
+   try
+    CharClass.AddUnicodeCategory(longword(1) shl i,false);
+    Assert(AddUnicodeCharClassBlockEx(UnicodeCategoryBlocks,UnicodeIgnoreCaseCategoryBlocks,CountUnicodeCategoryBlocks,CharClass)=i);
+   finally
+    CharClass.Free;
+   end;
+  end;
+  SetLength(UnicodeCategoryBlocks,CountUnicodeCategoryBlocks);
+  SetLength(UnicodeIgnoreCaseCategoryBlocks,CountUnicodeCategoryBlocks);
+ end;
+ begin
+  UnicodeScriptBlocks:=nil;
+  UnicodeIgnoreCaseScriptBlocks:=nil;
+  CountUnicodeScriptBlocks:=0;
+  for i:=0 to FLREUnicodeScriptCount-1 do begin
+   CharClass:=TFLREUnicodeCharClass.Create;
+   try
+    CharClass.AddUnicodeScript(i,false);
+    Assert(AddUnicodeCharClassBlockEx(UnicodeScriptBlocks,UnicodeIgnoreCaseScriptBlocks,CountUnicodeScriptBlocks,CharClass)=i);
+   finally
+    CharClass.Free;
+   end;
+  end;
+  SetLength(UnicodeScriptBlocks,CountUnicodeScriptBlocks);
+  SetLength(UnicodeIgnoreCaseScriptBlocks,CountUnicodeScriptBlocks);
+ end;
+ begin
+  UnicodeBlockBlocks:=nil;
+  UnicodeIgnoreCaseBlockBlocks:=nil;
+  CountUnicodeBlockBlocks:=0;
+  for i:=0 to FLREUnicodeBlockCount-1 do begin
+   CharClass:=TFLREUnicodeCharClass.Create;
+   try
+    CharClass.AddUnicodeBlock(i,false);
+    Assert(AddUnicodeCharClassBlockEx(UnicodeBlockBlocks,UnicodeIgnoreCaseBlockBlocks,CountUnicodeBlockBlocks,CharClass)=i) ;
+   finally
+    CharClass.Free;
+   end;
+  end;
+  SetLength(UnicodeBlockBlocks,CountUnicodeBlockBlocks);
+  SetLength(UnicodeIgnoreCaseBlockBlocks,CountUnicodeBlockBlocks);
+ end;
+ begin
   UnicodeAdditionalBlocks:=nil;
+  UnicodeIgnoreCaseAdditionalBlocks:=nil;
   CountUnicodeAdditionalBlocks:=0;
   UnicodeAdditionalBlockHashMap:=TFLREStringIntegerPairHashMap.Create;
   AddUnicodeAdditionalBlock('_xmlC',[$002d,$002f,$0030,$003b,$0041,$005b,$005f,$0060,$0061,$007b,$00b7,$00b8,$00c0,$00d7,$00d8,$00f7,
@@ -2107,6 +2254,7 @@ begin
                                      $ff5e,$ff5f,$ff66,$ffbf,$ffc2,$ffc8,$ffca,$ffd0,$ffd2,$ffd8,$ffda,$ffdd,$ffe0,$ffe7,$ffe8,$ffef,
                                      $fffc,$fffe]);
   SetLength(UnicodeAdditionalBlocks,CountUnicodeAdditionalBlocks);
+  SetLength(UnicodeIgnoreCaseAdditionalBlocks,CountUnicodeAdditionalBlocks);
  end;
  begin
   UnicodeClassLowerCaseHashMap:=TFLREStringIntegerPairHashMap.Create;
@@ -2458,10 +2606,74 @@ begin
  end;
 end;
 
+procedure WriteCharClassBlocks(const Name:ansistring;const Blocks:TUnicodeCharClassBlocks);
+var i,j:longint; 
+begin
+ UnitSourceList.Add('const FLRECountUnicode'+Name+'Blocks='+IntToStr(length(Blocks)-1)+';');
+ UnitSourceList.Add('');
+
+ for i:=0 to length(Blocks)-1 do begin
+  if length(Blocks[i])>0 then begin
+   UnitSourceList.Add('const FLREUnicode'+Name+'Blocks'+IntToStr(i)+':array[0..'+IntToStr(length(Blocks[i])-1)+'] of TFLREUnicodeCharRange=(');
+   for j:=0 to length(Blocks[i])-1 do begin
+    if (j+1)<length(Blocks[i]) then begin
+     UnitSourceList.Add('('+IntToStr(Blocks[i,j].FromChar)+','+IntToStr(Blocks[i,j].ToChar)+'),');
+    end else begin
+     UnitSourceList.Add('('+IntToStr(Blocks[i,j].FromChar)+','+IntToStr(Blocks[i,j].ToChar)+')');
+    end;
+   end;
+   UnitSourceList.Add(');');
+   UnitSourceList.Add('');
+  end;
+ end;
+
+ UnitSourceList.Add('const FLREUnicode'+Name+'BlocksData:array[0..'+IntToStr(length(Blocks)-1)+'] of pointer=(');
+ for i:=0 to length(Blocks)-1 do begin
+  if length(Blocks[i])>0 then begin
+   if (i+1)<length(Blocks) then begin
+    UnitSourceList.Add('@FLREUnicode'+Name+'Blocks'+IntToStr(i)+',');
+   end else begin
+    UnitSourceList.Add('@FLREUnicode'+Name+'Blocks'+IntToStr(i));
+   end;
+  end else begin
+   if (i+1)<length(Blocks) then begin
+    UnitSourceList.Add('nil,');
+   end else begin
+    UnitSourceList.Add('nil');
+   end;
+  end;
+ end;
+ UnitSourceList.Add(');');
+ UnitSourceList.Add('');
+
+ UnitSourceList.Add('const FLREUnicode'+Name+'BlocksCounts:array[0..'+IntToStr(length(Blocks)-1)+'] of longint=(');
+ for i:=0 to length(Blocks)-1 do begin
+  if (i+1)<length(Blocks) then begin
+   UnitSourceList.Add(IntToStr(length(Blocks[i]))+',');
+  end else begin
+   UnitSourceList.Add(IntToStr(length(Blocks[i])));
+  end;
+ end;
+ UnitSourceList.Add(');');
+ UnitSourceList.Add('');
+end;
+
 var i,j,k,Size:longint;
     s:TFLRERawByteString;
     UnicodeCharClassRange:TFLREUnicodeCharClassRange;
 begin
+ UnicodeCategoryBlocks:=nil;
+ UnicodeIgnoreCaseCategoryBlocks:=nil;
+ CountUnicodeCategoryBlocks:=0;
+
+ UnicodeScriptBlocks:=nil;
+ UnicodeIgnoreCaseScriptBlocks:=nil;
+ CountUnicodeScriptBlocks:=0;
+
+ UnicodeBlockBlocks:=nil;
+ UnicodeIgnoreCaseBlockBlocks:=nil;
+ CountUnicodeBlockBlocks:=0;
+
  UnitSourceList:=TStringList.Create;
  try
   UnitSourceList.LoadFromFile('FLREUnicode.pas');
@@ -2530,43 +2742,17 @@ begin
   UnitSourceList.Add(');');
   UnitSourceList.Add('');
 
-  UnitSourceList.Add('const FLRECountUnicodeAdditionalBlocks='+IntToStr(length(UnicodeAdditionalBlocks)-1)+';');
-  UnitSourceList.Add('');
+  WriteCharClassBlocks('Category',UnicodeCategoryBlocks);
+  WriteCharClassBlocks('IgnoreCaseCategory',UnicodeIgnoreCaseCategoryBlocks);
 
-  for i:=0 to length(UnicodeAdditionalBlocks)-1 do begin
-   UnitSourceList.Add('const FLREUnicodeAdditionalBlocks'+IntToStr(i)+':array[0..'+IntToStr(length(UnicodeAdditionalBlocks[i])-1)+'] of TFLREUnicodeCharRange=(');
-   for j:=0 to length(UnicodeAdditionalBlocks[i])-1 do begin
-    if (j+1)<length(UnicodeAdditionalBlocks[i]) then begin
-     UnitSourceList.Add('('+IntToStr(UnicodeAdditionalBlocks[i,j].FromChar)+','+IntToStr(UnicodeAdditionalBlocks[i,j].ToChar)+'),');
-    end else begin
-     UnitSourceList.Add('('+IntToStr(UnicodeAdditionalBlocks[i,j].FromChar)+','+IntToStr(UnicodeAdditionalBlocks[i,j].ToChar)+')');
-    end;
-   end;
-   UnitSourceList.Add(');');
-   UnitSourceList.Add('');
-  end;
+  WriteCharClassBlocks('Script',UnicodeScriptBlocks);
+  WriteCharClassBlocks('IgnoreCaseScript',UnicodeIgnoreCaseScriptBlocks);
 
-  UnitSourceList.Add('const FLREUnicodeAdditionalBlocksData:array[0..'+IntToStr(length(UnicodeAdditionalBlocks)-1)+'] of pointer=(');
-  for i:=0 to length(UnicodeAdditionalBlocks)-1 do begin
-   if (i+1)<length(UnicodeAdditionalBlocks) then begin
-    UnitSourceList.Add('@FLREUnicodeAdditionalBlocks'+IntToStr(i)+',');
-   end else begin
-    UnitSourceList.Add('@FLREUnicodeAdditionalBlocks'+IntToStr(i));
-   end;
-  end;
-  UnitSourceList.Add(');');
-  UnitSourceList.Add('');
+  WriteCharClassBlocks('Block',UnicodeBlockBlocks);
+  WriteCharClassBlocks('IgnoreCaseBlock',UnicodeIgnoreCaseBlockBlocks);
 
-  UnitSourceList.Add('const FLREUnicodeAdditionalBlocksCounts:array[0..'+IntToStr(length(UnicodeAdditionalBlocks)-1)+'] of longint=(');
-  for i:=0 to length(UnicodeAdditionalBlocks)-1 do begin
-   if (i+1)<length(UnicodeAdditionalBlocks) then begin
-    UnitSourceList.Add(IntToStr(length(UnicodeAdditionalBlocks[i]))+',');
-   end else begin
-    UnitSourceList.Add(IntToStr(length(UnicodeAdditionalBlocks[i])));
-   end;
-  end;
-  UnitSourceList.Add(');');
-  UnitSourceList.Add('');
+  WriteCharClassBlocks('Additional',UnicodeAdditionalBlocks);
+  WriteCharClassBlocks('IgnoreCaseAdditional',UnicodeIgnoreCaseAdditionalBlocks);
 
   Size:=0;
   UnicodeCharClassRange:=LowerUpperCaseUnicodeCharClass.First;
@@ -2606,7 +2792,15 @@ begin
   for i:=low(TUnicodeCharRangeClasses) to high(TUnicodeCharRangeClasses) do begin
    SetLength(UnicodeCharRangeClasses[i],0);
   end;
+
+  SetLength(UnicodeCategoryBlocks,0);
+  SetLength(UnicodeIgnoreCaseCategoryBlocks,0);
+  SetLength(UnicodeScriptBlocks,0);
+  SetLength(UnicodeIgnoreCaseScriptBlocks,0);
+  SetLength(UnicodeBlockBlocks,0);
+  SetLength(UnicodeIgnoreCaseBlockBlocks,0);
   SetLength(UnicodeAdditionalBlocks,0);
+  SetLength(UnicodeIgnoreCaseAdditionalBlocks,0);
   FreeAndNil(UnicodeClassHashMap);
   FreeAndNil(UnicodeScriptHashMap);
   FreeAndNil(UnicodeBlockHashMap);

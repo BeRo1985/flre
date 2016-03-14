@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.02.05.14.59.0000';
+      FLREVersionString='1.00.2016.03.14.17.09.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -9381,71 +9381,81 @@ begin
 end;
 
 procedure TFLREUnicodeCharClass.AddUnicodeCategory(CategoryFlags:longword;IgnoreCase:boolean=false);
-var Value,LowValue,HighValue,Index:longword;
+var Range:longint;
+    UnicodeCharRanges:PFLREUnicodeCharRanges;
+    Bits,Category:longword;
 begin
- LowValue:=$ffffffff;
- HighValue:=0;
- for Value:=0 to $10ffff do begin
-  Index:=Value shr FLREUnicodeCategoryArrayBlockBits;
-  if (CategoryFlags and (1 shl FLREUnicodeCategoryArrayBlockData[FLREUnicodeCategoryArrayIndexBlockData[FLREUnicodeCategoryArrayIndexIndexData[Index shr FLREUnicodeCategoryArrayIndexBlockBits],Index and FLREUnicodeCategoryArrayIndexBlockMask],Value and FLREUnicodeCategoryArrayBlockMask]))<>0 then begin
-   if LowValue<=HighValue then begin
-    if (HighValue+1)=Value then begin
-     HighValue:=Value;
-    end else begin
-     AddRange(LowValue,HighValue,IgnoreCase);
-     LowValue:=Value;
-     HighValue:=Value;
+ Bits:=CategoryFlags;
+ while Bits<>0 do begin
+  Category:=PopFirstOneBit(Bits);
+  if Category<FLREUnicodeCategoryCount then begin
+   if IgnoreCase then begin
+    UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeIgnoreCaseCategoryBlocksData[Category]);
+    for Range:=0 to FLREUnicodeIgnoreCaseCategoryBlocksCounts[Category]-1 do begin
+     AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
     end;
    end else begin
-    LowValue:=Value;
-    HighValue:=Value;
+    UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeCategoryBlocksData[Category]);
+    for Range:=0 to FLREUnicodeCategoryBlocksCounts[Category]-1 do begin
+     AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
+    end;
    end;
   end;
- end;
- if LowValue<=HighValue then begin
-  AddRange(LowValue,HighValue,IgnoreCase);
  end;
 end;
 
 procedure TFLREUnicodeCharClass.AddUnicodeScript(Script:longword;IgnoreCase:boolean=false);
-var Value,LowValue,HighValue,Index:longword;
+var Range:longint;
+    UnicodeCharRanges:PFLREUnicodeCharRanges;
 begin
- LowValue:=$ffffffff;
- HighValue:=0;
- for Value:=0 to $10ffff do begin
-  Index:=Value shr FLREUnicodeScriptArrayBlockBits;
-  if Script=FLREUnicodeScriptArrayBlockData[FLREUnicodeScriptArrayIndexBlockData[FLREUnicodeScriptArrayIndexIndexData[Index shr FLREUnicodeScriptArrayIndexBlockBits],Index and FLREUnicodeScriptArrayIndexBlockMask],Value and FLREUnicodeScriptArrayBlockMask] then begin
-   if LowValue<=HighValue then begin
-    if (HighValue+1)=Value then begin
-     HighValue:=Value;
-    end else begin
-     AddRange(LowValue,HighValue,IgnoreCase);
-     LowValue:=Value;
-     HighValue:=Value;
-    end;
-   end else begin
-    LowValue:=Value;
-    HighValue:=Value;
+ if Script<FLREUnicodeScriptCount then begin
+  if IgnoreCase then begin
+   UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeIgnoreCaseScriptBlocksData[Script]);
+   for Range:=0 to FLREUnicodeIgnoreCaseScriptBlocksCounts[Script]-1 do begin
+    AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
+   end;
+  end else begin
+   UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeScriptBlocksData[Script]);
+   for Range:=0 to FLREUnicodeScriptBlocksCounts[Script]-1 do begin
+    AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
    end;
   end;
- end;
- if LowValue<=HighValue then begin
-  AddRange(LowValue,HighValue,IgnoreCase);
  end;
 end;
 
 procedure TFLREUnicodeCharClass.AddUnicodeBlock(Block:longword;IgnoreCase:boolean=false);
+var Range:longint;
+    UnicodeCharRanges:PFLREUnicodeCharRanges;
 begin
- AddRange(FLREUnicodeBlocks[Block].FromChar,FLREUnicodeBlocks[Block].ToChar,IgnoreCase);
+ if Block<FLREUnicodeBlockCount then begin
+  if IgnoreCase then begin
+   UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeIgnoreCaseBlockBlocksData[Block]);
+   for Range:=0 to FLREUnicodeIgnoreCaseBlockBlocksCounts[Block]-1 do begin
+    AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
+   end;
+  end else begin
+   UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeBlockBlocksData[Block]);
+   for Range:=0 to FLREUnicodeBlockBlocksCounts[Block]-1 do begin
+    AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
+   end;
+  end;
+ end;
 end;
 
 procedure TFLREUnicodeCharClass.AddUnicodeAdditionalBlock(Block:longword;IgnoreCase:boolean=false);
 var Range:longint;
     UnicodeCharRanges:PFLREUnicodeCharRanges;
 begin
- for Range:=0 to FLREUnicodeAdditionalBlocksCounts[Block]-1 do begin
+ if IgnoreCase then begin
+  UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeIgnoreCaseAdditionalBlocksData[Block]);
+  for Range:=0 to FLREUnicodeIgnoreCaseAdditionalBlocksCounts[Block]-1 do begin
+   AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
+  end;
+ end else begin
   UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeAdditionalBlocksData[Block]);
-  AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],IgnoreCase);
+  for Range:=0 to FLREUnicodeAdditionalBlocksCounts[Block]-1 do begin
+   AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
+  end;
  end;
 end;
 
