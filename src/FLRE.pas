@@ -141,11 +141,11 @@ unit FLRE;
 
 interface
 
-uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$endif}SysUtils,Classes;
+uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$endif}SysUtils,Classes,PUCU;
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.03.22.04.46.0000';
+      FLREVersionString='1.00.2016.07.01.05.51.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -1119,8 +1119,6 @@ procedure InitializeFLRE;
 
 implementation
 
-uses FLREUnicode;
-
 const MaxGeneration=int64($4000000000000000);
 
       Mark=nil;
@@ -2086,8 +2084,8 @@ function UnicodeGetCategoryFromTable(c:longword):longword; {$ifdef caninline}inl
 var Index:longword;
 begin
  if c<=$10ffff then begin
-  Index:=c shr FLREUnicodeCategoryArrayBlockBits;
-  result:=FLREUnicodeCategoryArrayBlockData[FLREUnicodeCategoryArrayIndexBlockData[FLREUnicodeCategoryArrayIndexIndexData[Index shr FLREUnicodeCategoryArrayIndexBlockBits],Index and FLREUnicodeCategoryArrayIndexBlockMask],c and FLREUnicodeCategoryArrayBlockMask];
+  Index:=c shr PUCUUnicodeCategoryArrayBlockBits;
+  result:=PUCUUnicodeCategoryArrayBlockData[PUCUUnicodeCategoryArrayIndexBlockData[PUCUUnicodeCategoryArrayIndexIndexData[Index shr PUCUUnicodeCategoryArrayIndexBlockBits],Index and PUCUUnicodeCategoryArrayIndexBlockMask],c and PUCUUnicodeCategoryArrayBlockMask];
  end else begin
   result:=0;
  end;
@@ -2097,8 +2095,8 @@ function UnicodeGetScriptFromTable(c:longword):longword; {$ifdef caninline}inlin
 var Index:longword;
 begin
  if c<=$10ffff then begin
-  Index:=c shr FLREUnicodeScriptArrayBlockBits;
-  result:=FLREUnicodeScriptArrayBlockData[FLREUnicodeScriptArrayIndexBlockData[FLREUnicodeScriptArrayIndexIndexData[Index shr FLREUnicodeScriptArrayIndexBlockBits],Index and FLREUnicodeScriptArrayIndexBlockMask],c and FLREUnicodeScriptArrayBlockMask];
+  Index:=c shr PUCUUnicodeScriptArrayBlockBits;
+  result:=PUCUUnicodeScriptArrayBlockData[PUCUUnicodeScriptArrayIndexBlockData[PUCUUnicodeScriptArrayIndexIndexData[Index shr PUCUUnicodeScriptArrayIndexBlockBits],Index and PUCUUnicodeScriptArrayIndexBlockMask],c and PUCUUnicodeScriptArrayBlockMask];
  end else begin
   result:=0;
  end;
@@ -2108,8 +2106,8 @@ function UnicodeGetUpperCaseDeltaFromTable(c:longword):longint; {$ifdef caninlin
 var Index:longword;
 begin
  if c<=$10ffff then begin
-  Index:=c shr FLREUnicodeUpperCaseDeltaArrayBlockBits;
-  result:=FLREUnicodeUpperCaseDeltaArrayBlockData[FLREUnicodeUpperCaseDeltaArrayIndexBlockData[FLREUnicodeUpperCaseDeltaArrayIndexIndexData[Index shr FLREUnicodeUpperCaseDeltaArrayIndexBlockBits],Index and FLREUnicodeUpperCaseDeltaArrayIndexBlockMask],c and FLREUnicodeUpperCaseDeltaArrayBlockMask];
+  Index:=c shr PUCUUnicodeUpperCaseDeltaArrayBlockBits;
+  result:=PUCUUnicodeUpperCaseDeltaArrayBlockData[PUCUUnicodeUpperCaseDeltaArrayIndexBlockData[PUCUUnicodeUpperCaseDeltaArrayIndexIndexData[Index shr PUCUUnicodeUpperCaseDeltaArrayIndexBlockBits],Index and PUCUUnicodeUpperCaseDeltaArrayIndexBlockMask],c and PUCUUnicodeUpperCaseDeltaArrayBlockMask];
  end else begin
   result:=0;
  end;
@@ -2119,8 +2117,8 @@ function UnicodeGetLowerCaseDeltaFromTable(c:longword):longint; {$ifdef caninlin
 var Index:longword;
 begin
  if c<=$10ffff then begin
-  Index:=c shr FLREUnicodeLowerCaseDeltaArrayBlockBits;
-  result:=FLREUnicodeLowerCaseDeltaArrayBlockData[FLREUnicodeLowerCaseDeltaArrayIndexBlockData[FLREUnicodeLowerCaseDeltaArrayIndexIndexData[Index shr FLREUnicodeLowerCaseDeltaArrayIndexBlockBits],Index and FLREUnicodeLowerCaseDeltaArrayIndexBlockMask],c and FLREUnicodeLowerCaseDeltaArrayBlockMask];
+  Index:=c shr PUCUUnicodeLowerCaseDeltaArrayBlockBits;
+  result:=PUCUUnicodeLowerCaseDeltaArrayBlockData[PUCUUnicodeLowerCaseDeltaArrayIndexBlockData[PUCUUnicodeLowerCaseDeltaArrayIndexIndexData[Index shr PUCUUnicodeLowerCaseDeltaArrayIndexBlockBits],Index and PUCUUnicodeLowerCaseDeltaArrayIndexBlockMask],c and PUCUUnicodeLowerCaseDeltaArrayBlockMask];
  end else begin
   result:=0;
  end;
@@ -2130,8 +2128,8 @@ function UnicodeGetTitleCaseDeltaFromTable(c:longword):longint; {$ifdef caninlin
 var Index:longword;
 begin
  if c<=$10ffff then begin
-  Index:=c shr FLREUnicodeTitleCaseDeltaArrayBlockBits;
-  result:=FLREUnicodeTitleCaseDeltaArrayBlockData[FLREUnicodeTitleCaseDeltaArrayIndexBlockData[FLREUnicodeTitleCaseDeltaArrayIndexIndexData[Index shr FLREUnicodeTitleCaseDeltaArrayIndexBlockBits],Index and FLREUnicodeTitleCaseDeltaArrayIndexBlockMask],c and FLREUnicodeTitleCaseDeltaArrayBlockMask];
+  Index:=c shr PUCUUnicodeTitleCaseDeltaArrayBlockBits;
+  result:=PUCUUnicodeTitleCaseDeltaArrayBlockData[PUCUUnicodeTitleCaseDeltaArrayIndexBlockData[PUCUUnicodeTitleCaseDeltaArrayIndexIndexData[Index shr PUCUUnicodeTitleCaseDeltaArrayIndexBlockBits],Index and PUCUUnicodeTitleCaseDeltaArrayIndexBlockMask],c and PUCUUnicodeTitleCaseDeltaArrayBlockMask];
  end else begin
   result:=0;
  end;
@@ -2139,22 +2137,22 @@ end;
 
 function UnicodeIsWord(c:longword):boolean; {$ifdef caninline}inline;{$endif}
 begin
- result:=(UnicodeGetCategoryFromTable(c) in [FLREUnicodeCategoryLu,FLREUnicodeCategoryLl,FLREUnicodeCategoryLt,FLREUnicodeCategoryLm,FLREUnicodeCategoryLo,FLREUnicodeCategoryNd,FLREUnicodeCategoryNl,FLREUnicodeCategoryNo,FLREUnicodeCategoryPc]) or (c=ord('_'));
+ result:=(UnicodeGetCategoryFromTable(c) in [PUCUUnicodeCategoryLu,PUCUUnicodeCategoryLl,PUCUUnicodeCategoryLt,PUCUUnicodeCategoryLm,PUCUUnicodeCategoryLo,PUCUUnicodeCategoryNd,PUCUUnicodeCategoryNl,PUCUUnicodeCategoryNo,PUCUUnicodeCategoryPc]) or (c=ord('_'));
 end;
 
 function UnicodeIsIDBegin(c:longword):boolean; {$ifdef caninline}inline;{$endif}
 begin
- result:=(UnicodeGetCategoryFromTable(c) in [FLREUnicodeCategoryLu,FLREUnicodeCategoryLl,FLREUnicodeCategoryLt,FLREUnicodeCategoryLm,FLREUnicodeCategoryLo,FLREUnicodeCategoryNl,FLREUnicodeCategoryNo,FLREUnicodeCategoryPc]) or (c=ord('_'));
+ result:=(UnicodeGetCategoryFromTable(c) in [PUCUUnicodeCategoryLu,PUCUUnicodeCategoryLl,PUCUUnicodeCategoryLt,PUCUUnicodeCategoryLm,PUCUUnicodeCategoryLo,PUCUUnicodeCategoryNl,PUCUUnicodeCategoryNo,PUCUUnicodeCategoryPc]) or (c=ord('_'));
 end;
 
 function UnicodeIsIDPart(c:longword):boolean; {$ifdef caninline}inline;{$endif}
 begin
- result:=(UnicodeGetCategoryFromTable(c) in [FLREUnicodeCategoryLu,FLREUnicodeCategoryLl,FLREUnicodeCategoryLt,FLREUnicodeCategoryLm,FLREUnicodeCategoryLo,FLREUnicodeCategoryNd,FLREUnicodeCategoryNl,FLREUnicodeCategoryNo,FLREUnicodeCategoryPc]) or (c=ord('_'));
+ result:=(UnicodeGetCategoryFromTable(c) in [PUCUUnicodeCategoryLu,PUCUUnicodeCategoryLl,PUCUUnicodeCategoryLt,PUCUUnicodeCategoryLm,PUCUUnicodeCategoryLo,PUCUUnicodeCategoryNd,PUCUUnicodeCategoryNl,PUCUUnicodeCategoryNo,PUCUUnicodeCategoryPc]) or (c=ord('_'));
 end;
 
 function UnicodeIsWhiteSpace(c:longword):boolean; {$ifdef caninline}inline;{$endif}
 begin
-//result:=UnicodeGetCategoryFromTable(c) in [FLREUnicodeCategoryZs,FLREUnicodeCategoryZp,FLREUnicodeCategoryZl];
+//result:=UnicodeGetCategoryFromTable(c) in [PUCUUnicodeCategoryZs,PUCUUnicodeCategoryZp,PUCUUnicodeCategoryZl];
  result:=((c>=$0009) and (c<=$000d)) or (c=$0020) or (c=$00a0) or (c=$1680) or (c=$180e) or ((c>=$2000) and (c<=$200b)) or (c=$2028) or (c=$2029) or (c=$202f) or (c=$205f) or (c=$3000) or (c=$feff) or (c=$fffe);
 end;
 
@@ -2916,8 +2914,8 @@ begin
     CodeUnit:=StartCodeUnit+1;
    end;
    if CharValue<=$10ffff then begin
-    Value:=CharValue shr FLREUnicodeUpperCaseDeltaArrayBlockBits;
-    CharValue:=longword(longint(longint(CharValue)+FLREUnicodeUpperCaseDeltaArrayBlockData[FLREUnicodeUpperCaseDeltaArrayIndexBlockData[FLREUnicodeUpperCaseDeltaArrayIndexIndexData[Value shr FLREUnicodeUpperCaseDeltaArrayIndexBlockBits],Value and FLREUnicodeUpperCaseDeltaArrayIndexBlockMask],CharValue and FLREUnicodeUpperCaseDeltaArrayBlockMask]));
+    Value:=CharValue shr PUCUUnicodeUpperCaseDeltaArrayBlockBits;
+    CharValue:=longword(longint(longint(CharValue)+PUCUUnicodeUpperCaseDeltaArrayBlockData[PUCUUnicodeUpperCaseDeltaArrayIndexBlockData[PUCUUnicodeUpperCaseDeltaArrayIndexIndexData[Value shr PUCUUnicodeUpperCaseDeltaArrayIndexBlockBits],Value and PUCUUnicodeUpperCaseDeltaArrayIndexBlockMask],CharValue and PUCUUnicodeUpperCaseDeltaArrayBlockMask]));
    end;
    if CharValue<=$7f then begin
     Data[ResultLen]:=TFLRERawByteChar(byte(CharValue));
@@ -3012,8 +3010,8 @@ begin
     CodeUnit:=StartCodeUnit+1;
    end;
    if CharValue<=$10ffff then begin
-    Value:=CharValue shr FLREUnicodeLowerCaseDeltaArrayBlockBits;
-    CharValue:=longword(longint(longint(CharValue)+FLREUnicodeLowerCaseDeltaArrayBlockData[FLREUnicodeLowerCaseDeltaArrayIndexBlockData[FLREUnicodeLowerCaseDeltaArrayIndexIndexData[Value shr FLREUnicodeLowerCaseDeltaArrayIndexBlockBits],Value and FLREUnicodeLowerCaseDeltaArrayIndexBlockMask],CharValue and FLREUnicodeLowerCaseDeltaArrayBlockMask]));
+    Value:=CharValue shr PUCUUnicodeLowerCaseDeltaArrayBlockBits;
+    CharValue:=longword(longint(longint(CharValue)+PUCUUnicodeLowerCaseDeltaArrayBlockData[PUCUUnicodeLowerCaseDeltaArrayIndexBlockData[PUCUUnicodeLowerCaseDeltaArrayIndexIndexData[Value shr PUCUUnicodeLowerCaseDeltaArrayIndexBlockBits],Value and PUCUUnicodeLowerCaseDeltaArrayIndexBlockMask],CharValue and PUCUUnicodeLowerCaseDeltaArrayBlockMask]));
    end;
    if CharValue<=$7f then begin
     Data[ResultLen]:=TFLRERawByteChar(byte(CharValue));
@@ -9395,21 +9393,21 @@ end;
 
 procedure TFLREUnicodeCharClass.AddUnicodeCategory(CategoryFlags:longword;IgnoreCase:boolean=false);
 var Range:longint;
-    UnicodeCharRanges:PFLREUnicodeCharRanges;
+    UnicodeCharRanges:PPUCUUnicodeCharRanges;
     Bits,Category:longword;
 begin
  Bits:=CategoryFlags;
  while Bits<>0 do begin
   Category:=PopFirstOneBit(Bits);
-  if Category<FLREUnicodeCategoryCount then begin
+  if Category<PUCUUnicodeCategoryCount then begin
    if IgnoreCase then begin
-    UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeIgnoreCaseCategoryBlocksData[Category]);
-    for Range:=0 to FLREUnicodeIgnoreCaseCategoryBlocksCounts[Category]-1 do begin
+    UnicodeCharRanges:=PPUCUUnicodeCharRanges(PUCUUnicodeIgnoreCaseCategoryBlocksData[Category]);
+    for Range:=0 to PUCUUnicodeIgnoreCaseCategoryBlocksCounts[Category]-1 do begin
      AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
     end;
    end else begin
-    UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeCategoryBlocksData[Category]);
-    for Range:=0 to FLREUnicodeCategoryBlocksCounts[Category]-1 do begin
+    UnicodeCharRanges:=PPUCUUnicodeCharRanges(PUCUUnicodeCategoryBlocksData[Category]);
+    for Range:=0 to PUCUUnicodeCategoryBlocksCounts[Category]-1 do begin
      AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
     end;
    end;
@@ -9419,17 +9417,17 @@ end;
 
 procedure TFLREUnicodeCharClass.AddUnicodeScript(Script:longword;IgnoreCase:boolean=false);
 var Range:longint;
-    UnicodeCharRanges:PFLREUnicodeCharRanges;
+    UnicodeCharRanges:PPUCUUnicodeCharRanges;
 begin
- if Script<FLREUnicodeScriptCount then begin
+ if Script<PUCUUnicodeScriptCount then begin
   if IgnoreCase then begin
-   UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeIgnoreCaseScriptBlocksData[Script]);
-   for Range:=0 to FLREUnicodeIgnoreCaseScriptBlocksCounts[Script]-1 do begin
+   UnicodeCharRanges:=PPUCUUnicodeCharRanges(PUCUUnicodeIgnoreCaseScriptBlocksData[Script]);
+   for Range:=0 to PUCUUnicodeIgnoreCaseScriptBlocksCounts[Script]-1 do begin
     AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
    end;
   end else begin
-   UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeScriptBlocksData[Script]);
-   for Range:=0 to FLREUnicodeScriptBlocksCounts[Script]-1 do begin
+   UnicodeCharRanges:=PPUCUUnicodeCharRanges(PUCUUnicodeScriptBlocksData[Script]);
+   for Range:=0 to PUCUUnicodeScriptBlocksCounts[Script]-1 do begin
     AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
    end;
   end;
@@ -9438,17 +9436,17 @@ end;
 
 procedure TFLREUnicodeCharClass.AddUnicodeBlock(Block:longword;IgnoreCase:boolean=false);
 var Range:longint;
-    UnicodeCharRanges:PFLREUnicodeCharRanges;
+    UnicodeCharRanges:PPUCUUnicodeCharRanges;
 begin
- if Block<FLREUnicodeBlockCount then begin
+ if Block<PUCUUnicodeBlockCount then begin
   if IgnoreCase then begin
-   UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeIgnoreCaseBlockBlocksData[Block]);
-   for Range:=0 to FLREUnicodeIgnoreCaseBlockBlocksCounts[Block]-1 do begin
+   UnicodeCharRanges:=PPUCUUnicodeCharRanges(PUCUUnicodeIgnoreCaseBlockBlocksData[Block]);
+   for Range:=0 to PUCUUnicodeIgnoreCaseBlockBlocksCounts[Block]-1 do begin
     AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
    end;
   end else begin
-   UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeBlockBlocksData[Block]);
-   for Range:=0 to FLREUnicodeBlockBlocksCounts[Block]-1 do begin
+   UnicodeCharRanges:=PPUCUUnicodeCharRanges(PUCUUnicodeBlockBlocksData[Block]);
+   for Range:=0 to PUCUUnicodeBlockBlocksCounts[Block]-1 do begin
     AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
    end;
   end;
@@ -9457,16 +9455,16 @@ end;
 
 procedure TFLREUnicodeCharClass.AddUnicodeAdditionalBlock(Block:longword;IgnoreCase:boolean=false);
 var Range:longint;
-    UnicodeCharRanges:PFLREUnicodeCharRanges;
+    UnicodeCharRanges:PPUCUUnicodeCharRanges;
 begin
  if IgnoreCase then begin
-  UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeIgnoreCaseAdditionalBlocksData[Block]);
-  for Range:=0 to FLREUnicodeIgnoreCaseAdditionalBlocksCounts[Block]-1 do begin
+  UnicodeCharRanges:=PPUCUUnicodeCharRanges(PUCUUnicodeIgnoreCaseAdditionalBlocksData[Block]);
+  for Range:=0 to PUCUUnicodeIgnoreCaseAdditionalBlocksCounts[Block]-1 do begin
    AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
   end;
  end else begin
-  UnicodeCharRanges:=PFLREUnicodeCharRanges(FLREUnicodeAdditionalBlocksData[Block]);
-  for Range:=0 to FLREUnicodeAdditionalBlocksCounts[Block]-1 do begin
+  UnicodeCharRanges:=PPUCUUnicodeCharRanges(PUCUUnicodeAdditionalBlocksData[Block]);
+  for Range:=0 to PUCUUnicodeAdditionalBlocksCounts[Block]-1 do begin
    AddRange(UnicodeCharRanges^[Range,0],UnicodeCharRanges^[Range,1],false);
   end;
  end;
@@ -9569,23 +9567,23 @@ var Range2:longint;
 begin
  result:=false;
  if (assigned(From) and assigned(From.First)) and
-    ((From.First.Lo<=FLRELowerUpperCaseUnicodeCharClass[FLRELowerUpperCaseUnicodeCharClassSize-1,1]) and
-     (FLRELowerUpperCaseUnicodeCharClass[0,0]<=From.Last.Hi)) then begin
+    ((From.First.Lo<=PUCULowerUpperCaseUnicodeCharClass[PUCULowerUpperCaseUnicodeCharClassSize-1,1]) and
+     (PUCULowerUpperCaseUnicodeCharClass[0,0]<=From.Last.Hi)) then begin
   Canonicalized:=From.Canonicalized;
   Range1:=From.First;
   while assigned(Range1) do begin
-   for Range2:=0 to FLRELowerUpperCaseUnicodeCharClassSize-1 do begin
-    if (Range1.Lo<=FLRELowerUpperCaseUnicodeCharClass[Range2,1]) and (FLRELowerUpperCaseUnicodeCharClass[Range2,0]<=Range1.Hi) then begin
+   for Range2:=0 to PUCULowerUpperCaseUnicodeCharClassSize-1 do begin
+    if (Range1.Lo<=PUCULowerUpperCaseUnicodeCharClass[Range2,1]) and (PUCULowerUpperCaseUnicodeCharClass[Range2,0]<=Range1.Hi) then begin
      result:=true;
-     if Range1.Lo>FLRELowerUpperCaseUnicodeCharClass[Range2,0] then begin
+     if Range1.Lo>PUCULowerUpperCaseUnicodeCharClass[Range2,0] then begin
       Min:=Range1.Lo;
      end else begin
-      Min:=FLRELowerUpperCaseUnicodeCharClass[Range2,0];
+      Min:=PUCULowerUpperCaseUnicodeCharClass[Range2,0];
      end;
-     if Range1.Hi<FLRELowerUpperCaseUnicodeCharClass[Range2,1] then begin
+     if Range1.Hi<PUCULowerUpperCaseUnicodeCharClass[Range2,1] then begin
       Max:=Range1.Hi;
      end else begin
-      Max:=FLRELowerUpperCaseUnicodeCharClass[Range2,1];
+      Max:=PUCULowerUpperCaseUnicodeCharClass[Range2,1];
      end;
      if Min<=Max then begin
       AddRange(Min,Max,false);
@@ -14507,20 +14505,20 @@ var SourcePosition,SourceLength:longint;
   end;
   begin
    if WithLowerCase then begin
-    f:=GetMinimalPerfectHashTableValue(@FLREUnicodeClassLowerCaseHashMapSeeds,
-                                       @FLREUnicodeClassLowerCaseHashMapKeys,
-                                       @FLREUnicodeClassLowerCaseHashMapValues,
-                                       FLREUnicodeClassLowerCaseHashMapSeedBits,
-                                       FLREUnicodeClassLowerCaseHashMapValueBits,
-                                       FLREUnicodeClassLowerCaseHashMapSize,
+    f:=GetMinimalPerfectHashTableValue(@PUCUUnicodeClassLowerCaseHashMapSeeds,
+                                       @PUCUUnicodeClassLowerCaseHashMapKeys,
+                                       @PUCUUnicodeClassLowerCaseHashMapValues,
+                                       PUCUUnicodeClassLowerCaseHashMapSeedBits,
+                                       PUCUUnicodeClassLowerCaseHashMapValueBits,
+                                       PUCUUnicodeClassLowerCaseHashMapSize,
                                        LowerCaseName);
    end else begin
-    f:=GetMinimalPerfectHashTableValue(@FLREUnicodeClassHashMapSeeds,
-                                       @FLREUnicodeClassHashMapKeys,
-                                       @FLREUnicodeClassHashMapValues,
-                                       FLREUnicodeClassHashMapSeedBits,
-                                       FLREUnicodeClassHashMapValueBits,
-                                       FLREUnicodeClassHashMapSize,
+    f:=GetMinimalPerfectHashTableValue(@PUCUUnicodeClassHashMapSeeds,
+                                       @PUCUUnicodeClassHashMapKeys,
+                                       @PUCUUnicodeClassHashMapValues,
+                                       PUCUUnicodeClassHashMapSeedBits,
+                                       PUCUUnicodeClassHashMapValueBits,
+                                       PUCUUnicodeClassHashMapSize,
                                        Name);
    end;
    if f>0 then begin
@@ -14531,20 +14529,20 @@ var SourcePosition,SourceLength:longint;
   end;
   begin
    if WithLowerCase then begin
-    f:=GetMinimalPerfectHashTableValue(@FLREUnicodeScriptLowerCaseHashMapSeeds,
-                                       @FLREUnicodeScriptLowerCaseHashMapKeys,
-                                       @FLREUnicodeScriptLowerCaseHashMapValues,
-                                       FLREUnicodeScriptLowerCaseHashMapSeedBits,
-                                       FLREUnicodeScriptLowerCaseHashMapValueBits,
-                                       FLREUnicodeScriptLowerCaseHashMapSize,
+    f:=GetMinimalPerfectHashTableValue(@PUCUUnicodeScriptLowerCaseHashMapSeeds,
+                                       @PUCUUnicodeScriptLowerCaseHashMapKeys,
+                                       @PUCUUnicodeScriptLowerCaseHashMapValues,
+                                       PUCUUnicodeScriptLowerCaseHashMapSeedBits,
+                                       PUCUUnicodeScriptLowerCaseHashMapValueBits,
+                                       PUCUUnicodeScriptLowerCaseHashMapSize,
                                        LowerCaseName);
    end else begin
-    f:=GetMinimalPerfectHashTableValue(@FLREUnicodeScriptHashMapSeeds,
-                                       @FLREUnicodeScriptHashMapKeys,
-                                       @FLREUnicodeScriptHashMapValues,
-                                       FLREUnicodeScriptHashMapSeedBits,
-                                       FLREUnicodeScriptHashMapValueBits,
-                                       FLREUnicodeScriptHashMapSize,
+    f:=GetMinimalPerfectHashTableValue(@PUCUUnicodeScriptHashMapSeeds,
+                                       @PUCUUnicodeScriptHashMapKeys,
+                                       @PUCUUnicodeScriptHashMapValues,
+                                       PUCUUnicodeScriptHashMapSeedBits,
+                                       PUCUUnicodeScriptHashMapValueBits,
+                                       PUCUUnicodeScriptHashMapSize,
                                        Name);
    end;
    if f>0 then begin
@@ -14555,20 +14553,20 @@ var SourcePosition,SourceLength:longint;
   end;
   begin
    if WithLowerCase then begin
-    f:=GetMinimalPerfectHashTableValue(@FLREUnicodeBlockLowerCaseHashMapSeeds,
-                                       @FLREUnicodeBlockLowerCaseHashMapKeys,
-                                       @FLREUnicodeBlockLowerCaseHashMapValues,
-                                       FLREUnicodeBlockLowerCaseHashMapSeedBits,
-                                       FLREUnicodeBlockLowerCaseHashMapValueBits,
-                                       FLREUnicodeBlockLowerCaseHashMapSize,
+    f:=GetMinimalPerfectHashTableValue(@PUCUUnicodeBlockLowerCaseHashMapSeeds,
+                                       @PUCUUnicodeBlockLowerCaseHashMapKeys,
+                                       @PUCUUnicodeBlockLowerCaseHashMapValues,
+                                       PUCUUnicodeBlockLowerCaseHashMapSeedBits,
+                                       PUCUUnicodeBlockLowerCaseHashMapValueBits,
+                                       PUCUUnicodeBlockLowerCaseHashMapSize,
                                        LowerCaseName);
    end else begin
-    f:=GetMinimalPerfectHashTableValue(@FLREUnicodeBlockHashMapSeeds,
-                                       @FLREUnicodeBlockHashMapKeys,
-                                       @FLREUnicodeBlockHashMapValues,
-                                       FLREUnicodeBlockHashMapSeedBits,
-                                       FLREUnicodeBlockHashMapValueBits,
-                                       FLREUnicodeBlockHashMapSize,
+    f:=GetMinimalPerfectHashTableValue(@PUCUUnicodeBlockHashMapSeeds,
+                                       @PUCUUnicodeBlockHashMapKeys,
+                                       @PUCUUnicodeBlockHashMapValues,
+                                       PUCUUnicodeBlockHashMapSeedBits,
+                                       PUCUUnicodeBlockHashMapValueBits,
+                                       PUCUUnicodeBlockHashMapSize,
                                        Name);
    end;
    if f>0 then begin
@@ -14579,20 +14577,20 @@ var SourcePosition,SourceLength:longint;
   end;
   begin
    if WithLowerCase then begin
-    f:=GetMinimalPerfectHashTableValue(@FLREUnicodeAdditionalBlockLowerCaseHashMapSeeds,
-                                       @FLREUnicodeAdditionalBlockLowerCaseHashMapKeys,
-                                       @FLREUnicodeAdditionalBlockLowerCaseHashMapValues,
-                                       FLREUnicodeAdditionalBlockLowerCaseHashMapSeedBits,
-                                       FLREUnicodeAdditionalBlockLowerCaseHashMapValueBits,
-                                       FLREUnicodeAdditionalBlockLowerCaseHashMapSize,
+    f:=GetMinimalPerfectHashTableValue(@PUCUUnicodeAdditionalBlockLowerCaseHashMapSeeds,
+                                       @PUCUUnicodeAdditionalBlockLowerCaseHashMapKeys,
+                                       @PUCUUnicodeAdditionalBlockLowerCaseHashMapValues,
+                                       PUCUUnicodeAdditionalBlockLowerCaseHashMapSeedBits,
+                                       PUCUUnicodeAdditionalBlockLowerCaseHashMapValueBits,
+                                       PUCUUnicodeAdditionalBlockLowerCaseHashMapSize,
                                        LowerCaseName);
    end else begin
-    f:=GetMinimalPerfectHashTableValue(@FLREUnicodeAdditionalBlockHashMapSeeds,
-                                       @FLREUnicodeAdditionalBlockHashMapKeys,
-                                       @FLREUnicodeAdditionalBlockHashMapValues,
-                                       FLREUnicodeAdditionalBlockHashMapSeedBits,
-                                       FLREUnicodeAdditionalBlockHashMapValueBits,
-                                       FLREUnicodeAdditionalBlockHashMapSize,
+    f:=GetMinimalPerfectHashTableValue(@PUCUUnicodeAdditionalBlockHashMapSeeds,
+                                       @PUCUUnicodeAdditionalBlockHashMapKeys,
+                                       @PUCUUnicodeAdditionalBlockHashMapValues,
+                                       PUCUUnicodeAdditionalBlockHashMapSeedBits,
+                                       PUCUUnicodeAdditionalBlockHashMapValueBits,
+                                       PUCUUnicodeAdditionalBlockHashMapSize,
                                        Name);
    end;
    if f>0 then begin
@@ -14604,7 +14602,7 @@ var SourcePosition,SourceLength:longint;
   if (WithLowerCase and (LowerCaseName='alnum')) or
      ((not WithLowerCase) and (Name='Alnum')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryLu) or (1 shl FLREUnicodeCategoryLl) or (1 shl FLREUnicodeCategoryLt) or (1 shl FLREUnicodeCategoryNd),IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory((1 shl PUCUUnicodeCategoryLu) or (1 shl PUCUUnicodeCategoryLl) or (1 shl PUCUUnicodeCategoryLt) or (1 shl PUCUUnicodeCategoryNd),IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
     UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
@@ -14614,7 +14612,7 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='alpha')) or
               ((not WithLowerCase) and (Name='Alpha')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryLu) or (1 shl FLREUnicodeCategoryLl) or (1 shl FLREUnicodeCategoryLt),IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory((1 shl PUCUUnicodeCategoryLu) or (1 shl PUCUUnicodeCategoryLl) or (1 shl PUCUUnicodeCategoryLt),IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
     UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
@@ -14627,7 +14625,7 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='blank')) or
               ((not WithLowerCase) and (Name='Blank')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryZs,IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory(1 shl PUCUUnicodeCategoryZs,IgnoreCase);
    end else begin
     UnicodeCharClass.AddChar(9,IgnoreCase);
     UnicodeCharClass.AddChar(32,IgnoreCase);
@@ -14636,7 +14634,7 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='cntrl')) or
               ((not WithLowerCase) and (Name='Cntrl')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryCc,IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory(1 shl PUCUUnicodeCategoryCc,IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange($00,$1f,IgnoreCase);
     UnicodeCharClass.AddChar($7f,IgnoreCase);
@@ -14645,7 +14643,7 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='digits')) or
               ((not WithLowerCase) and (Name='Digits')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryNd,IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory(1 shl PUCUUnicodeCategoryNd,IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange(ord('0'),ord('9'),IgnoreCase);
    end;
@@ -14653,7 +14651,7 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='graph')) or
               ((not WithLowerCase) and (Name='Graph')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryZs) or (1 shl FLREUnicodeCategoryZl) or (1 shl FLREUnicodeCategoryZp) or (1 shl FLREUnicodeCategoryCc) or (1 shl FLREUnicodeCategoryCf) or (1 shl FLREUnicodeCategoryCo) or (1 shl FLREUnicodeCategoryCs) or (1 shl FLREUnicodeCategoryCn),IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory((1 shl PUCUUnicodeCategoryZs) or (1 shl PUCUUnicodeCategoryZl) or (1 shl PUCUUnicodeCategoryZp) or (1 shl PUCUUnicodeCategoryCc) or (1 shl PUCUUnicodeCategoryCf) or (1 shl PUCUUnicodeCategoryCo) or (1 shl PUCUUnicodeCategoryCs) or (1 shl PUCUUnicodeCategoryCn),IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange($21,$7e,IgnoreCase);
    end;
@@ -14664,7 +14662,7 @@ var SourcePosition,SourceLength:longint;
    UnicodeCharClass.Canonicalized:=true;
   end else if (WithLowerCase and ((LowerCaseName='inno_block') or (LowerCaseName='isno_block') or (LowerCaseName='innoblock') or (LowerCaseName='isnoblock'))) or
               ((not WithLowerCase) and ((Name='InNo_Block') or (Name='IsNo_Block') or (Name='InNoBlock') or (Name='IsNoBlock'))) then begin
-   for i:=0 to FLREUnicodeBlockCount-1 do begin
+   for i:=0 to PUCUUnicodeBlockCount-1 do begin
     UnicodeCharClass.AddUnicodeBlock(i,false);
    end;
    UnicodeCharClass.Invert;
@@ -14676,7 +14674,7 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='lower')) or
               ((not WithLowerCase) and (Name='Lower')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryLl,IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory(1 shl PUCUUnicodeCategoryLl,IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange(ord('a'),ord('z'),IgnoreCase);
    end;
@@ -14684,7 +14682,7 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='print')) or
               ((not WithLowerCase) and (Name='Print')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryCc) or (1 shl FLREUnicodeCategoryCf) or (1 shl FLREUnicodeCategoryCo) or (1 shl FLREUnicodeCategoryCs) or (1 shl FLREUnicodeCategoryCn),IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory((1 shl PUCUUnicodeCategoryCc) or (1 shl PUCUUnicodeCategoryCf) or (1 shl PUCUUnicodeCategoryCo) or (1 shl PUCUUnicodeCategoryCs) or (1 shl PUCUUnicodeCategoryCn),IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange($20,$7e,IgnoreCase);
    end;
@@ -14692,7 +14690,7 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='punct')) or
               ((not WithLowerCase) and (Name='Punct')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory((1 shl FLREUnicodeCategoryPd) or (1 shl FLREUnicodeCategoryPs) or (1 shl FLREUnicodeCategoryPe) or (1 shl FLREUnicodeCategoryPc) or (1 shl FLREUnicodeCategoryPo),IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory((1 shl PUCUUnicodeCategoryPd) or (1 shl PUCUUnicodeCategoryPs) or (1 shl PUCUUnicodeCategoryPe) or (1 shl PUCUUnicodeCategoryPc) or (1 shl PUCUUnicodeCategoryPo),IgnoreCase);
    end else begin
     UnicodeCharClass.AddChar(ord('!'),IgnoreCase);
     UnicodeCharClass.AddChar(ord('"'),IgnoreCase);
@@ -14731,9 +14729,9 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='space')) or
               ((not WithLowerCase) and (Name='Space')) then begin
    if rfUTF8 in Flags then begin
-    for i:=0 to FLREUnicodeCharRangeClassesCounts[FLREucrWHITESPACES]-1 do begin
-     UnicodeCharClass.AddRange(PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrWHITESPACES])^[i,0],
-                               PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrWHITESPACES])^[i,1],
+    for i:=0 to PUCUUnicodeCharRangeClassesCounts[PUCUucrWHITESPACES]-1 do begin
+     UnicodeCharClass.AddRange(PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrWHITESPACES])^[i,0],
+                               PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrWHITESPACES])^[i,1],
                                IgnoreCase);
     end;
    end else begin
@@ -14743,7 +14741,7 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='upper')) or
               ((not WithLowerCase) and (Name='Upper')) then begin
    if rfUTF8 in Flags then begin
-    UnicodeCharClass.AddUnicodeCategory(1 shl FLREUnicodeCategoryLu,IgnoreCase);
+    UnicodeCharClass.AddUnicodeCategory(1 shl PUCUUnicodeCategoryLu,IgnoreCase);
    end else begin
     UnicodeCharClass.AddRange(ord('A'),ord('Z'),IgnoreCase);
    end;
@@ -14751,9 +14749,9 @@ var SourcePosition,SourceLength:longint;
   end else if (WithLowerCase and (LowerCaseName='word')) or
               ((not WithLowerCase) and (Name='Word')) then begin
    if rfUTF8 in Flags then begin
-    for i:=0 to FLREUnicodeCharRangeClassesCounts[FLREucrWORDS]-1 do begin
-     UnicodeCharClass.AddRange(PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrWORDS])^[i,0],
-                               PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrWORDS])^[i,1],
+    for i:=0 to PUCUUnicodeCharRangeClassesCounts[PUCUucrWORDS]-1 do begin
+     UnicodeCharClass.AddRange(PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrWORDS])^[i,0],
+                               PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrWORDS])^[i,1],
                                IgnoreCase);
     end;
    end else begin
@@ -15220,13 +15218,13 @@ var SourcePosition,SourceLength:longint;
    IgnoreCase:=CanBeAlreadyCanonicalized and (rfIGNORECASE in Flags);
    case Source[SourcePosition] of
     'a'..'z','A'..'Z':begin
-     f:=GetMinimalPerfectHashTableValue(@FLREUnicodeClassHashMapSeeds,
-                                        @FLREUnicodeClassHashMapKeys,
-                                        @FLREUnicodeClassHashMapValues,
-                                        FLREUnicodeClassHashMapSeedBits,
-                                        FLREUnicodeClassHashMapValueBits,
-                                        FLREUnicodeClassHashMapSize,
-                                        UTF32CharToUTF8(byte(TFLRERawByteChar(Source[SourcePosition]))));
+     f:=GetMinimalPerfectHashTableValue(@PUCUUnicodeClassHashMapSeeds,
+                                        @PUCUUnicodeClassHashMapKeys,
+                                        @PUCUUnicodeClassHashMapValues,
+                                        PUCUUnicodeClassHashMapSeedBits,
+                                        PUCUUnicodeClassHashMapValueBits,
+                                        PUCUUnicodeClassHashMapSize,
+                                        UTF32CharToUTF8(byte(TPUCURawByteChar(Source[SourcePosition]))));
      if f>=0 then begin
       inc(SourcePosition);
       UnicodeCharClass.AddUnicodeCategory(f,IgnoreCase);
@@ -15336,9 +15334,9 @@ var SourcePosition,SourceLength:longint;
     end;
     'w','W':begin
      if rfUTF8 in Flags then begin
-      for i:=0 to FLREUnicodeCharRangeClassesCounts[FLREucrWORDS]-1 do begin
-       result.AddRange(PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrWORDS])^[i,0],
-                       PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrWORDS])^[i,1],
+      for i:=0 to PUCUUnicodeCharRangeClassesCounts[PUCUucrWORDS]-1 do begin
+       result.AddRange(PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrWORDS])^[i,0],
+                       PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrWORDS])^[i,1],
                        IgnoreCase);
       end;
      end else begin
@@ -15356,9 +15354,9 @@ var SourcePosition,SourceLength:longint;
     end;
     's','S':begin
      if rfUTF8 in Flags then begin
-      for i:=0 to FLREUnicodeCharRangeClassesCounts[FLREucrWHITESPACES]-1 do begin
-       result.AddRange(PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrWHITESPACES])^[i,0],
-                       PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrWHITESPACES])^[i,1],
+      for i:=0 to PUCUUnicodeCharRangeClassesCounts[PUCUucrWHITESPACES]-1 do begin
+       result.AddRange(PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrWHITESPACES])^[i,0],
+                       PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrWHITESPACES])^[i,1],
                        IgnoreCase);
       end;
      end else begin
@@ -15374,9 +15372,9 @@ var SourcePosition,SourceLength:longint;
     end;
     'd','D':begin
      if rfUTF8 in Flags then begin
-      for i:=0 to FLREUnicodeCharRangeClassesCounts[FLREucrDIGITS]-1 do begin
-       result.AddRange(PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrDIGITS])^[i,0],
-                       PFLREUnicodeCharRanges(FLREUnicodeCharRangeClassesData[FLREucrDIGITS])^[i,1],
+      for i:=0 to PUCUUnicodeCharRangeClassesCounts[PUCUucrDIGITS]-1 do begin
+       result.AddRange(PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrDIGITS])^[i,0],
+                       PPUCUUnicodeCharRanges(PUCUUnicodeCharRangeClassesData[PUCUucrDIGITS])^[i,1],
                        IgnoreCase);
       end;
      end else begin

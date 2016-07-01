@@ -73,7 +73,7 @@ uses
   SysUtils,
   Classes,
   FLRE in '..\..\src\FLRE.pas',
-  FLREUnicode in '..\..\src\FLREUnicode.pas',
+  PUCU in '..\..\src\PUCU.pas',
   BeRoFileMappedStream in '..\common\BeRoFileMappedStream.pas',
   BeRoHighResolutionTimer in '..\common\BeRoHighResolutionTimer.pas';
 

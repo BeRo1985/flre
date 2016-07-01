@@ -1,6 +1,6 @@
 #### FLRE - Fast Light Regular Expressions - A fast light regular expression library
 
-FLRE ( **F** ast **L** ight **R** egular **E** xpressions) is a fast, safe and efficient regular expression library, which is implemented in Object Pascal (Delphi and Free Pascal) but which is even usable from other languages like C/C++ and so on. 
+FLRE ( **F** ast **L** ight **R** egular **E** xpressions) is a fast, safe and efficient regular expression library, which is implemented in Object Pascal (Delphi and Free Pascal) but which is even usable from other languages like C/C++ and so on. It requires PUCU.pas from [PUCU](https://github.com/BeRo1985/pucu) for the Unicode data tables. 
 
 It implements the many of the most common Perl and POSIX features, except **irregular** expression features like forward references and nested back references and so on, which aren't supported at FLRE, only real "back" references are supported, hence also the word "Light" at the FLRE name. It also finds the leftmost-first match, the same match that Perl and PCRE would, and can return submatch information. But it also features a flag for a yet experimental POSIX-style leftmost-longest match behaviour mode. 
 

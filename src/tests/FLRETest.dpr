@@ -13,7 +13,7 @@ uses
   SysUtils,
   Classes,
   FLRE in '..\FLRE.pas',
-  FLREUnicode in '..\FLREUnicode.pas',
+  PUCU in '..\PUCU.pas',
   UnitTestGlobals in 'UnitTestGlobals.pas',
   UnitSearchTests in 'UnitSearchTests.pas',
   UnitReplaceTests in 'UnitReplaceTests.pas';

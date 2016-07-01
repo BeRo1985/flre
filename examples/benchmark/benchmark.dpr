@@ -76,7 +76,7 @@ uses
   SysUtils,
   Classes,
   FLRE in '..\..\src\FLRE.pas',
-  FLREUnicode in '..\..\src\FLREUnicode.pas',
+  PUCU in '..\..\src\PUCU.pas',
   BeRoHighResolutionTimer in '..\common\BeRoHighResolutionTimer.pas';
 
 const BenchmarkCount=1;
