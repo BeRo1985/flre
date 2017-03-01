@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2016.07.01.05.51.0000';
+      FLREVersionString='1.00.2017.03.01.16.53.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -13121,37 +13121,41 @@ function TFLREThreadLocalStorageInstance.LookAssertion(const Position,WhichLookA
 var Index,LookAssertionStringLength,BasePosition:longint;
     LookAssertionString:TFLRERawByteString;
 begin
- LookAssertionString:=Instance.LookAssertionStrings[WhichLookAssertionString];
- LookAssertionStringLength:=length(LookAssertionString);
- if LookBehind then begin
-  if Position>=LookAssertionStringLength then begin
-   result:=true;
-   for Index:=0 to LookAssertionStringLength-1 do begin
-    if Input[Position-Index]<>LookAssertionString[LookAssertionStringLength-Index] then begin
-     result:=false;
-     break;
+ if WhichLookAssertionString<Instance.CountLookAssertionStrings then begin
+  LookAssertionString:=Instance.LookAssertionStrings[WhichLookAssertionString];
+  LookAssertionStringLength:=length(LookAssertionString);
+  if LookBehind then begin
+   if Position>=LookAssertionStringLength then begin
+    result:=true;
+    for Index:=0 to LookAssertionStringLength-1 do begin
+     if Input[Position-Index]<>LookAssertionString[LookAssertionStringLength-Index] then begin
+      result:=false;
+      break;
+     end;
     end;
+   end else begin
+    result:=false;
    end;
   end else begin
-   result:=false;
+   if (Position+LookAssertionStringLength)<=InputLength then begin
+    result:=true;
+    BasePosition:=Position;
+    if rfUTF8 in Instance.Flags then begin
+     UTF8PtrSafeInc(Input,InputLength,BasePosition);
+     dec(BasePosition);
+    end;
+    for Index:=1 to LookAssertionStringLength do begin
+     if Input[BasePosition+Index]<>LookAssertionString[Index] then begin
+      result:=false;
+      break;
+     end;
+    end;
+   end else begin
+    result:=false;
+   end;
   end;
  end else begin
-  if (Position+LookAssertionStringLength)<=InputLength then begin
-   result:=true;
-   BasePosition:=Position;
-   if rfUTF8 in Instance.Flags then begin
-    UTF8PtrSafeInc(Input,InputLength,BasePosition);
-    dec(BasePosition);
-   end;
-   for Index:=1 to LookAssertionStringLength do begin
-    if Input[BasePosition+Index]<>LookAssertionString[Index] then begin
-     result:=false;
-     break;
-    end;
-   end;
-  end else begin
-   result:=false;
-  end;
+  result:=false;
  end;
  result:=result xor Negative;
 end;
@@ -13775,7 +13779,7 @@ begin
    result:=NodeLeft;
   end else if (NodeLeft^.NodeType=ntCAT) and assigned(NodeLeft^.Left) and assigned(NodeLeft^.Right) then begin
    if (NodeLeft^.Right^.NodeType=ntZEROWIDTH) and (NodeRight^.NodeType=ntZEROWIDTH) then begin
-    NodeLeft^.Right^.NodeType:=NodeLeft^.Right^.NodeType or NodeRight^.Value;
+    NodeLeft^.Right^.Value:=NodeLeft^.Right^.Value or NodeRight^.Value;
     result:=NodeLeft;
    end else if ((NodeLeft^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (NodeRight^.NodeType=ntPLUS)) and AreNodesEqualSafe(NodeLeft^.Right^.Left,NodeRight^.Left) and (NodeLeft^.Right^.Value=0) and (NodeRight^.Value=0) then begin
     NodeLeft^.Right:=NodeRight;
@@ -20974,16 +20978,32 @@ var CharClass:TFLRECharClass;
      end;
     end;
     ntLOOKBEHINDNEGATIVE:begin
-     result:=result+'(?<!'+LookAssertionStrings[Node^.Value]+')';
+     if Node^.Value<CountLookAssertionStrings then begin
+      result:=result+'(?<!'+LookAssertionStrings[Node^.Value]+')';
+     end else begin
+      result:=result+'(?<!)';
+     end;
     end;
     ntLOOKBEHINDPOSITIVE:begin
-     result:=result+'(?<='+LookAssertionStrings[Node^.Value]+')';
+     if Node^.Value<CountLookAssertionStrings then begin
+      result:=result+'(?<='+LookAssertionStrings[Node^.Value]+')';
+     end else begin
+      result:=result+'(?<=)';
+     end;
     end;
     ntLOOKAHEADNEGATIVE:begin
-     result:=result+'(?!'+LookAssertionStrings[Node^.Value]+')';
+     if Node^.Value<CountLookAssertionStrings then begin
+      result:=result+'(?!'+LookAssertionStrings[Node^.Value]+')';
+     end else begin
+      result:=result+'(?!)';
+     end;
     end;
     ntLOOKAHEADPOSITIVE:begin
-     result:=result+'(?='+LookAssertionStrings[Node^.Value]+')';
+     if Node^.Value<CountLookAssertionStrings then begin
+      result:=result+'(?='+LookAssertionStrings[Node^.Value]+')';
+     end else begin
+      result:=result+'(?=)';
+     end;
     end;
     ntBACKREFERENCE,ntBACKREFERENCEIGNORECASE:begin
      if (Node^.Flags and 1)<>0 then begin
