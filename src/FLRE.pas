@@ -3,7 +3,7 @@
 ********************************************************************************
 
 FLRE - Fast Light Regular Expressions - A fast light regular expression library
-Copyright (C) 2015-2016, Benjamin 'BeRo' Rosseaux
+Copyright (C) 2015-2017, Benjamin 'BeRo' Rosseaux
 
 The source code of the FLRE engine library and helper tools are
 distributed under the Library GNU Lesser General Public License Version 2.1 
@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2017.03.01.16.53.0000';
+      FLREVersionString='1.00.2017.07.31.17.48.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -16288,6 +16288,58 @@ var SourcePosition,SourceLength:longint;
            raise EFLRE.Create('Syntax error');
           end;
          end;
+         'Q':begin
+          inc(SourcePosition);
+          while SourcePosition<=SourceLength do begin
+           TemporaryNode:=nil;
+           case Source[SourcePosition] of
+            '\':begin
+             inc(SourcePosition);
+             if (SourcePosition<=SourceLength) and (Source[SourcePosition]='E') then begin
+              inc(SourcePosition);
+              break;
+             end else begin
+              TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass(['\'],true));
+             end;
+            end;
+            #128..#255:begin
+             if rfUTF8 in Flags then begin
+              UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
+              LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
+              UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
+              if (rfIGNORECASE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
+               TemporaryNode:=NewAlt(NewUnicodeChar(LowerCaseUnicodeChar),NewUnicodeChar(UpperCaseUnicodeChar));
+              end else begin
+               TemporaryNode:=NewUnicodeChar(UnicodeChar);
+              end;
+             end else begin
+              TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]],true));
+              inc(SourcePosition);
+             end;
+            end;
+            else begin
+             if (rfIGNORECASE in Flags) and (Source[SourcePosition] in ['a'..'z','A'..'Z']) then begin
+              UnicodeChar:=byte(TFLRERawByteChar(Source[SourcePosition]));
+              LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
+              UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
+              TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([TFLRERawByteChar(byte(LowerCaseUnicodeChar)),TFLRERawByteChar(byte(UpperCaseUnicodeChar))],true));
+             end else begin
+              TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]],true));
+              inc(SourcePosition);
+             end;
+            end;
+           end;
+           if assigned(TemporaryNode) then begin
+            if assigned(result) then begin
+             result:=Concat(result,TemporaryNode);
+            end else begin
+             result:=TemporaryNode;
+            end;
+           end else begin
+            raise EFLRE.Create('Syntax error');
+           end;
+          end;
+         end;
          else begin
           if (rfUTF8 in Flags) and (byte(TFLRERawByteChar(Source[SourcePosition]))>=$80) then begin
            UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
@@ -16309,58 +16361,6 @@ var SourcePosition,SourceLength:longint;
         end;
        end else begin
         raise EFLRE.Create('Syntax error');
-       end;
-      end;
-      'Q':begin
-       inc(SourcePosition);
-       while SourcePosition<=SourceLength do begin
-        TemporaryNode:=nil;
-        case Source[SourcePosition] of
-         '\':begin
-          inc(SourcePosition);
-          if (SourcePosition<=SourceLength) and (Source[SourcePosition]='E') then begin
-           inc(SourcePosition);
-           break;
-          end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass(['\'],true));
-          end;
-         end;
-         #128..#255:begin
-          if rfUTF8 in Flags then begin
-           UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(Source,SourcePosition);
-           LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
-           UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-           if (rfIGNORECASE in Flags) and (LowerCaseUnicodeChar<>UpperCaseUnicodeChar) then begin
-            TemporaryNode:=NewAlt(NewUnicodeChar(LowerCaseUnicodeChar),NewUnicodeChar(UpperCaseUnicodeChar));
-           end else begin
-            TemporaryNode:=NewUnicodeChar(UnicodeChar);
-           end;
-          end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]],true));
-           inc(SourcePosition);
-          end;
-         end;
-         else begin
-          if (rfIGNORECASE in Flags) and (Source[SourcePosition] in ['a'..'z','A'..'Z']) then begin
-           UnicodeChar:=byte(TFLRERawByteChar(Source[SourcePosition]));
-           LowerCaseUnicodeChar:=UnicodeToLower(UnicodeChar);
-           UpperCaseUnicodeChar:=UnicodeToUpper(UnicodeChar);
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([TFLRERawByteChar(byte(LowerCaseUnicodeChar)),TFLRERawByteChar(byte(UpperCaseUnicodeChar))],true));
-          end else begin
-           TemporaryNode:=NewNode(ntCHAR,nil,nil,NewCharClass([Source[SourcePosition]],true));
-           inc(SourcePosition);
-          end;
-         end;
-        end;
-        if assigned(TemporaryNode) then begin
-         if assigned(result) then begin
-          result:=Concat(result,TemporaryNode);
-         end else begin
-          result:=TemporaryNode;
-         end;
-        end else begin
-         raise EFLRE.Create('Syntax error');
-        end;
        end;
       end;
       '[':begin
