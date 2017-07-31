@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2017.07.31.17.48.0000';
+      FLREVersionString='1.00.2017.07.31.17.56.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -3530,7 +3530,7 @@ asm
  movq xmm0,rsi
  movq xmm1,rsi
  pxor xmm2,xmm2
- movdqa xmm3,[XMM1Constant]
+ movdqa xmm3,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
  pshufb xmm0,xmm2
  pshufb xmm1,xmm3
 
@@ -3630,8 +3630,8 @@ asm
  and ecx,31
 
  pxor xmm9,xmm9
- movdqa xmm10,[XMM1Constant]
- movdqa xmm11,[XMM2Constant]
+ movdqa xmm10,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm11,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
 
  movdqa xmm3,[rdi]
  movdqa xmm4,[rdi]
@@ -3750,9 +3750,9 @@ asm
  and ecx,31
 
  pxor xmm12,xmm12
- movdqa xmm13,[XMM1Constant]
- movdqa xmm14,[XMM2Constant]
- movdqa xmm15,[XMM3Constant]
+ movdqa xmm13,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm14,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
+ movdqa xmm15,[{$ifdef fpc}rip+{$else}rel {$endif}XMM3Constant]
 
  movdqa xmm4,[rdi]
  movdqa xmm5,[rdi]
@@ -3887,10 +3887,10 @@ asm
  and ecx,15
 
  pxor xmm11,xmm11
- movdqa xmm12,[XMM1Constant]
- movdqa xmm13,[XMM2Constant]
- movdqa xmm14,[XMM3Constant]
- movdqa xmm15,[XMM4Constant]
+ movdqa xmm12,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm13,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
+ movdqa xmm14,[{$ifdef fpc}rip+{$else}rel {$endif}XMM3Constant]
+ movdqa xmm15,[{$ifdef fpc}rip+{$else}rel {$endif}XMM4Constant]
 
  pshufb xmm0,xmm11
  pshufb xmm1,xmm12
@@ -4011,11 +4011,11 @@ asm
  and ecx,15
 
  pxor xmm10,xmm10
- movdqa xmm11,[XMM1Constant]
- movdqa xmm12,[XMM2Constant]
- movdqa xmm13,[XMM3Constant]
- movdqa xmm14,[XMM4Constant]
- movdqa xmm15,[XMM5Constant]
+ movdqa xmm11,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm12,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
+ movdqa xmm13,[{$ifdef fpc}rip+{$else}rel {$endif}XMM3Constant]
+ movdqa xmm14,[{$ifdef fpc}rip+{$else}rel {$endif}XMM4Constant]
+ movdqa xmm15,[{$ifdef fpc}rip+{$else}rel {$endif}XMM5Constant]
 
  pshufb xmm0,xmm10
  pshufb xmm1,xmm11
@@ -4146,12 +4146,12 @@ asm
  and ecx,15
 
  pxor xmm9,xmm9
- movdqa xmm10,[XMM1Constant]
- movdqa xmm11,[XMM2Constant]
- movdqa xmm12,[XMM3Constant]
- movdqa xmm13,[XMM4Constant]
- movdqa xmm14,[XMM5Constant]
- movdqa xmm15,[XMM6Constant]
+ movdqa xmm10,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm11,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
+ movdqa xmm12,[{$ifdef fpc}rip+{$else}rel {$endif}XMM3Constant]
+ movdqa xmm13,[{$ifdef fpc}rip+{$else}rel {$endif}XMM4Constant]
+ movdqa xmm14,[{$ifdef fpc}rip+{$else}rel {$endif}XMM5Constant]
+ movdqa xmm15,[{$ifdef fpc}rip+{$else}rel {$endif}XMM6Constant]
 
  pshufb xmm0,xmm9
  pshufb xmm1,xmm10
@@ -4292,13 +4292,13 @@ asm
  and ecx,15
 
  pxor xmm8,xmm8
- movdqa xmm9,[XMM1Constant]
- movdqa xmm10,[XMM2Constant]
- movdqa xmm11,[XMM3Constant]
- movdqa xmm12,[XMM4Constant]
- movdqa xmm13,[XMM5Constant]
- movdqa xmm14,[XMM6Constant]
- movdqa xmm15,[XMM7Constant]
+ movdqa xmm9,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm10,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
+ movdqa xmm11,[{$ifdef fpc}rip+{$else}rel {$endif}XMM3Constant]
+ movdqa xmm12,[{$ifdef fpc}rip+{$else}rel {$endif}XMM4Constant]
+ movdqa xmm13,[{$ifdef fpc}rip+{$else}rel {$endif}XMM5Constant]
+ movdqa xmm14,[{$ifdef fpc}rip+{$else}rel {$endif}XMM6Constant]
+ movdqa xmm15,[{$ifdef fpc}rip+{$else}rel {$endif}XMM7Constant]
 
  pshufb xmm0,xmm8
  pshufb xmm1,xmm9
@@ -4429,7 +4429,7 @@ asm
  movq xmm0,rsi
  movq xmm1,rsi
  pxor xmm2,xmm2
- movdqa xmm3,[XMM1Constant]
+ movdqa xmm3,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
  pshufb xmm0,xmm2
  pshufb xmm1,xmm3
 
@@ -4546,9 +4546,9 @@ asm
 
  mov ecx,edi
  pxor xmm4,xmm4
- movdqa xmm5,[XMM1Constant]
- movdqa xmm6,[XMM2Constant]
- movdqa xmm7,[XMM3Constant]
+ movdqa xmm5,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm6,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
+ movdqa xmm7,[{$ifdef fpc}rip+{$else}rel {$endif}XMM3Constant]
 
  and rdi,-32
  and ecx,31
@@ -4703,11 +4703,11 @@ asm
 
  mov ecx,edi
  pxor xmm6,xmm6
- movdqa xmm7,[XMM1Constant]
- movdqa xmm8,[XMM2Constant]
- movdqa xmm9,[XMM3Constant]
- movdqa xmm10,[XMM4Constant]
- movdqa xmm11,[XMM5Constant]
+ movdqa xmm7,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm8,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
+ movdqa xmm9,[{$ifdef fpc}rip+{$else}rel {$endif}XMM3Constant]
+ movdqa xmm10,[{$ifdef fpc}rip+{$else}rel {$endif}XMM4Constant]
+ movdqa xmm11,[{$ifdef fpc}rip+{$else}rel {$endif}XMM5Constant]
 
  and rdi,-16
  and ecx,15
@@ -4848,13 +4848,13 @@ asm
 
  mov ecx,edi
  pxor xmm8,xmm8
- movdqa xmm9,[XMM1Constant]
- movdqa xmm10,[XMM2Constant]
- movdqa xmm11,[XMM3Constant]
- movdqa xmm12,[XMM4Constant]
- movdqa xmm13,[XMM5Constant]
- movdqa xmm14,[XMM6Constant]
- movdqa xmm15,[XMM7Constant]
+ movdqa xmm9,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm10,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
+ movdqa xmm11,[{$ifdef fpc}rip+{$else}rel {$endif}XMM3Constant]
+ movdqa xmm12,[{$ifdef fpc}rip+{$else}rel {$endif}XMM4Constant]
+ movdqa xmm13,[{$ifdef fpc}rip+{$else}rel {$endif}XMM5Constant]
+ movdqa xmm14,[{$ifdef fpc}rip+{$else}rel {$endif}XMM6Constant]
+ movdqa xmm15,[{$ifdef fpc}rip+{$else}rel {$endif}XMM7Constant]
 
  and rdi,-16
  and ecx,15
@@ -4999,9 +4999,9 @@ asm
 
  mov ecx,edi
  pxor xmm4,xmm4
- movdqa xmm5,[XMM1Constant]
- movdqa xmm6,[XMM126Constant]
- movdqa xmm7,[XMM127Constant]
+ movdqa xmm5,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm6,[{$ifdef fpc}rip+{$else}rel {$endif}XMM126Constant]
+ movdqa xmm7,[{$ifdef fpc}rip+{$else}rel {$endif}XMM127Constant]
 
  and rdi,-32
  and ecx,31
@@ -5102,13 +5102,13 @@ asm
 
  mov ecx,edi
  pxor xmm8,xmm8
- movdqa xmm9,[XMM1Constant]
- movdqa xmm10,[XMM2Constant]
- movdqa xmm11,[XMM3Constant]
- movdqa xmm12,[XMM126Constant]
- movdqa xmm13,[XMM127Constant]
- movdqa xmm14,[XMM126Constant]
- movdqa xmm15,[XMM127Constant]
+ movdqa xmm9,[{$ifdef fpc}rip+{$else}rel {$endif}XMM1Constant]
+ movdqa xmm10,[{$ifdef fpc}rip+{$else}rel {$endif}XMM2Constant]
+ movdqa xmm11,[{$ifdef fpc}rip+{$else}rel {$endif}XMM3Constant]
+ movdqa xmm12,[{$ifdef fpc}rip+{$else}rel {$endif}XMM126Constant]
+ movdqa xmm13,[{$ifdef fpc}rip+{$else}rel {$endif}XMM127Constant]
+ movdqa xmm14,[{$ifdef fpc}rip+{$else}rel {$endif}XMM126Constant]
+ movdqa xmm15,[{$ifdef fpc}rip+{$else}rel {$endif}XMM127Constant]
 
  and rdi,-32
  and ecx,31
