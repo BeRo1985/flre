@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2017.07.31.17.56.0000';
+      FLREVersionString='1.00.2017.09.15.10.19.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -3422,7 +3422,7 @@ end;
 {$else}
 begin
 {$ifdef fpc}
- result:=BsfByte(Value);
+ result:=BsfDWord(Value);
 {$else}
  result:=(Value and (-Value))-1;
  result:=result-((result shr 1) and $55555555);
