@@ -3,18 +3,26 @@ library FLRELib;
  {$mode delphi}
 {$endif}
 
-{$ifndef fpc}
-{ FastMM4 in 'FastMM4.pas',
-  FastMove in 'FastMove.pas',
-  FastcodeCPUID in 'FastcodeCPUID.pas',
-  FastMM4Messages in 'FastMM4Messages.pas',}
-{$endif}
-
 uses
   SysUtils,
   Classes,
-  FLRE in 'FLRE.pas',
-  FLREUnicode in 'FLREUnicode.pas';
+  
+  {$ifdef fpc}
+   {$ifndef WINDOWS}
+    { // FastMM4 Library
+    FastMM4 in 'FastMM4.pas',
+    FastMM4Messages in 'FastMM4Messages.pas',}
+   {$endif}
+  {$endif}
+  
+  {$ifndef fpc}
+  { // Fastcode Library
+    FastMove in 'FastMove.pas',
+    FastcodeCPUID in 'FastcodeCPUID.pas',}
+  {$endif}
+  
+  PUCU in 'PUCU.pas',
+  FLRE in 'FLRE.pas';
 
 exports FLREGetVersion name 'FLREGetVersion',
         FLREGetVersionString name 'FLREGetVersionString',
