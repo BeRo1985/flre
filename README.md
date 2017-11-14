@@ -31,3 +31,6 @@ IRC: #flre on freenode
 
 How-to-compile-the-code-examples youtube videos: [https://youtu.be/rVdwOqo6rGQ](https://youtu.be/rVdwOqo6rGQ) and [https://youtu.be/rVdwOqo6rGQ](https://youtu.be/QrXyF9Bzbxw)
 
+## Support me
+
+[Support me at Patreon](https://www.patreon.com/bero)
