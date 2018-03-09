@@ -145,7 +145,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2017.09.15.10.19.0000';
+      FLREVersionString='1.00.2018.03.09.02.10.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -13707,6 +13707,8 @@ begin
          ((((assigned(NodeA) and assigned(NodeB))) and
           ((NodeA^.NodeType=NodeB^.NodeType) and
            ((NodeA^.Value=NodeB^.Value) and
+            (NodeA^.Flags=NodeB^.Flags) and
+            (NodeA^.Group=NodeB^.Group) and
             (AreNodesEqual(NodeA^.Left,NodeB^.Left) and AreNodesEqual(NodeA^.Right,NodeB^.Right))))) or
           not (assigned(NodeA) or assigned(NodeB)));
 end;
@@ -13717,6 +13719,8 @@ begin
          ((((assigned(NodeA) and assigned(NodeB))) and
            (((NodeA^.NodeType=NodeB^.NodeType) and not (NodeB^.NodeType in [ntPAREN])) and
             ((NodeA^.Value=NodeB^.Value) and
+             (NodeA^.Flags=NodeB^.Flags) and
+             (NodeA^.Group=NodeB^.Group) and
              (AreNodesEqualSafe(NodeA^.Left,NodeB^.Left) and
               AreNodesEqualSafe(NodeA^.Right,NodeB^.Right))))) or
           not (assigned(NodeA) or assigned(NodeB)));
