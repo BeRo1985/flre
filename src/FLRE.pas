@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.04.05.15.31.0000';
+      FLREVersionString='1.00.2018.04.07.05.28.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -7842,7 +7842,7 @@ const m=TFLREUInt32($57559429);
       n=TFLREUInt32($5052acdb);
 var b:PFLRERawByteChar;
     h,k:TFLREUInt32;
-    p:{$ifdef fpc}TFLREUInt64{$else}TFLREInt64{$endif};
+    p:TFLREUInt64;
 begin
  h:=Len;
  k:=h+n+1;
@@ -10721,7 +10721,7 @@ begin
  inherited Destroy;
 end;
 
-function TFLREParallelNFA.StateAllocate(const Count:TFLREInt32;const SubMatchesBitmap:TFLREUInt32):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+function TFLREParallelNFA.StateAllocate(const Count:TFLREInt32;const SubMatchesBitmap:TFLREUInt32):PFLREParallelNFAState;
 begin
  if assigned(FreeStates) then begin
   result:=FreeStates;
@@ -10737,13 +10737,13 @@ begin
  result^.SubMatchesBitmap:=SubMatchesBitmap;
 end;
 
-function TFLREParallelNFA.StateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
+function TFLREParallelNFA.StateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState;
 begin
  inc(State^.ReferenceCounter);
  result:=State;
 end;
 
-procedure TFLREParallelNFA.StateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
+procedure TFLREParallelNFA.StateRelease(const State:PFLREParallelNFAState);
 begin
  dec(State^.ReferenceCounter);
  if State^.ReferenceCounter=0 then begin
@@ -11300,10 +11300,10 @@ end;
 function TFLREBitStateNFA.SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:TFLREInt32;const UnanchoredStart:boolean):TFLREInt32;
 var LocalInputLength,BasePosition,Len:TFLREInt32;
     LocalInput:PFLRERawByteChar;
- function ShouldVisit(const Instruction:PFLREInstruction;const Position:TFLREInt32):boolean; {$ifdef caninline}inline;{$endif}
+ function ShouldVisit(const Instruction:PFLREInstruction;const Position:TFLREInt32):boolean; {$ifdef fpc}{$ifdef caninline}inline;{$endif}{$endif}
  var i:TFLREUInt32;
  begin
-  i:=(TFLREPtrUInt(Instruction^.IDandOpcode shr 8)*TFLREUInt32(Len+1))+TFLREUInt32(TFLREInt32(Position-BasePosition));
+  i:=(TFLREPtrUInt(Instruction^.IDandOpcode shr 8)*TFLREUInt32(TFLREUInt32(Len)+1))+TFLREUInt32(TFLREInt32(Position-BasePosition));
   result:=(Visited[i shr 5] and (1 shl (i and 31)))=0;
   if result then begin
    Visited[i shr 5]:=Visited[i shr 5] or (1 shl (i and 31));
@@ -11748,7 +11748,7 @@ begin
  inherited Destroy;
 end;
 
-function TFLREDFA.CacheState(const State:PFLREDFAState):PFLREDFAState; {$ifdef caninline}inline;{$endif}
+function TFLREDFA.CacheState(const State:PFLREDFAState):PFLREDFAState;
 begin
 
  // Is it already cached?
@@ -19714,7 +19714,7 @@ begin
  result:=Process(RootNode);
 end;
 
-function TFLRE.IsWordChar(const CharValue:TFLREUInt32):boolean; {$ifdef caninline}inline;{$endif}
+function TFLRE.IsWordChar(const CharValue:TFLREUInt32):boolean;
 begin
  if CharValue=$ffffffff then begin
   result:=false;
