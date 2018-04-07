@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.04.07.13.58.0000';
+      FLREVersionString='1.00.2018.04.07.21.40.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -867,7 +867,7 @@ type EFLRE=class(Exception);
        function StateAllocate(const Count:TFLREInt32;const SubMatchesBitmap:TFLREUInt32):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        function StateAcquire(const State:PFLREParallelNFAState):PFLREParallelNFAState; {$ifdef caninline}inline;{$endif}
        procedure StateRelease(const State:PFLREParallelNFAState); {$ifdef caninline}inline;{$endif}
-       function StateUpdate(const State:PFLREParallelNFAState;const Index,Position:TFLREInt32):PFLREParallelNFAState;  {$ifndef cpu386}{$ifdef caninline}inline;{$endif}{$endif}
+       function StateUpdate(const State:PFLREParallelNFAState;const Index,Position:TFLREInt32):PFLREParallelNFAState; //{$ifdef fpc}{$ifndef cpu386}{$ifdef caninline}inline;{$endif}{$endif}{$endif}
        function BackReferenceAssertion(const State:PFLREParallelNFAState;const CaptureSubMatch,BackReferenceSubMatch:TFLREInt32;const IgnoreCase:boolean):boolean;
        procedure AddThread(const ThreadList:PFLREParallelNFAThreadList;Instruction:PFLREInstruction;State:PFLREParallelNFAState;const Position:TFLREInt32);
        function SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:TFLREInt32;const UnanchoredStart:boolean):boolean;
