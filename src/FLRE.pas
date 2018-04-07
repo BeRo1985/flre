@@ -156,7 +156,6 @@ unit FLRE;
    {$define Delphi2006AndUp}
    {$define CanInline}
    {$define HasAdvancedRecords}
-   {$define NewCompiler}
   {$ifend}
   {$if CompilerVersion>=18.5}
    {$if CompilerVersion=18.5}
@@ -190,6 +189,7 @@ unit FLRE;
     {$define DelphiXE2}
    {$ifend}
    {$define DelphiXE2AndUp}
+   {$define NewCompiler}
   {$ifend}
   {$if CompilerVersion>=24.0}
    {$legacyifend on}
@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.04.07.05.28.0000';
+      FLREVersionString='1.00.2018.04.07.05.32.0000';
 
       FLREMaxPrefixCharClasses=32;
 
