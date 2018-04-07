@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.04.07.05.32.0000';
+      FLREVersionString='1.00.2018.04.07.13.58.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -10752,7 +10752,7 @@ begin
  end;
 end;
 
-function TFLREParallelNFA.StateUpdate(const State:PFLREParallelNFAState;const Index,Position:TFLREInt32):PFLREParallelNFAState; {$ifndef cpu386}{$ifdef caninline}inline;{$endif}{$endif}
+function TFLREParallelNFA.StateUpdate(const State:PFLREParallelNFAState;const Index,Position:TFLREInt32):PFLREParallelNFAState;
 var Counter:TFLREInt32;
 {$ifndef cpu386}
     SubMatchesBitmap:TFLREUInt32;
