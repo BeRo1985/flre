@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.04.17.00.47.0000';
+      FLREVersionString='1.00.2018.04.17.01.12.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -14487,7 +14487,7 @@ begin
           HasOptimizations:=true;
           continue;
          end else if (Node^.Left^.NodeType=ntALT) or (Node^.Right^.NodeType=ntALT) then begin
-          begin
+{         begin
            // Prefix factoring
            Optimized:=false;
            repeat
@@ -14670,7 +14670,7 @@ begin
             HasOptimizations:=true;
             continue;
            end;
-          end;
+          end; }
           begin
            NodeStack.Add(@Node^.Right);
            NodeEx:=@Node^.Left;
