@@ -10,7 +10,6 @@ program FLRETest;
 {$endif}
 
 uses
-  SysUtils,
   Classes,
   FLRE in '..\FLRE.pas',
   PUCU in '..\PUCU.pas',

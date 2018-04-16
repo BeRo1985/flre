@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.04.07.21.40.0000';
+      FLREVersionString='1.00.2018.04.17.00.47.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -13392,7 +13392,7 @@ begin
    if Position>=LookAssertionStringLength then begin
     result:=true;
     for Index:=0 to LookAssertionStringLength-1 do begin
-     if Input[Position-Index]<>LookAssertionString[LookAssertionStringLength-Index] then begin
+     if Input[(Position-Index)-1]<>LookAssertionString[LookAssertionStringLength-Index] then begin
       result:=false;
       break;
      end;
@@ -13409,7 +13409,7 @@ begin
      dec(BasePosition);
     end;
     for Index:=1 to LookAssertionStringLength do begin
-     if Input[BasePosition+Index]<>LookAssertionString[Index] then begin
+     if Input[(BasePosition+Index)-1]<>LookAssertionString[Index] then begin
       result:=false;
       break;
      end;
@@ -13704,11 +13704,6 @@ begin
 
   if not ((fifHasLookAssertions in InternalFlags) or (fifHasBackReferences in InternalFlags)) then begin
    Include(InternalFlags,fifDFAReady);
-  end;
-
-  if (fifHasLookAssertions in InternalFlags) or (fifHasBackReferences in InternalFlags) then begin
-   Include(InternalFlags,fifOnePassNFAReady);
-  end else begin
    CompileOnePassNFA;
   end;
 
