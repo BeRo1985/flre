@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.04.17.01.12.0000';
+      FLREVersionString='1.00.2018.04.17.13.29.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -1133,7 +1133,7 @@ type EFLRE=class(Exception);
        function Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
 
        function NewEmptyMatch:PFLRENode;
-       
+
        function NewAlt(NodeLeft,NodeRight:PFLRENode):PFLRENode;
        function NewPlus(Node:PFLRENode;Kind:TFLREInt32):PFLRENode;
        function NewStar(Node:PFLRENode;Kind:TFLREInt32):PFLRENode;
@@ -1167,6 +1167,8 @@ type EFLRE=class(Exception);
        function SearchNextPossibleStartForDFA(const Input:PFLRERawByteChar;const InputLength:TFLREInt32):TFLREInt32; {$ifdef cpu386}register;{$endif}
 
        function SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;var Captures:TFLRECaptures;StartPosition,UntilExcludingPosition:TFLREInt32;UnanchoredStart:boolean):boolean;
+
+       function DumpRegularExpressionNode(StartNode:PFLRENode):TFLRERawByteString;
 
       public
 
@@ -14487,7 +14489,7 @@ begin
           HasOptimizations:=true;
           continue;
          end else if (Node^.Left^.NodeType=ntALT) or (Node^.Right^.NodeType=ntALT) then begin
-{         begin
+          begin
            // Prefix factoring
            Optimized:=false;
            repeat
@@ -14537,6 +14539,9 @@ begin
                       for NewNodeIndex:=NodeListLeft.Count-2 downto 0 do begin
                        TempNode:=NewNode(ntCAT,TempNode,NodeListLeft[NewNodeIndex],0);
                       end;
+                      Alternative:=NewAlt(Alternative,TempNode);
+                     end else begin
+                      TempNode:=NewNode(ntZEROWIDTH,nil,nil,0);
                       Alternative:=NewAlt(Alternative,TempNode);
                      end;
                     finally
@@ -14630,6 +14635,9 @@ begin
                        TempNode:=NewNode(ntCAT,TempNode,NodeListLeft[NewNodeIndex],0);
                       end;
                       Alternative:=NewAlt(Alternative,TempNode);
+                     end else begin
+                      TempNode:=NewNode(ntZEROWIDTH,nil,nil,0);
+                      Alternative:=NewAlt(Alternative,TempNode);
                      end;
                     finally
                      NodeListLeft.Free;
@@ -14670,7 +14678,7 @@ begin
             HasOptimizations:=true;
             continue;
            end;
-          end; }
+          end;
           begin
            NodeStack.Add(@Node^.Right);
            NodeEx:=@Node^.Left;
@@ -21070,7 +21078,7 @@ begin
  end;
 end;
 
-function TFLRE.DumpRegularExpression:TFLRERawByteString;
+function TFLRE.DumpRegularExpressionNode(StartNode:PFLRENode):TFLRERawByteString;
 var CharClass:TFLRECharClass;
  function ProcessNode(Node:PFLRENode;ParentPrecedence:TFLREInt32):TFLRERawByteString;
  const HexChars:array[$0..$f] of TFLRERawByteChar='0123456789abcdef';
@@ -21278,7 +21286,12 @@ var CharClass:TFLRECharClass;
   end;
  end;
 begin
- result:=ProcessNode(AnchoredRootNode,npTopLevel);
+ result:=ProcessNode(StartNode,npTopLevel);
+end;
+
+function TFLRE.DumpRegularExpression:TFLRERawByteString;
+begin
+ result:=DumpRegularExpressionNode(AnchoredRootNode);
 end;
 
 function TFLRE.GetPrefilterExpression:TFLRERawByteString;
