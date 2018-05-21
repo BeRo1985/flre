@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.04.17.20.04.0000';
+      FLREVersionString='1.00.2018.05.21.23.36.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -5405,13 +5405,13 @@ asm
  mov ecx,edi
  pxor xmm8,xmm8
 {$ifdef fpc}
- movdqa xmm9,[XMM1Constant]
- movdqa xmm10,[XMM2Constant]
- movdqa xmm11,[XMM3Constant]
- movdqa xmm12,[XMM126Constant]
- movdqa xmm13,[XMM127Constant]
- movdqa xmm14,[XMM126Constant]
- movdqa xmm15,[XMM127Constant]
+ movdqa xmm9,[rip+XMM1Constant]
+ movdqa xmm10,[rip+XMM2Constant]
+ movdqa xmm11,[rip+XMM3Constant]
+ movdqa xmm12,[rip+XMM126Constant]
+ movdqa xmm13,[rip+XMM127Constant]
+ movdqa xmm14,[rip+XMM126Constant]
+ movdqa xmm15,[rip+XMM127Constant]
 {$else}
  movdqa xmm9,[rel XMM1Constant]
  movdqa xmm10,[rel XMM2Constant]

@@ -17,7 +17,29 @@ uses
   UnitSearchTests in 'UnitSearchTests.pas',
   UnitReplaceTests in 'UnitReplaceTests.pas';
 
+{procedure test;
+var FLREInstance:TFLRE;
 begin
+//FLREInstance:=TFLRE.Create('(31|32|33|34|35|36|41|42|43|44|45|46)a*a*b*(37|47|37|27)',[]);
+ FLREInstance:=TFLRE.Create('^(31|32|33|34|35|36|37|38|39)(13|23|33|43|53|63|73|83|93|3)$',[]);
+ try
+  Writeln(FLREInstance.DumpRegularExpression);
+  Writeln(FLREInstance.Test('3713'));
+  Writeln(FLREInstance.Test('3963'));
+  Writeln(FLREInstance.Test('3243'));
+  Writeln(FLREInstance.Test('3823'));
+ finally
+  FLREInstance.Free;
+ end;
+ readln;
+ halt;
+end;}
+
+begin
+{TFLRE.Create('A+', []).Test('');
+ readln;
+ exit;{}
+//test;
  ExecuteSearchTests;
  ExecuteReplaceTests;
 {$ifndef fpc}
