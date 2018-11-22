@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.05.21.23.36.0000';
+      FLREVersionString='1.00.2018.11.22.23.41.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -3687,8 +3687,15 @@ begin
  end;
 end;
 
+type TXMMValue=record
+      Lo:TFLREQWord;
+      Hi:TFLREQWord;
+     end{$ifndef fpc}{$if CompilerVersion>=28.0}align 16{$ifend}{$endif};
+
 function PtrPosCharSetOf2Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -3788,8 +3795,10 @@ begin
 end;
 
 function PtrPosCharSetOf3Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -3915,9 +3924,11 @@ begin
 end;
 
 function PtrPosCharSetOf4Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
-      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+      XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -4060,10 +4071,12 @@ begin
 end;
 
 function PtrPosCharSetOf5Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
-      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
-      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+      XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
+      XMM4Constant:TXMMValue=(Lo:TFLREQWord($0404040404040404);Hi:TFLREQWord($0404040404040404));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -4193,11 +4206,13 @@ begin
 end;
 
 function PtrPosCharSetOf6Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
-      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
-      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
-      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+      XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
+      XMM4Constant:TXMMValue=(Lo:TFLREQWord($0404040404040404);Hi:TFLREQWord($0404040404040404));
+      XMM5Constant:TXMMValue=(Lo:TFLREQWord($0505050505050505);Hi:TFLREQWord($0505050505050505));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -4338,12 +4353,14 @@ begin
 end;
 
 function PtrPosCharSetOf7Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
-      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
-      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
-      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
-      XMM6Constant:array[0..1] of TFLREQWord=(TFLREQWord($0606060606060606),TFLREQWord($0606060606060606));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+      XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
+      XMM4Constant:TXMMValue=(Lo:TFLREQWord($0404040404040404);Hi:TFLREQWord($0404040404040404));
+      XMM5Constant:TXMMValue=(Lo:TFLREQWord($0505050505050505);Hi:TFLREQWord($0505050505050505));
+      XMM6Constant:TXMMValue=(Lo:TFLREQWord($0606060606060606);Hi:TFLREQWord($0606060606060606));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -4495,13 +4512,15 @@ begin
 end;
 
 function PtrPosCharSetOf8Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
-      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
-      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
-      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
-      XMM6Constant:array[0..1] of TFLREQWord=(TFLREQWord($0606060606060606),TFLREQWord($0606060606060606));
-      XMM7Constant:array[0..1] of TFLREQWord=(TFLREQWord($0707070707070707),TFLREQWord($0707070707070707));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+      XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
+      XMM4Constant:TXMMValue=(Lo:TFLREQWord($0404040404040404);Hi:TFLREQWord($0404040404040404));
+      XMM5Constant:TXMMValue=(Lo:TFLREQWord($0505050505050505);Hi:TFLREQWord($0505050505050505));
+      XMM6Constant:TXMMValue=(Lo:TFLREQWord($0606060606060606);Hi:TFLREQWord($0606060606060606));
+      XMM7Constant:TXMMValue=(Lo:TFLREQWord($0707070707070707);Hi:TFLREQWord($0707070707070707));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -4664,7 +4683,9 @@ begin
 end;
 
 function PtrPosCharPairSearch(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -4783,9 +4804,11 @@ begin
 end;
 
 function PtrPosCharSetOf2Of2Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
-      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+      XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -4946,11 +4969,13 @@ begin
 end;
 
 function PtrPosCharSetOf2Of3Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
-      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
-      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
-      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+      XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
+      XMM4Constant:TXMMValue=(Lo:TFLREQWord($0404040404040404);Hi:TFLREQWord($0404040404040404));
+      XMM5Constant:TXMMValue=(Lo:TFLREQWord($0505050505050505);Hi:TFLREQWord($0505050505050505));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -5099,13 +5124,15 @@ begin
 end;
 
 function PtrPosCharSetOf2Of4Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
-      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
-      XMM4Constant:array[0..1] of TFLREQWord=(TFLREQWord($0404040404040404),TFLREQWord($0404040404040404));
-      XMM5Constant:array[0..1] of TFLREQWord=(TFLREQWord($0505050505050505),TFLREQWord($0505050505050505));
-      XMM6Constant:array[0..1] of TFLREQWord=(TFLREQWord($0606060606060606),TFLREQWord($0606060606060606));
-      XMM7Constant:array[0..1] of TFLREQWord=(TFLREQWord($0707070707070707),TFLREQWord($0707070707070707));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+      XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
+      XMM4Constant:TXMMValue=(Lo:TFLREQWord($0404040404040404);Hi:TFLREQWord($0404040404040404));
+      XMM5Constant:TXMMValue=(Lo:TFLREQWord($0505050505050505);Hi:TFLREQWord($0505050505050505));
+      XMM6Constant:TXMMValue=(Lo:TFLREQWord($0606060606060606);Hi:TFLREQWord($0606060606060606));
+      XMM7Constant:TXMMValue=(Lo:TFLREQWord($0707070707070707);Hi:TFLREQWord($0707070707070707));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -5274,9 +5301,11 @@ begin
 end;
 
 function PtrPosCharRangeSearch(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM126Constant:array[0..1] of TFLREQWord=(TFLREQWord($7e7e7e7e7e7e7e7e),TFLREQWord($7e7e7e7e7e7e7e7e));
-      XMM127Constant:array[0..1] of TFLREQWord=(TFLREQWord($7f7f7f7f7f7f7f7f),TFLREQWord($7f7f7f7f7f7f7f7f));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM126Constant:TXMMValue=(Lo:TFLREQWord($7e7e7e7e7e7e7e7e);Hi:TFLREQWord($7e7e7e7e7e7e7e7e));
+      XMM127Constant:TXMMValue=(Lo:TFLREQWord($7f7f7f7f7f7f7f7f);Hi:TFLREQWord($7f7f7f7f7f7f7f7f));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
@@ -5383,11 +5412,13 @@ begin
 end;
 
 function PtrPosCharRangeOf2Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-const XMM1Constant:array[0..1] of TFLREQWord=(TFLREQWord($0101010101010101),TFLREQWord($0101010101010101));
-      XMM2Constant:array[0..1] of TFLREQWord=(TFLREQWord($0202020202020202),TFLREQWord($0202020202020202));
-      XMM3Constant:array[0..1] of TFLREQWord=(TFLREQWord($0303030303030303),TFLREQWord($0303030303030303));
-      XMM126Constant:array[0..1] of TFLREQWord=(TFLREQWord($7e7e7e7e7e7e7e7e),TFLREQWord($7e7e7e7e7e7e7e7e));
-      XMM127Constant:array[0..1] of TFLREQWord=(TFLREQWord($7f7f7f7f7f7f7f7f),TFLREQWord($7f7f7f7f7f7f7f7f));
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
+      XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
+      XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
+      XMM126Constant:TXMMValue=(Lo:TFLREQWord($7e7e7e7e7e7e7e7e);Hi:TFLREQWord($7e7e7e7e7e7e7e7e));
+      XMM127Constant:TXMMValue=(Lo:TFLREQWord($7f7f7f7f7f7f7f7f);Hi:TFLREQWord($7f7f7f7f7f7f7f7f));
+{$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
