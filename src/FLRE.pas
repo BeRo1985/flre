@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.11.22.23.41.0000';
+      FLREVersionString='1.00.2018.12.02.15.37.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -16208,6 +16208,204 @@ var SourcePosition,SourceLength:TFLREInt32;
    end;
   end;
  end;
+ function UnescapeString(const aEscapedString:TFLRERawByteString):TFLRERawByteString;
+ var Index,Len:TFLREInt32;
+     UnicodeChar:TFLREUInt32;
+ begin
+  Len:=length(aEscapedString);
+  if PtrPosChar(TFLRERawByteChar('\'),@aEscapedString[1],Len,0)>=0 then begin
+   result:='';
+   Index:=1;
+   while Index<=Len do begin
+    case aEscapedString[Index] of
+     TFLRERawByteChar('\'):begin
+      inc(Index);
+      if Index<Len then begin
+       case aEscapedString[Index] of
+        'a':begin
+         inc(Index);
+         result:=result+TFLRERawByteChar(#$07);
+        end;
+        'b':begin
+         inc(Index);
+         result:=result+TFLRERawByteChar(#$08);
+        end;
+        'B':begin
+         inc(Index);
+         result:=result+TFLRERawByteChar('\');
+        end;
+        't':begin
+         inc(Index);
+         result:=result+TFLRERawByteChar(#$09);
+        end;
+        'n':begin
+         inc(Index);
+         result:=result+TFLRERawByteChar(#$0a);
+        end;
+        'v':begin
+         inc(Index);
+         result:=result+TFLRERawByteChar(#$0b);
+        end;
+        'f':begin
+         inc(Index);
+         result:=result+TFLRERawByteChar(#$0c);
+        end;
+        'r':begin
+         inc(Index);
+         result:=result+TFLRERawByteChar(#$0d);
+        end;
+        'e':begin
+         inc(Index);
+         result:=result+TFLRERawByteChar(#$1b);
+        end;
+        'w','W':begin
+         raise EFLRE.Create('Syntax error');
+        end;
+        's','S':begin
+         raise EFLRE.Create('Syntax error');
+        end;
+        'd','D':begin
+         raise EFLRE.Create('Syntax error');
+        end;
+        'p':begin
+         raise EFLRE.Create('Syntax error');
+        end;
+        'P':begin
+         raise EFLRE.Create('Syntax error');
+        end;
+        'c':begin
+         inc(Index);
+         if (Index<=Len) and (aEscapedString[Index] in ['a'..'z','A'..'Z']) then begin
+          case aEscapedString[Index] of
+           'a'..'z':begin
+            result:=result+TFLRERawByteChar(TFLREUInt8(TFLRERawByteChar(aEscapedString[Index]))-TFLREUInt8(TFLRERawByteChar('a')));
+           end;
+           'A'..'Z':begin
+            result:=result+TFLRERawByteChar(TFLREUInt8(TFLRERawByteChar(aEscapedString[Index]))-TFLREUInt8(TFLRERawByteChar('A')));
+           end;
+          end;
+         end else begin
+          raise EFLRE.Create('Syntax error');
+         end;
+        end;
+        'x':begin
+         inc(Index);
+         if ((Index+1)<=Len) and
+            (aEscapedString[Index+0] in ['0'..'9','a'..'f','A'..'F']) and
+            (aEscapedString[Index+1] in ['0'..'9','a'..'f','A'..'F']) then begin
+          if rfUTF8 in Flags then begin
+           result:=result+PUCUUTF32CharToUTF8((Hex2Value(aEscapedString[Index+0]) shl 4) or Hex2Value(aEscapedString[Index+1]));
+          end else begin
+           result:=result+TFLRERawByteChar((Hex2Value(aEscapedString[Index+0]) shl 4) or Hex2Value(aEscapedString[Index+1]));
+          end;
+          inc(Index,2);
+         end else if (Index<=Len) and (aEscapedString[Index]='{') then begin
+          inc(Index);
+          UnicodeChar:=0;
+          while (Index<=Len) and (aEscapedString[Index] in ['0'..'9','a'..'f','A'..'F']) do begin
+           UnicodeChar:=(UnicodeChar shl 4) or Hex2Value(aEscapedString[Index]);
+           inc(Index);
+          end;
+          if (Index<=Len) and (aEscapedString[Index]='}') then begin
+           inc(Index);
+           if rfUTF8 in Flags then begin
+            result:=result+PUCUUTF32CharToUTF8(UnicodeChar);
+           end else begin
+            if UnicodeChar<$100 then begin
+             result:=result+TFLRERawByteChar(TFLREUInt8(UnicodeChar));
+            end else begin
+             raise EFLRE.Create('Syntax error');
+            end;
+           end;
+          end else begin
+           raise EFLRE.Create('Syntax error');
+          end;
+         end else begin
+          raise EFLRE.Create('Syntax error');
+         end;
+        end;
+        'u':begin
+         inc(Index);
+         if ((Index+3)<=Len) and
+            (aEscapedString[Index+0] in ['0'..'9','a'..'f','A'..'F']) and
+            (aEscapedString[Index+1] in ['0'..'9','a'..'f','A'..'F']) and
+            (aEscapedString[Index+2] in ['0'..'9','a'..'f','A'..'F']) and
+            (aEscapedString[Index+3] in ['0'..'9','a'..'f','A'..'F']) then begin
+          UnicodeChar:=(Hex2Value(aEscapedString[Index+0]) shl 24) or (Hex2Value(aEscapedString[Index+1]) shl 16) or (Hex2Value(aEscapedString[Index+2]) shl 8) or Hex2Value(aEscapedString[Index+3]);
+          inc(Index,4);
+          if rfUTF8 in Flags then begin
+           result:=result+PUCUUTF32CharToUTF8(UnicodeChar);
+          end else begin
+           if UnicodeChar<$100 then begin
+            result:=result+TFLRERawByteChar(TFLREUInt8(UnicodeChar));
+           end else begin
+            raise EFLRE.Create('Syntax error');
+           end;
+          end;
+         end else begin
+          raise EFLRE.Create('Syntax error');
+         end;
+        end;
+        'U':begin
+         inc(Index);
+         if (Index<=Len) and (aEscapedString[Index] in ['0'..'9','a'..'f','A'..'F']) then begin
+          UnicodeChar:=0;
+          while (Index<=Len) and (aEscapedString[Index] in ['0'..'9','a'..'f','A'..'F']) do begin
+           UnicodeChar:=(UnicodeChar shl 4) or Hex2Value(aEscapedString[Index]);
+           inc(Index);
+          end;
+          if rfUTF8 in Flags then begin
+           result:=result+PUCUUTF32CharToUTF8(UnicodeChar);
+          end else begin
+           if UnicodeChar<$100 then begin
+            result:=result+TFLRERawByteChar(TFLREUInt8(UnicodeChar));
+           end else begin
+            raise EFLRE.Create('Syntax error');
+           end;
+          end;
+         end else begin
+          raise EFLRE.Create('Syntax error');
+         end;
+        end;
+        'Q':begin
+         inc(Index);
+         while Index<=Len do begin
+          if aEscapedString[Index]='\' then begin
+           inc(Index);
+           if (Index<=Len) and (aEscapedString[Index]='E') then begin
+            inc(Index);
+            break;
+           end else begin
+            result:=result+'\';
+           end;
+          end else begin
+           if (rfUTF8 in Flags) and (TFLREUInt8(TFLRERawByteChar(aEscapedString[Index]))>=$80) then begin
+            UnicodeChar:=UTF8CodeUnitGetCharAndIncFallback(aEscapedString,Index);
+            result:=result+PUCUUTF32CharToUTF8(UnicodeChar);
+           end else begin
+            result:=result+aEscapedString[Index];
+            inc(Index);
+           end;
+          end;
+         end;
+        end;
+        else begin
+         result:=result+aEscapedString[Index];
+         inc(Index);
+        end;
+       end;
+      end;
+     end;
+     else begin
+      result:=result+aEscapedString[Index];
+      inc(Index);
+     end;
+    end;
+   end;
+  end else begin
+   result:=aEscapedString;
+  end;
+ end;
  function ParseAtom:PFLRENode;
  var Value,Index:TFLREInt32;
      Negate,Done,IsNegative,OldBackReferenceComparisonGroup:boolean;
@@ -16352,9 +16550,21 @@ var SourcePosition,SourceLength:TFLREInt32;
            inc(SourcePosition);
            TemporaryString:='';
            while (SourcePosition<=SourceLength) and (Source[SourcePosition]<>')') do begin
-            TemporaryString:=TemporaryString+Source[SourcePosition];
-            inc(SourcePosition);
+            if Source[SourcePosition]='\' then begin
+             TemporaryString:=TemporaryString+'\';
+             inc(SourcePosition);
+             if SourcePosition<=SourceLength then begin
+              TemporaryString:=TemporaryString+Source[SourcePosition];
+              inc(SourcePosition);
+             end else begin
+              raise EFLRE.Create('Syntax error');
+             end;
+            end else begin
+             TemporaryString:=TemporaryString+Source[SourcePosition];
+             inc(SourcePosition);
+            end;
            end;
+           TemporaryString:=UnescapeString(TemporaryString);
            Value:=-1;
            for Index:=0 to CountLookAssertionStrings-1 do begin
             if LookAssertionStrings[Index]=TemporaryString then begin
@@ -16383,9 +16593,21 @@ var SourcePosition,SourceLength:TFLREInt32;
             inc(SourcePosition);
             TemporaryString:='';
             while (SourcePosition<=SourceLength) and (Source[SourcePosition]<>')') do begin
-             TemporaryString:=TemporaryString+Source[SourcePosition];
-             inc(SourcePosition);
+             if Source[SourcePosition]='\' then begin
+              TemporaryString:=TemporaryString+'\';
+              inc(SourcePosition);
+              if SourcePosition<=SourceLength then begin
+               TemporaryString:=TemporaryString+Source[SourcePosition];
+               inc(SourcePosition);
+              end else begin
+               raise EFLRE.Create('Syntax error');
+              end;
+             end else begin
+              TemporaryString:=TemporaryString+Source[SourcePosition];
+              inc(SourcePosition);
+             end;
             end;
+            TemporaryString:=UnescapeString(TemporaryString);
             Value:=-1;
             for Index:=0 to CountLookAssertionStrings-1 do begin
              if LookAssertionStrings[Index]=TemporaryString then begin
