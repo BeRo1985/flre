@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.12.02.15.37.0000';
+      FLREVersionString='1.00.2018.12.21.17.05.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -3612,6 +3612,8 @@ function PtrPosCharSearch(const p:pointer;const v:TFLREQWord;const pEnd:pointer)
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -3671,6 +3673,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosChar(const SearchChar:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -3699,6 +3705,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -3778,6 +3786,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf2(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -3802,6 +3814,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -3903,6 +3917,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf3(const SearchChar0,SearchChar1,SearchChar2:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -3932,6 +3950,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -4049,6 +4069,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf4(const SearchChar0,SearchChar1,SearchChar2,SearchChar3:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -4080,6 +4104,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -4183,6 +4209,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf5(const SearchChar0,SearchChar1,SearchChar2,SearchChar3,SearchChar4:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -4216,6 +4246,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -4329,6 +4361,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf6(const SearchChar0,SearchChar1,SearchChar2,SearchChar3,SearchChar4,SearchChar5:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -4364,6 +4400,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -4487,6 +4525,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf7(const SearchChar0,SearchChar1,SearchChar2,SearchChar3,SearchChar4,SearchChar5,SearchChar6:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -4524,6 +4566,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -4657,6 +4701,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf8(const SearchChar0,SearchChar1,SearchChar2,SearchChar3,SearchChar4,SearchChar5,SearchChar6,SearchChar7:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -4689,6 +4737,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -4785,6 +4835,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharPair(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -4812,6 +4866,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -4947,6 +5003,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf2Of2(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -4979,6 +5039,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -5102,6 +5164,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf2Of3(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -5136,6 +5202,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -5279,6 +5347,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharSetOf2Of4(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -5309,6 +5381,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -5390,6 +5464,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharRange(const SearchFromChar,SearchToChar:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
@@ -5422,6 +5500,8 @@ const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($01
 asm
 {$ifdef Windows}
  // Win64 ABI to System-V ABI wrapper
+ push rsi
+ push rdi
  mov rdi,rcx
  mov rsi,rdx
  mov rdx,r8
@@ -5552,6 +5632,10 @@ asm
  jc @Fail
  add rax,rdx
 @Done:
+{$ifdef Windows}
+ pop rdi
+ pop rsi
+{$endif}
 end;
 
 function PtrPosCharRangeOf2(const SearchFromChar0,SearchToChar0,SearchFromChar1,SearchToChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
