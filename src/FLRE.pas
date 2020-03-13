@@ -394,14 +394,14 @@ type EFLRE=class(Exception);
      TFLRE=class;
 
      PFLREFlag=^TFLREFlag;
-     TFLREFlag=(rfIGNORECASE,
-                rfSINGLELINE,
-                rfMULTILINE,
-                rfFREESPACING,
-                rfNAMED,
+     TFLREFlag=(rfIGNORECASE, //< match case insensitivity
+                rfSINGLELINE, //< dot match all characters including line break characters (?s)
+                rfMULTILINE, //< ^ and $ match at the start and end of each line (?m)
+                rfFREESPACING, //< ignore whitespaces between regular expression tokens (Free-spacing mode)
+                rfNAMED, //< all unnamed groups are non-capturing groups (Explicit capture)
                 rfNOCAPTURES,
-                rfUNGREEDY,
-                rfLONGEST,
+                rfUNGREEDY, //< match as long as possible (lazy mode)
+                rfLONGEST, //< ^ and $ match at the start and end of the string only, matches no line break characters
                 rfMULTIMATCH,
                 rfUTF8,
                 rfONLYFASTOPTIMIZATIONS,
@@ -1026,6 +1026,15 @@ type EFLRE=class(Exception);
        function BackReferenceAssertion(const CaptureStart,CaptureEnd,BackReferenceStart,BackReferenceEnd:TFLREInt32;const IgnoreCase:boolean):boolean;
      end;
 
+     {
+      @abstract(Fast Light Regular Expressions Class)
+      Create an instance to use regex
+      @br
+      @unorderedList(
+        @item(anchored search: regex will only match if it matches the entire string)
+        @item(unanchored search: regex will also match if it matches the string only partially)
+      )
+     }
      TFLRE=class
       private
 
@@ -1174,7 +1183,17 @@ type EFLRE=class(Exception);
 
        MaximalDFAStates:TFLREInt32;
 
+       {
+         This creates an FLRE class instance based on a single regular expression
+         @param(ARegularExpression regular expression to be used)
+         @param(AFlags options for different regex matching behavior, see @link(TFLREFlags))
+       }
        constructor Create(const ARegularExpression:TFLRERawByteString;const AFlags:TFLREFlags=[rfDELIMITERS]); overload;
+       {
+         This creates an FLRE class instance based on an array of regular expressions
+         @param(ARegularExpressions array of regular expressions to be used)
+         @param(AFlags options for different regex matching behavior, see @link(TFLREFlags))
+       }
        constructor Create(const ARegularExpressions:array of TFLRERawByteString;const AFlags:TFLREFlags=[]); overload;
        destructor Destroy; override;
 
@@ -1189,15 +1208,71 @@ type EFLRE=class(Exception);
        function PtrTestAll(const Input:pointer;const InputLength:TFLREInt32;const StartPosition:TFLREInt32=0):boolean;
        function PtrFind(const Input:pointer;const InputLength:TFLREInt32;const StartPosition:TFLREInt32=0):TFLREInt32;
 
+       {
+         This does an anchored search which will return one result - @italic(For an unanchored search with one result use @link(MatchAll) with a limit of 1)
+         @param(Input input string)
+         @param(Captures will contain the match position and length)
+         @param(StartPosition position in string from which the search should start)
+         @returns(@true if StartPosition is in range of @link(Input), @false if out-of-range)
+       }
        function Match(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:TFLREInt32=1):boolean;
+       {
+         This does an unanchored search which will return one result - @italic(same as @link(MatchAll) with a limit of 1)
+         @param(Input input string)
+         @param(Captures will contain the match position and length)
+         @param(StartPosition position in string from which the search should start)
+         @returns(@true if StartPosition is in range of @link(Input), @false if out-of-range)
+       }
        function MatchNext(const Input:TFLRERawByteString;var Captures:TFLRECaptures;const StartPosition:TFLREInt32=1):boolean;
+       {
+         This does an unanchored search
+         @param(Input input string)
+         @param(MultiCaptures will contain an array of match(es) position(s) and length(s))
+         @param(StartPosition position in string from which the search should start)
+         @param(Limit limit of matches, -1 means it will find all matches)
+         @returns(@true if StartPosition is in range of @link(Input), @false if out-of-range)
+       }
        function MatchAll(const Input:TFLRERawByteString;var MultiCaptures:TFLREMultiCaptures;const StartPosition:TFLREInt32=1;Limit:TFLREInt32=-1):boolean;
+       {
+         This does an unanchored search and makes all result strings directly useable
+         @param(Input input string)
+         @param(MultiExtractions will contain an array of matched strings)
+         @param(StartPosition position in string from which the search should start)
+         @param(Limit limit of matches, -1 means it will find all matches)
+         @returns(@true if StartPosition is in range of @link(Input), @false if out-of-range)
+       }
        function ExtractAll(const Input:TFLRERawByteString;var MultiExtractions:TFLREMultiStrings;const StartPosition:TFLREInt32=1;Limit:TFLREInt32=-1):boolean;
+       {
+         This does an unanchored search and returns string with replaced text
+         @param(Input input string)
+         @param(Replacement string which is used for replacing the match(es))
+         @param(StartPosition position in string from which the search should start)
+         @param(Limit limit of matches, -1 means it will replace all matches)
+         @returns(string with replaced text)
+       }
        function Replace(const Input,Replacement:TFLRERawByteString;const StartPosition:TFLREInt32=1;Limit:TFLREInt32=-1):TFLRERawByteString;
        function ReplaceCallback(const Input:TFLRERawByteString;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLREInt32=1;Limit:TFLREInt32=-1):TFLRERawByteString;
        function Split(const Input:TFLRERawByteString;var SplittedStrings:TFLREStrings;const StartPosition:TFLREInt32=1;Limit:TFLREInt32=-1;const WithEmpty:boolean=true):boolean;
+       {
+         This does anchored testing - @italic(For unanchored testing use @link(TestAll))
+         @param(Input input string)
+         @param(StartPosition position in string from which the search should start)
+         @returns(@true if regex matches input string, @false if not matching)
+       }
        function Test(const Input:TFLRERawByteString;const StartPosition:TFLREInt32=1):boolean;
+       {
+         This does unanchored testing
+         @param(Input input string)
+         @param(StartPosition position in string from which the search should start)
+         @returns(@true if regex matches input string, @false if not matching)
+       }
        function TestAll(const Input:TFLRERawByteString;const StartPosition:TFLREInt32=1):boolean;
+       {
+         This finds the start position (string index) of the first match
+         @param(Input input string)
+         @param(StartPosition position in string from which the search should start)
+         @returns(Start position of the match, 0 if no match found)
+       }
        function Find(const Input:TFLRERawByteString;const StartPosition:TFLREInt32=1):TFLREInt32;
 
        function UTF8Match(const Input:TFLREUTF8String;var Captures:TFLRECaptures;const StartPosition:TFLREInt32=1):boolean;
@@ -1212,7 +1287,10 @@ type EFLRE=class(Exception);
        function UTF8Find(const Input:TFLREUTF8String;const StartPosition:TFLREInt32=1):TFLREInt32;
 
        function GetRange(var LowRange,HighRange:TFLRERawByteString):boolean;
-
+       {
+         This returns the internally converted (and maybe optimized) regular expression which is used for matching
+         @returns(internally used regular expression)
+       }
        function DumpRegularExpression:TFLRERawByteString;
 
        function GetPrefilterExpression:TFLRERawByteString;
@@ -1224,7 +1302,10 @@ type EFLRE=class(Exception);
 
        property NamedGroups:TStringList read NamedGroupStringList;
        property NamedGroupIndices:TFLREStringIntegerPairHashMap read NamedGroupStringIntegerPairHashMap;
-
+       {
+         This returns the original input regular expression
+         @returns(input regular expression)
+       }
        property RegularExpressionSource:TFLRERawByteString read OriginalRegularExpression;
 
        property RegularExpressionFlags:TFLREFlags read Flags;
