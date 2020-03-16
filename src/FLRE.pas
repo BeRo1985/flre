@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.12.21.17.05.0000';
+      FLREVersionString='1.00.2020.03.16.20.34.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -21203,6 +21203,10 @@ begin
     end;
 
     SetLength(SplittedStrings,Count);
+
+    if Count>0 then begin
+      result:=true;
+    end;
 
    finally
     ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
