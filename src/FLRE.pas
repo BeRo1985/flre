@@ -1282,6 +1282,8 @@ type EFLRE=class(Exception);
 var FLREMaximalRepetitionCount:TFLREInt32=4096;
 
 function FLREPtrCopy(const Src:PFLRERawByteChar;const From,Len:TFLREInt32):TFLRERawByteString;
+function FLREHashData(const Data:pointer;Len:TFLREUInt32):TFLREUInt32;
+function FLREHashString(const Str: String): TFLREUInt32; {$ifdef caninline}inline;{$endif}
 
 function FLREGetVersion:TFLREUInt32; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetVersionString:PFLRERawByteChar; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
@@ -7843,122 +7845,7 @@ begin
  end;
 end;
 
-function HashString(const Str:TFLRERawByteString):TFLREUInt32;
-{$ifdef cpuarm}
-var b:PFLRERawByteChar;
-    len,h,i:TFLREUInt32;
-begin
- result:=2166136261;
- len:=length(Str);
- h:=len;
- if len>0 then begin
-  b:=PFLRERawByteChar(Str);
-  while len>3 do begin
-   i:=TFLREUInt32(pointer(b)^);
-   h:=(h xor i) xor $2e63823a;
-   inc(h,(h shl 15) or (h shr (32-15)));
-   dec(h,(h shl 9) or (h shr (32-9)));
-   inc(h,(h shl 4) or (h shr (32-4)));
-   dec(h,(h shl 1) or (h shr (32-1)));
-   h:=h xor (h shl 2) or (h shr (32-2));
-   result:=result xor i;
-   inc(result,(result shl 1)+(result shl 4)+(result shl 7)+(result shl 8)+(result shl 24));
-   inc(b,4);
-   dec(len,4);
-  end;
-  if len>1 then begin
-   i:=TFLREUInt16(pointer(b)^);
-   h:=(h xor i) xor $2e63823a;
-   inc(h,(h shl 15) or (h shr (32-15)));
-   dec(h,(h shl 9) or (h shr (32-9)));
-   inc(h,(h shl 4) or (h shr (32-4)));
-   dec(h,(h shl 1) or (h shr (32-1)));
-   h:=h xor (h shl 2) or (h shr (32-2));
-   result:=result xor i;
-   inc(result,(result shl 1)+(result shl 4)+(result shl 7)+(result shl 8)+(result shl 24));
-   inc(b,2);
-   dec(len,2);
-  end;
-  if len>0 then begin
-   i:=TFLREUInt8(b^);
-   h:=(h xor i) xor $2e63823a;
-   inc(h,(h shl 15) or (h shr (32-15)));
-   dec(h,(h shl 9) or (h shr (32-9)));
-   inc(h,(h shl 4) or (h shr (32-4)));
-   dec(h,(h shl 1) or (h shr (32-1)));
-   h:=h xor (h shl 2) or (h shr (32-2));
-   result:=result xor i;
-   inc(result,(result shl 1)+(result shl 4)+(result shl 7)+(result shl 8)+(result shl 24));
-  end;
- end;
- result:=result xor h;
- if result=0 then begin
-  result:=$ffffffff;
- end;
-end;
-{$else}
-const m=TFLREUInt32($57559429);
-      n=TFLREUInt32($5052acdb);
-var b:PFLRERawByteChar;
-    h,k,len:TFLREUInt32;
-    p:{$ifdef fpc}TFLREUInt64{$else}TFLREInt64{$endif};
-begin
- len:=length(Str);
- h:=len;
- k:=h+n+1;
- if len>0 then begin
-  b:=PFLRERawByteChar(Str);
-  while len>7 do begin
-   begin
-    p:=TFLREUInt32(pointer(b)^)*{$ifdef fpc}TFLREUInt64{$else}TFLREInt64{$endif}(n);
-    h:=h xor TFLREUInt32(p and $ffffffff);
-    k:=k xor TFLREUInt32(p shr 32);
-    inc(b,4);
-   end;
-   begin
-    p:=TFLREUInt32(pointer(b)^)*{$ifdef fpc}TFLREUInt64{$else}TFLREInt64{$endif}(m);
-    k:=k xor TFLREUInt32(p and $ffffffff);
-    h:=h xor TFLREUInt32(p shr 32);
-    inc(b,4);
-   end;
-   dec(len,8);
-  end;
-  if len>3 then begin
-   p:=TFLREUInt32(pointer(b)^)*{$ifdef fpc}TFLREUInt64{$else}TFLREInt64{$endif}(n);
-   h:=h xor TFLREUInt32(p and $ffffffff);
-   k:=k xor TFLREUInt32(p shr 32);
-   inc(b,4);
-   dec(len,4);
-  end;
-  if len>0 then begin
-   if len>1 then begin
-    p:=TFLREUInt16(pointer(b)^);
-    inc(b,2);
-    dec(len,2);
-   end else begin
-    p:=0;
-   end;
-   if len>0 then begin
-    p:=p or (TFLREUInt8(b^) shl 16);
-   end;
-   p:=p*{$ifdef fpc}TFLREUInt64{$else}TFLREInt64{$endif}(m);
-   k:=k xor TFLREUInt32(p and $ffffffff);
-   h:=h xor TFLREUInt32(p shr 32);
-  end;
- end;
- begin
-  p:=(h xor (k+n))*{$ifdef fpc}TFLREUInt64{$else}TFLREInt64{$endif}(n);
-  h:=h xor TFLREUInt32(p and $ffffffff);
-  k:=k xor TFLREUInt32(p shr 32);
- end;
- result:=k xor h;
- if result=0 then begin
-  result:=$ffffffff;
- end;
-end;
-{$endif}
-
-function HashData(const Data:pointer;Len:TFLREUInt32):TFLREUInt32;
+function FLREHashData(const Data:pointer;Len:TFLREUInt32):TFLREUInt32;
 {$ifdef cpuarm}
 var b:PFLRERawByteChar;
     h,i:TFLREUInt32;
@@ -8070,6 +7957,11 @@ begin
  end;
 end;
 {$endif}
+
+function FLREHashString(const Str: String): TFLREUInt32; {$ifdef caninline}inline;{$endif}
+begin
+ result := FLREHashData(pchar(Str), length(Str));
+end;
 
 function UTF8RangeToRegEx(Lo,Hi:TFLREUInt32):TFLRERawByteString;
 type TString6Chars=array[0..6] of TFLRERawByteChar;
@@ -8224,7 +8116,7 @@ end;
 function HashDFAState(const Key:PFLREDFAState):TFLREUInt32;
 begin
  if assigned(Key) and (Key.CountInstructions>0) then begin
-  result:=HashData(@Key.Instructions[0],Key.CountInstructions*sizeof(PFLREInstruction));
+  result:=FLREHashData(@Key.Instructions[0],Key.CountInstructions*sizeof(PFLREInstruction));
   result:=result xor ((TFLREUInt32(Key.CountInstructions) shr 16) or (TFLREUInt32(Key.CountInstructions) shl 16));
   result:=result xor (((Key.Flags and sfDFACacheMask) shl 19) or ((Key.Flags and sfDFACacheMask) shr 13));
   if result=0 then begin
@@ -9228,7 +9120,7 @@ function TFLREStringIntegerPairHashMap.FindCell(const Key:TFLRERawByteString):TF
 var HashCode,Mask,Step:TFLREUInt32;
     Entity:TFLREInt32;
 begin
- HashCode:=HashString(Key);
+ HashCode:=FLREHashString(Key);
  Mask:=(2 shl LogSize)-1;
  Step:=((HashCode shl 1)+1) and Mask;
  if LogSize<>0 then begin
@@ -9404,7 +9296,7 @@ function TFLRECharClassHashMap.FindCell(const Key:TFLRECharClass):TFLREUInt32;
 var HashCode,Mask,Step:TFLREUInt32;
     Entity:TFLREInt32;
 begin
- HashCode:=HashData(@Key,SizeOf(TFLRECharClass));
+ HashCode:=FLREHashData(@Key,SizeOf(TFLRECharClass));
  Mask:=(2 shl LogSize)-1;
  Step:=((HashCode shl 1)+1) and Mask;
  if LogSize<>0 then begin
@@ -21796,7 +21688,7 @@ function TFLRECacheHashMap.FindCell(const Key:TFLRERawByteString):TFLREUInt32;
 var HashCode,Mask,Step:TFLREUInt32;
     Entity:TFLREInt32;
 begin
- HashCode:=HashString(Key);
+ HashCode:=FLREHashString(Key);
  Mask:=(2 shl LogSize)-1;
  Step:=((HashCode shl 1)+1) and Mask;
  if LogSize<>0 then begin
