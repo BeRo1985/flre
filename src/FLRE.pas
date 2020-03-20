@@ -1269,7 +1269,6 @@ type EFLRE=class(Exception);
      TFLRECache=class
       private
        ParallelLock:TFLREParallelLock;
-       List:TList;
        HashMap:TFLRECacheHashMap;
       public
        constructor Create;
@@ -21835,17 +21834,14 @@ constructor TFLRECache.Create;
 begin
  inherited Create;
  ParallelLock:=0;
- List:=TList.Create;
  HashMap:=TFLRECacheHashMap.Create;
 end;
 
 destructor TFLRECache.Destroy;
 var Index:TFLREInt32;
 begin
- for Index:=0 to List.Count-1 do begin
-  TFLRE(List[Index]).Free;
- end;
- List.Free;
+ for Index:=0 to HashMap.Size - 1 do
+   HashMap.Entities[Index].Value.Free;
  HashMap.Free;
  inherited Destroy;
 end;
@@ -21855,10 +21851,8 @@ var Index:TFLREInt32;
 begin
  ParallelLockEnter(@ParallelLock);
  try
-  for Index:=0 to List.Count-1 do begin
-   TFLRE(List[Index]).Free;
-  end;
-  List.Clear;
+ for Index:=0 to HashMap.Size - 1 do
+   HashMap.Entities[Index].Value.Free;
   HashMap.Clear;
  finally
   ParallelLockLeave(@ParallelLock);
@@ -21874,7 +21868,6 @@ begin
   result:=HashMap.GetValue(HashKey);
   if not assigned(result) then begin
    result:=TFLRE.Create(ARegularExpression,AFlags);
-   List.Add(result);
    HashMap.Add(HashKey,result);
   end;
  finally
@@ -21895,7 +21888,6 @@ begin
   result:=HashMap.GetValue(HashKey);
   if not assigned(result) then begin
    result:=TFLRE.Create(ARegularExpressions,AFlags);
-   List.Add(result);
    HashMap.Add(HashKey,result);
   end;
  finally
