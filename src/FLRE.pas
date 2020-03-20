@@ -8501,7 +8501,6 @@ end;
 destructor TFLREDFAStateHashMap.Destroy;
 begin
  Clear;
- SetLength(Entities,0);
  inherited Destroy;
 end;
 
@@ -9197,24 +9196,14 @@ begin
 end;
 
 destructor TFLREStringIntegerPairHashMap.Destroy;
-var Counter:TFLREInt32;
 begin
  Clear;
- for Counter:=0 to length(Entities)-1 do begin
-  Entities[Counter].Key:='';
- end;
- SetLength(Entities,0);
- SetLength(EntityToCellIndex,0);
- SetLength(CellToEntityIndex,0);
  inherited Destroy;
 end;
 
 procedure TFLREStringIntegerPairHashMap.Clear;
 var Counter:TFLREInt32;
 begin
- for Counter:=0 to length(Entities)-1 do begin
-  Entities[Counter].Key:='';
- end;
  RealSize:=0;
  LogSize:=0;
  Size:=0;
@@ -9397,9 +9386,6 @@ end;
 destructor TFLRECharClassHashMap.Destroy;
 begin
  Clear;
- SetLength(Entities,0);
- SetLength(EntityToCellIndex,0);
- SetLength(CellToEntityIndex,0);
  inherited Destroy;
 end;
 
@@ -21790,24 +21776,13 @@ begin
 end;
 
 destructor TFLRECacheHashMap.Destroy;
-var Counter:TFLREInt32;
 begin
  Clear;
- for Counter:=0 to length(Entities)-1 do begin
-  Entities[Counter].Key:='';
- end;
- SetLength(Entities,0);
- SetLength(EntityToCellIndex,0);
- SetLength(CellToEntityIndex,0);
  inherited Destroy;
 end;
 
 procedure TFLRECacheHashMap.Clear;
-var Counter:TFLREInt32;
 begin
- for Counter:=0 to length(Entities)-1 do begin
-  Entities[Counter].Key:='';
- end;
  RealSize:=0;
  LogSize:=0;
  Size:=0;
