@@ -2307,6 +2307,26 @@ begin
  result:=(UnicodeGetCategoryFromTable(c) in [PUCUUnicodeCategoryLu,PUCUUnicodeCategoryLl,PUCUUnicodeCategoryLt,PUCUUnicodeCategoryLm,PUCUUnicodeCategoryLo,PUCUUnicodeCategoryNd,PUCUUnicodeCategoryNl,PUCUUnicodeCategoryNo,PUCUUnicodeCategoryPc]) or (c=ord('_'));
 end;
 
+function TFLRE.IsWordChar(const CharValue:TFLREUInt32):boolean;
+begin
+ if CharValue=$ffffffff then begin
+  result:=false;
+ end else begin
+  if rfUTF8 in Flags then begin
+   result:=UnicodeIsWord(CharValue);
+  end else begin
+   case CharValue of
+    ord('a')..ord('z'),ord('A')..ord('Z'),ord('0')..ord('9'),ord('_'):begin
+     result:=true;
+    end;
+    else begin
+     result:=false;
+    end;
+   end;
+  end;
+ end;
+end;
+
 function UnicodeIsIDBegin(c:TFLREUInt32):boolean; {$ifdef caninline}inline;{$endif}
 begin
  result:=(UnicodeGetCategoryFromTable(c) in [PUCUUnicodeCategoryLu,PUCUUnicodeCategoryLl,PUCUUnicodeCategoryLt,PUCUUnicodeCategoryLm,PUCUUnicodeCategoryLo,PUCUUnicodeCategoryNl,PUCUUnicodeCategoryNo,PUCUUnicodeCategoryPc]) or (c=ord('_'));
@@ -4842,8 +4862,6 @@ asm
 end;
 
 function PtrPosCharPair(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
-var Index:TFLREInt32;
-    CurrentChar:TFLRERawByteChar;
 begin
  if Offset<TextLength then begin
   result:=PtrPosCharPairSearch(@Text[Offset],(TFLREQWord(TFLREUInt8(TFLRERawByteChar(SearchChar1))) shl 8) or TFLREQWord(TFLREUInt8(TFLRERawByteChar(SearchChar0))),@Text[TextLength]);
@@ -5010,8 +5028,6 @@ asm
 end;
 
 function PtrPosCharSetOf2Of2(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
-var Index:TFLREInt32;
-    CurrentChar:TFLRERawByteChar;
 begin
  if Offset<TextLength then begin
   result:=PtrPosCharSetOf2Of2Search(@Text[Offset],
@@ -5171,8 +5187,6 @@ asm
 end;
 
 function PtrPosCharSetOf2Of3(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
-var Index:TFLREInt32;
-    CurrentChar:TFLRERawByteChar;
 begin
  if Offset<TextLength then begin
   result:=PtrPosCharSetOf2Of3Search(@Text[Offset],
@@ -5354,8 +5368,6 @@ asm
 end;
 
 function PtrPosCharSetOf2Of4(const SearchChar0,SearchChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
-var Index:TFLREInt32;
-    CurrentChar:TFLRERawByteChar;
 begin
  if Offset<TextLength then begin
   result:=PtrPosCharSetOf2Of4Search(@Text[Offset],
@@ -5471,8 +5483,6 @@ asm
 end;
 
 function PtrPosCharRange(const SearchFromChar,SearchToChar:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
-var Index:TFLREInt32;
-    CurrentChar:TFLRERawByteChar;
 begin
  if Offset<TextLength then begin
   result:=PtrPosCharRangeSearch(@Text[Offset],
@@ -5639,8 +5649,6 @@ asm
 end;
 
 function PtrPosCharRangeOf2(const SearchFromChar0,SearchToChar0,SearchFromChar1,SearchToChar1:TFLRERawByteChar;const Text:PFLRERawByteChar;TextLength:TFLREInt32;Offset:TFLREInt32=0):TFLREPtrInt;
-var Index:TFLREInt32;
-    CurrentChar:TFLRERawByteChar;
 begin
  if Offset<TextLength then begin
   result:=PtrPosCharRangeOf2Search(@Text[Offset],
@@ -10834,6 +10842,7 @@ begin
     end;
    end;
   end;
+  FLREpfnoANY: {empty};
  end;
 end;
 
@@ -19762,6 +19771,7 @@ begin
      end;
     end;
    end;
+   FLREpfnoANY,FLREpfnoATOM: {empty};
   end;
   break;
  end;
@@ -20097,6 +20107,7 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
       end;
 
      end;
+     FLREpfnoANY,FLREpfnoATOM: {empty};
     end;
 
     break;
@@ -20108,26 +20119,6 @@ function TFLRE.CompilePrefilterTree(RootNode:PFLRENode):TFLREPrefilterNode;
  end;
 begin
  result:=Process(RootNode);
-end;
-
-function TFLRE.IsWordChar(const CharValue:TFLREUInt32):boolean;
-begin
- if CharValue=$ffffffff then begin
-  result:=false;
- end else begin
-  if rfUTF8 in Flags then begin
-   result:=UnicodeIsWord(CharValue);
-  end else begin
-   case CharValue of
-    ord('a')..ord('z'),ord('A')..ord('Z'),ord('0')..ord('9'),ord('_'):begin
-     result:=true;
-    end;
-    else begin
-     result:=false;
-    end;
-   end;
-  end;
- end;
 end;
 
 function TFLRE.AcquireThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
