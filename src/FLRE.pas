@@ -29,6 +29,9 @@ or contact:
 
 *******************************************************************************)
 unit FLRE;
+
+//{$define assemblyBasedSearchMatch}
+
 {$ifdef fpc}
  {$mode delphi}
  {$ifdef cpui386}
@@ -12180,7 +12183,8 @@ begin
 
 end;
 
-function TFLREDFA.SearchMatchFast(const StartPosition,UntilExcludingPosition:TFLREInt32;out MatchEnd:TFLREInt32;const UnanchoredStart:longbool):TFLREInt32; {$ifdef cpu386}assembler; stdcall;
+function TFLREDFA.SearchMatchFast(const StartPosition,UntilExcludingPosition:TFLREInt32;out MatchEnd:TFLREInt32;const UnanchoredStart:longbool):TFLREInt32;
+{$if defined(cpu386) and defined(assemblyBasedSearchMatch)}assembler; stdcall;
 var ResultValue:TFLREInt32;
     StartOffset:pointer;
 asm
@@ -12370,7 +12374,8 @@ begin
 end;
 {$endif}
 
-function TFLREDFA.SearchMatchFastReversed(const StartPosition,UntilIncludingPosition:TFLREInt32;out MatchBegin:TFLREInt32;const UnanchoredStart:longbool):TFLREInt32; {$ifdef cpu386}assembler; stdcall;
+function TFLREDFA.SearchMatchFastReversed(const StartPosition,UntilIncludingPosition:TFLREInt32;out MatchBegin:TFLREInt32;const UnanchoredStart:longbool):TFLREInt32;
+{$ifdef defined(cpu386) and defined(assemblyBasedSearchMatch)}assembler; stdcall;
 var ResultValue:TFLREInt32;
     StartOffset:pointer;
 asm
