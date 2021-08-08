@@ -14695,6 +14695,14 @@ function TFLRE.OptimizeNode(StartNodeEx:PPFLRENode):boolean;
    end;
   end;
  end;
+ function createOrClearList(list: TFLREPointerList): TFLREPointerList;
+ //list is not a var parameter because with fpc prevent variables from being kept in registers
+ begin
+   result := list;
+   if result = nil then result := TFLREPointerList.Create
+   else result.Clear;
+ end;
+
 var NodeEx:PPFLRENode;
     Node,SeedNode,TestNode,l,r,Prefix,Suffix,Alternative,TempNode:PFLRENode;
     pr,pl:PPFLRENode;
@@ -14704,7 +14712,14 @@ var NodeEx:PPFLRENode;
     NodeIndex,SubNodeIndex,NewNodeIndex:TFLREInt32;
 begin
  result:=false;
+ NodeStack := nil;
+ NodeList  := nil;
+ NewNodeList := nil;
+ TempNodeList := nil;
+ NodeListLeft := nil;
+ Visited := nil;
  NodeStack:=TFLREPointerList.Create;
+
  try
   repeat
    HasOptimizations:=false;
@@ -14802,54 +14817,50 @@ begin
           HasOptimizations:=true;
           continue;
          end else begin
-          NodeList:=TFLREPointerList.Create;
-          try
-           ParseNodes(NodeList,Node,ntCAT);
-           Optimized:=false;
-           DoContinue:=true;
-           while DoContinue do begin
-            DoContinue:=false;
-            NodeIndex:=NodeList.Count-1;
-            while NodeIndex>0 do begin
-             l:=PFLRENode(NodeList[NodeIndex]);
-             r:=PFLRENode(NodeList[NodeIndex-1]);
-             if (l^.NodeType=ntZEROWIDTH) and (r^.NodeType=ntZEROWIDTH) then begin
-              l^.Value:=l^.Value or r^.Value;
-              NodeList.Delete(NodeIndex-1);
-              if NodeIndex>=NodeList.Count then begin
-               NodeIndex:=NodeList.Count-1;
-              end;
-              DoContinue:=true;
-              Optimized:=true;
-             end else if ((l^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (r^.NodeType=ntPLUS)) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
-              NodeList.Delete(NodeIndex);
-              if NodeIndex>=NodeList.Count then begin
-               NodeIndex:=NodeList.Count-1;
-              end;
-              DoContinue:=true;
-              Optimized:=true;
-             end else if ((l^.NodeType in [ntSTAR,ntPLUS]) and (r^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
-              NodeList.Delete(NodeIndex-1);
-              if NodeIndex>=NodeList.Count then begin
-               NodeIndex:=NodeList.Count-1;
-              end;
-              DoContinue:=true;
-              Optimized:=true;
-             end else begin
-              dec(NodeIndex);
+          NodeList:=createOrClearList(NodeList);
+          ParseNodes(NodeList,Node,ntCAT);
+          Optimized:=false;
+          DoContinue:=true;
+          while DoContinue do begin
+           DoContinue:=false;
+           NodeIndex:=NodeList.Count-1;
+           while NodeIndex>0 do begin
+            l:=PFLRENode(NodeList[NodeIndex]);
+            r:=PFLRENode(NodeList[NodeIndex-1]);
+            if (l^.NodeType=ntZEROWIDTH) and (r^.NodeType=ntZEROWIDTH) then begin
+             l^.Value:=l^.Value or r^.Value;
+             NodeList.Delete(NodeIndex-1);
+             if NodeIndex>=NodeList.Count then begin
+              NodeIndex:=NodeList.Count-1;
              end;
+             DoContinue:=true;
+             Optimized:=true;
+            end else if ((l^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (r^.NodeType=ntPLUS)) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+             NodeList.Delete(NodeIndex);
+             if NodeIndex>=NodeList.Count then begin
+              NodeIndex:=NodeList.Count-1;
+             end;
+             DoContinue:=true;
+             Optimized:=true;
+            end else if ((l^.NodeType in [ntSTAR,ntPLUS]) and (r^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
+             NodeList.Delete(NodeIndex-1);
+             if NodeIndex>=NodeList.Count then begin
+              NodeIndex:=NodeList.Count-1;
+             end;
+             DoContinue:=true;
+             Optimized:=true;
+            end else begin
+             dec(NodeIndex);
             end;
            end;
-           if Optimized and (NodeList.Count>0) then begin
-            NodeEx^:=NodeList[NodeList.Count-1];
-            for NodeIndex:=NodeList.Count-2 downto 0 do begin
-             NodeEx^:=NewNode(ntCAT,NodeEx^,NodeList[NodeIndex],0);
-            end;
-            DoContinue:=true;
-            HasOptimizations:=true;
+          end;
+          if Optimized and (NodeList.Count>0) then begin
+           NodeEx^:=NodeList[NodeList.Count-1];
+           for NodeIndex:=NodeList.Count-2 downto 0 do begin
+            NodeEx^:=NewNode(ntCAT,NodeEx^,NodeList[NodeIndex],0);
            end;
-          finally
-           FreeAndNil(NodeList);
+           DoContinue:=true;
+           HasOptimizations:=true;
           end;
           if DoContinue then begin
            continue;
@@ -14877,89 +14888,70 @@ begin
            Optimized:=false;
            repeat
             DoContinue:=false;
-            NodeList:=TFLREPointerList.Create;
-            try
-             ParseNodes(NodeList,Node,ntALT);
-             NewNodeList:=TFLREPointerList.Create;
-             try
-              Visited:=TFLRENodeHashSet.Create;
-              try
-               for NodeIndex:=NodeList.Count-1 downto 0 do begin
-                SeedNode:=NodeList[NodeIndex];
-                if Visited.NotContains(SeedNode) then begin
-                 Visited.Add(SeedNode);
-                 TempNodeList:=TFLREPointerList.Create;
-                 try
-                  TempNodeList.Add(SeedNode);
-                  l:=SeedNode;
-                  while assigned(l) and (l^.NodeType=ntCAT) do begin
-                   l:=l^.Left;
-                  end;
-                  for SubNodeIndex:=NodeIndex-1 downto 0 do begin
-                   TestNode:=NodeList[SubNodeIndex];
-                   if Visited.NotContains(TestNode) then begin
-                    r:=TestNode;
-                    while assigned(r) and (r^.NodeType=ntCAT) do begin
-                     r:=r^.Left;
-                    end;
-                    if (assigned(l) and assigned(r)) and AreNodesEqualSafe(l,r) then begin
-                     Visited.Add(TestNode);
-                     TempNodeList.Add(TestNode);
-                    end;
-                   end;
-                  end;
-                  if TempNodeList.Count>1 then begin
-                   Prefix:=l;
-                   Alternative:=nil;
-                   for SubNodeIndex:=0 to TempNodeList.Count-1 do begin
-                    TestNode:=TempNodeList[SubNodeIndex];
-                    NodeListLeft:=TFLREPointerList.Create;
-                    try
-                     ParseNodes(NodeListLeft,TestNode,ntCAT);
-                     NodeListLeft.Delete(NodeListLeft.Count-1);
-                     if NodeListLeft.Count>0 then begin
-                      TempNode:=NodeListLeft[NodeListLeft.Count-1];
-                      for NewNodeIndex:=NodeListLeft.Count-2 downto 0 do begin
-                       TempNode:=NewNode(ntCAT,TempNode,NodeListLeft[NewNodeIndex],0);
-                      end;
-                      Alternative:=NewAlt(Alternative,TempNode);
-                     end else begin
-                      TempNode:=NewNode(ntZEROWIDTH,nil,nil,0);
-                      Alternative:=NewAlt(Alternative,TempNode);
-                     end;
-                    finally
-                     NodeListLeft.Free;
-                    end;
-                   end;
-                   TempNode:=Concat(Prefix,Alternative);
-                   if assigned(TempNode) then begin
-                    NewNodeList.Add(TempNode);
-                   end;
-                   DoContinue:=true;
-                   Optimized:=true;
-                  end else begin
-                   NewNodeList.Add(SeedNode);
-                  end;
-                 finally
-                  TempNodeList.Free;
-                 end;
+            NodeList:=createOrClearList(NodeList);
+            ParseNodes(NodeList,Node,ntALT);
+            NewNodeList:=createOrClearList(NewNodeList);
+            if Visited = nil then Visited:=TFLRENodeHashSet.Create
+            else Visited.Clear;
+            for NodeIndex:=NodeList.Count-1 downto 0 do begin
+             SeedNode:=NodeList[NodeIndex];
+             if Visited.NotContains(SeedNode) then begin
+              Visited.Add(SeedNode);
+              TempNodeList:=createOrClearList(TempNodeList);
+              TempNodeList.Add(SeedNode);
+              l:=SeedNode;
+              while assigned(l) and (l^.NodeType=ntCAT) do begin
+               l:=l^.Left;
+              end;
+              for SubNodeIndex:=NodeIndex-1 downto 0 do begin
+               TestNode:=NodeList[SubNodeIndex];
+               if Visited.NotContains(TestNode) then begin
+                r:=TestNode;
+                while assigned(r) and (r^.NodeType=ntCAT) do begin
+                 r:=r^.Left;
+                end;
+                if (assigned(l) and assigned(r)) and AreNodesEqualSafe(l,r) then begin
+                 Visited.Add(TestNode);
+                 TempNodeList.Add(TestNode);
                 end;
                end;
-              finally
-               Visited.Free;
               end;
-              if DoContinue and (NewNodeList.Count>0) then begin
-               NodeEx^:=NewNodeList[0];
-               for NodeIndex:=1 to NewNodeList.Count-1 do begin
-                NodeEx^:=NewNode(ntALT,NodeEx^,NewNodeList[NodeIndex],0);
+              if TempNodeList.Count>1 then begin
+               Prefix:=l;
+               Alternative:=nil;
+               for SubNodeIndex:=0 to TempNodeList.Count-1 do begin
+                TestNode:=TempNodeList[SubNodeIndex];
+                NodeListLeft:=createOrClearList(NodeListLeft);
+                ParseNodes(NodeListLeft,TestNode,ntCAT);
+                NodeListLeft.Delete(NodeListLeft.Count-1);
+                if NodeListLeft.Count>0 then begin
+                 TempNode:=NodeListLeft[NodeListLeft.Count-1];
+                 for NewNodeIndex:=NodeListLeft.Count-2 downto 0 do begin
+                  TempNode:=NewNode(ntCAT,TempNode,NodeListLeft[NewNodeIndex],0);
+                 end;
+                 Alternative:=NewAlt(Alternative,TempNode);
+                end else begin
+                 TempNode:=NewNode(ntZEROWIDTH,nil,nil,0);
+                 Alternative:=NewAlt(Alternative,TempNode);
+                end;
                end;
-               Node:=NodeEx^;
+               TempNode:=Concat(Prefix,Alternative);
+               if assigned(TempNode) then begin
+                NewNodeList.Add(TempNode);
+               end;
+               DoContinue:=true;
+               Optimized:=true;
+              end else begin
+               NewNodeList.Add(SeedNode);
               end;
-             finally
-              NewNodeList.Free;
              end;
-            finally
-             FreeAndNil(NodeList);
+            end;
+            if DoContinue and (NewNodeList.Count>0) then begin
+             NodeEx^:=NewNodeList[0];
+             for NodeIndex:=1 to NewNodeList.Count-1 do begin
+              NodeEx^:=NewNode(ntALT,NodeEx^,NewNodeList[NodeIndex],0);
+             end;
+             Node:=NodeEx^;
             end;
            until not DoContinue;
            if Optimized then begin
@@ -14972,89 +14964,70 @@ begin
            Optimized:=false;
            repeat
             DoContinue:=false;
-            NodeList:=TFLREPointerList.Create;
-            try
-             ParseNodes(NodeList,Node,ntALT);
-             NewNodeList:=TFLREPointerList.Create;
-             try
-              Visited:=TFLRENodeHashSet.Create;
-              try
-               for NodeIndex:=NodeList.Count-1 downto 0 do begin
-                SeedNode:=NodeList[NodeIndex];
-                if Visited.NotContains(SeedNode) then begin
-                 Visited.Add(SeedNode);
-                 TempNodeList:=TFLREPointerList.Create;
-                 try
-                  TempNodeList.Add(SeedNode);
-                  l:=SeedNode;
-                  while assigned(l) and (l^.NodeType=ntCAT) do begin
-                   l:=l^.Right;
-                  end;
-                  for SubNodeIndex:=NodeIndex-1 downto 0 do begin
-                   TestNode:=NodeList[SubNodeIndex];
-                   if Visited.NotContains(TestNode) then begin
-                    r:=TestNode;
-                    while assigned(r) and (r^.NodeType=ntCAT) do begin
-                     r:=r^.Right;
-                    end;
-                    if (assigned(l) and assigned(r)) and AreNodesEqualSafe(l,r) then begin
-                     Visited.Add(TestNode);
-                     TempNodeList.Add(TestNode);
-                    end;
-                   end;
-                  end;
-                  if TempNodeList.Count>1 then begin
-                   Suffix:=l;
-                   Alternative:=nil;
-                   for SubNodeIndex:=0 to TempNodeList.Count-1 do begin
-                    TestNode:=TempNodeList[SubNodeIndex];
-                    NodeListLeft:=TFLREPointerList.Create;
-                    try
-                     ParseNodes(NodeListLeft,TestNode,ntCAT);
-                     NodeListLeft.Delete(0);
-                     if NodeListLeft.Count>0 then begin
-                      TempNode:=NodeListLeft[NodeListLeft.Count-1];
-                      for NewNodeIndex:=NodeListLeft.Count-2 downto 0 do begin
-                       TempNode:=NewNode(ntCAT,TempNode,NodeListLeft[NewNodeIndex],0);
-                      end;
-                      Alternative:=NewAlt(Alternative,TempNode);
-                     end else begin
-                      TempNode:=NewNode(ntZEROWIDTH,nil,nil,0);
-                      Alternative:=NewAlt(Alternative,TempNode);
-                     end;
-                    finally
-                     NodeListLeft.Free;
-                    end;
-                   end;                               
-                   TempNode:=Concat(Alternative,Suffix);
-                   if assigned(TempNode) then begin
-                    NewNodeList.Add(TempNode);
-                   end;
-                   DoContinue:=true;
-                   Optimized:=true;
-                  end else begin
-                   NewNodeList.Add(SeedNode);
-                  end;
-                 finally
-                  TempNodeList.Free;
-                 end;
+            NodeList:=createOrClearList(NodeList);
+            ParseNodes(NodeList,Node,ntALT);
+            NewNodeList:=createOrClearList(NewNodeList);
+            if Visited = nil then Visited:=TFLRENodeHashSet.Create
+            else Visited.Clear;
+            for NodeIndex:=NodeList.Count-1 downto 0 do begin
+             SeedNode:=NodeList[NodeIndex];
+             if Visited.NotContains(SeedNode) then begin
+              Visited.Add(SeedNode);
+              TempNodeList:=createOrClearList(TempNodeList);
+              TempNodeList.Add(SeedNode);
+              l:=SeedNode;
+              while assigned(l) and (l^.NodeType=ntCAT) do begin
+               l:=l^.Right;
+              end;
+              for SubNodeIndex:=NodeIndex-1 downto 0 do begin
+               TestNode:=NodeList[SubNodeIndex];
+               if Visited.NotContains(TestNode) then begin
+                r:=TestNode;
+                while assigned(r) and (r^.NodeType=ntCAT) do begin
+                 r:=r^.Right;
+                end;
+                if (assigned(l) and assigned(r)) and AreNodesEqualSafe(l,r) then begin
+                 Visited.Add(TestNode);
+                 TempNodeList.Add(TestNode);
                 end;
                end;
-              finally
-               Visited.Free;
               end;
-              if DoContinue and (NewNodeList.Count>0) then begin
-               NodeEx^:=NewNodeList[0];
-               for NodeIndex:=1 to NewNodeList.Count-1 do begin
-                NodeEx^:=NewNode(ntALT,NodeEx^,NewNodeList[NodeIndex],0);
+              if TempNodeList.Count>1 then begin
+               Suffix:=l;
+               Alternative:=nil;
+               for SubNodeIndex:=0 to TempNodeList.Count-1 do begin
+                TestNode:=TempNodeList[SubNodeIndex];
+                NodeListLeft:=createOrClearList(NodeListLeft);
+                ParseNodes(NodeListLeft,TestNode,ntCAT);
+                NodeListLeft.Delete(0);
+                if NodeListLeft.Count>0 then begin
+                 TempNode:=NodeListLeft[NodeListLeft.Count-1];
+                 for NewNodeIndex:=NodeListLeft.Count-2 downto 0 do begin
+                  TempNode:=NewNode(ntCAT,TempNode,NodeListLeft[NewNodeIndex],0);
+                 end;
+                 Alternative:=NewAlt(Alternative,TempNode);
+                end else begin
+                 TempNode:=NewNode(ntZEROWIDTH,nil,nil,0);
+                 Alternative:=NewAlt(Alternative,TempNode);
+                end;
                end;
-               Node:=NodeEx^;
+               TempNode:=Concat(Alternative,Suffix);
+               if assigned(TempNode) then begin
+                NewNodeList.Add(TempNode);
+               end;
+               DoContinue:=true;
+               Optimized:=true;
+              end else begin
+               NewNodeList.Add(SeedNode);
               end;
-             finally
-              NewNodeList.Free;
              end;
-            finally
-             FreeAndNil(NodeList);
+            end;
+            if DoContinue and (NewNodeList.Count>0) then begin
+             NodeEx^:=NewNodeList[0];
+             for NodeIndex:=1 to NewNodeList.Count-1 do begin
+              NodeEx^:=NewNode(ntALT,NodeEx^,NewNodeList[NodeIndex],0);
+             end;
+             Node:=NodeEx^;
             end;
            until not DoContinue;
            if Optimized then begin
@@ -15123,6 +15096,11 @@ begin
   until false;
  finally
   NodeStack.Free;
+  NodeList.Free;
+  NewNodeList.Free;
+  TempNodeList.Free;
+  NodeListLeft.Free;
+  Visited.Free;
  end;
 end;
 
