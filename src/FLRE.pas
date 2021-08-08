@@ -14292,7 +14292,7 @@ end;
 
 // Mark-and-sweep garbage collector for freeing unused nodes
 procedure TFLRE.FreeUnusedNodes(RootNode:PFLRENode);
-var Index,Count:TFLREInt32;
+var OldIndex,NewIndex,Count:TFLREInt32;
     Visited: TFLRENodeHashSet;
     Stack:TList;
     Node:PFLRENode;
@@ -14321,19 +14321,21 @@ begin
    Stack.Free;
   end;
   if Count<>Nodes.Count then begin
-   Index:=0;
-   while Index<Nodes.Count do begin
-    Node:=Nodes[Index];
-    Node^.Index:=Index;
-    if Visited.NotContains(Node) then begin
+   OldIndex:=0;
+   NewIndex:=0;
+   for OldIndex := 0 to Nodes.Count - 1 do begin
+    Node:=Nodes[OldIndex];
+    Nodes[NewIndex] := Node;
+    Node^.Index:=NewIndex;
+    if Visited.Contains(Node) then
+     inc(NewIndex)
+    else begin
      Node^.Name:='';
      Finalize(Node^);
      FreeMem(Node);
-     Nodes.Delete(Index);
-    end else begin
-     inc(Index);
     end;
    end;
+   Nodes.Count := Count;
   end;
  finally
   Visited.Free;
