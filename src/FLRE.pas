@@ -746,6 +746,30 @@ type EFLRE=class(Exception);
        property PItems[Index:TFLREInt32]:pointer read GetItemPointer;
      end;
 
+     TFLRENodeHashSetEntities=array of PFLRENode;
+     TFLRENodeHashSetEntityIndices=array of TFLREInt32;
+     TFLRENodeHashSet=class
+     private
+      function FindCell(const Key:PFLRENode):TFLREUInt32;
+      procedure Resize;
+      procedure Toggle(const Key: PFLRENode; include: boolean);
+     public
+      RealSize:TFLREInt32;
+      LogSize:TFLREInt32;
+      Size:TFLREInt32;
+      Entities:TFLRENodeHashSetEntities;
+      EntityToCellIndex:TFLRENodeHashSetEntityIndices;
+      CellToEntityIndex:TFLRENodeHashSetEntityIndices;
+      constructor Create;
+      destructor Destroy; override;
+      procedure Clear;
+      procedure Add(const Key:PFLRENode);
+      function Contains(const Key:PFLRENode):boolean;
+      function NotContains(const Key:PFLRENode):boolean; {$ifdef CANINLINE} inline;{$endif}
+      function Delete(const Key:PFLRENode):boolean;
+      property Values[const Key:PFLRENode]:Boolean read Contains write Toggle; default;
+     end;
+
      TFLREStringIntegerPairHashMapData=TFLREInt64;
 
      PFLREStringIntegerPairHashMapEntity=^TFLREStringIntegerPairHashMapEntity;
@@ -8071,6 +8095,22 @@ begin
 end;
 {$endif}
 
+function HashPointer(Data:pointer):TFLREUInt32;
+const m=TFLREUInt32($57559429);
+      n=TFLREUInt32($5052acdb);
+var
+    h,k:TFLREUInt32;
+    p:TFLREUInt64;
+    intData: PtrUInt absolute data;
+begin
+ p:=TFLREUInt32(intData and $ffffffff)*TFLREUInt64(n);
+ result := m xor (p and $ffffffff) xor (p shr 32);
+ {$ifdef CPU64}
+ result:=result xor TFLREUInt32(intData shr 32);
+ {$endif}
+end;
+
+
 function UTF8RangeToRegEx(Lo,Hi:TFLREUInt32):TFLRERawByteString;
 type TString6Chars=array[0..6] of TFLRERawByteChar;
 const Seq0010ffff:array[0..6,0..4,0..1] of TFLREInt32=((($00,$7f),(-1,-1),(-1,-1),(-1,-1),(-1,-1)),        // 00-7F
@@ -9183,6 +9223,172 @@ begin
   IsSorted:=true;
  end;
 end;
+
+
+constructor TFLRENodeHashSet.Create;
+begin
+ inherited Create;
+ RealSize:=0;
+ LogSize:=0;
+ Size:=0;
+ Entities:=nil;
+ EntityToCellIndex:=nil;
+ CellToEntityIndex:=nil;
+ Resize;
+end;
+
+destructor TFLRENodeHashSet.Destroy;
+var Counter:TFLREInt32;
+begin
+ Clear;
+ for Counter:=0 to length(Entities)-1 do begin
+  Entities[Counter]:=nil;
+ end;
+ SetLength(Entities,0);
+ SetLength(EntityToCellIndex,0);
+ SetLength(CellToEntityIndex,0);
+ inherited Destroy;
+end;
+
+procedure TFLRENodeHashSet.Clear;
+var Counter:TFLREInt32;
+begin
+ for Counter:=0 to length(Entities)-1 do begin
+  Entities[Counter]:=nil;
+ end;
+ RealSize:=0;
+ LogSize:=0;
+ Size:=0;
+ SetLength(Entities,0);
+ SetLength(EntityToCellIndex,0);
+ SetLength(CellToEntityIndex,0);
+ Resize;
+end;
+
+function TFLRENodeHashSet.FindCell(const Key:PFLRENode):TFLREUInt32;
+var HashCode,Mask,Step:TFLREUInt32;
+    Entity:TFLREInt32;
+begin
+ HashCode:=HashPointer(Key);
+ Mask:=(2 shl LogSize)-1;
+ Step:=((HashCode shl 1)+1) and Mask;
+ if LogSize<>0 then begin
+  result:=HashCode shr (32-LogSize);
+ end else begin
+  result:=0;
+ end;
+ repeat
+  Entity:=CellToEntityIndex[result];
+  if (Entity=ENT_EMPTY) or ((Entity<>ENT_DELETED) and (Entities[Entity]=Key)) then begin
+   exit;
+  end;
+  result:=(result+Step) and Mask;
+ until false;
+end;
+
+procedure TFLRENodeHashSet.Resize;
+var NewLogSize,NewSize,Cell,Entity,Counter:TFLREInt32;
+    OldEntities:TFLRENodeHashSetEntities;
+    OldCellToEntityIndex:TFLRENodeHashSetEntityIndices;
+    OldEntityToCellIndex:TFLRENodeHashSetEntityIndices;
+begin
+ NewLogSize:=0;
+ NewSize:=RealSize;
+ while NewSize<>0 do begin
+  NewSize:=NewSize shr 1;
+  inc(NewLogSize);
+ end;
+ if NewLogSize<1 then begin
+  NewLogSize:=1;
+ end;
+ Size:=0;
+ RealSize:=0;
+ LogSize:=NewLogSize;
+ OldEntities:=Entities;
+ OldCellToEntityIndex:=CellToEntityIndex;
+ OldEntityToCellIndex:=EntityToCellIndex;
+ Entities:=nil;
+ CellToEntityIndex:=nil;
+ EntityToCellIndex:=nil;
+ SetLength(Entities,2 shl LogSize);
+ SetLength(CellToEntityIndex,2 shl LogSize);
+ SetLength(EntityToCellIndex,2 shl LogSize);
+ for Counter:=0 to length(CellToEntityIndex)-1 do begin
+  CellToEntityIndex[Counter]:=ENT_EMPTY;
+ end;
+ for Counter:=0 to length(EntityToCellIndex)-1 do begin
+  EntityToCellIndex[Counter]:=CELL_EMPTY;
+ end;
+ for Counter:=0 to length(OldEntityToCellIndex)-1 do begin
+  Cell:=OldEntityToCellIndex[Counter];
+  if Cell>=0 then begin
+   Entity:=OldCellToEntityIndex[Cell];
+   if Entity>=0 then begin
+    Add(OldEntities[Counter]);
+   end;
+  end;
+ end;
+end;
+
+procedure TFLRENodeHashSet.Toggle(const Key: PFLRENode; include: boolean);
+begin
+ if Contains(key) = include then exit;
+ if include then Add(key)
+ else Delete(key);
+end;
+
+procedure TFLRENodeHashSet.Add(const Key:PFLRENode);
+var Entity:TFLREInt32;
+    Cell:TFLREUInt32;
+begin
+ while RealSize>=(1 shl LogSize) do begin
+  Resize;
+ end;
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  Entities[Entity] := Key;
+  exit;
+ end;
+ Entity:=Size;
+ inc(Size);
+ if Entity<(2 shl LogSize) then begin
+  CellToEntityIndex[Cell]:=Entity;
+  EntityToCellIndex[Entity]:=Cell;
+  inc(RealSize);
+  Entities[Entity] := Key;
+ end;
+end;
+
+function TFLRENodeHashSet.Contains(const Key:PFLRENode):boolean;
+var Entity:TFLREInt32;
+    Cell:TFLREUInt32;
+begin
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ result := Entity>=0
+end;
+
+function TFLRENodeHashSet.NotContains(const Key: PFLRENode): boolean;
+begin
+  result := not contains(key);
+end;
+
+function TFLRENodeHashSet.Delete(const Key:PFLRENode):boolean;
+var Entity:TFLREInt32;
+    Cell:TFLREUInt32;
+begin
+ result:=false;
+ Cell:=FindCell(Key);
+ Entity:=CellToEntityIndex[Cell];
+ if Entity>=0 then begin
+  Entities[Entity]:=nil;
+  EntityToCellIndex[Entity]:=CELL_DELETED;
+  CellToEntityIndex[Cell]:=ENT_DELETED;
+  result:=true;
+ end;
+end;
+
 
 constructor TFLREStringIntegerPairHashMap.Create;
 begin
@@ -14087,10 +14293,11 @@ end;
 // Mark-and-sweep garbage collector for freeing unused nodes
 procedure TFLRE.FreeUnusedNodes(RootNode:PFLRENode);
 var Index,Count:TFLREInt32;
-    Visited,Stack:TList;
+    Visited: TFLRENodeHashSet;
+    Stack:TList;
     Node:PFLRENode;
 begin
- Visited:=TList.Create;
+ Visited:=TFLRENodeHashSet.Create;
  try
   Count:=0;
   Stack:=TList.Create;
@@ -14102,10 +14309,10 @@ begin
     if assigned(Node) then begin
      Visited.Add(Node);
      inc(Count);
-     if assigned(Node^.Left) and (Visited.IndexOf(Node^.Left)<0) then begin
+     if assigned(Node^.Left) and (Visited.NotContains(Node^.Left)) then begin
       Stack.Add(Node^.Left);
      end;
-     if assigned(Node^.Right) and (Visited.IndexOf(Node^.Right)<0) then begin
+     if assigned(Node^.Right) and (Visited.NotContains(Node^.Right)) then begin
       Stack.Add(Node^.Right);
      end;
     end;
@@ -14118,7 +14325,7 @@ begin
    while Index<Nodes.Count do begin
     Node:=Nodes[Index];
     Node^.Index:=Index;
-    if Visited.IndexOf(Node)<0 then begin
+    if Visited.NotContains(Node) then begin
      Node^.Name:='';
      Finalize(Node^);
      FreeMem(Node);
@@ -14488,7 +14695,8 @@ var NodeEx:PPFLRENode;
     Node,SeedNode,TestNode,l,r,Prefix,Suffix,Alternative,TempNode:PFLRENode;
     pr,pl:PPFLRENode;
     HasOptimizations,DoContinue,Optimized:boolean;
-    NodeStack,NodeList,NodeListLeft,Visited,TempNodeList,NewNodeList:TList;
+    NodeStack,NodeList,NodeListLeft,TempNodeList,NewNodeList:TList;
+    Visited: TFLRENodeHashSet;
     NodeIndex,SubNodeIndex,NewNodeIndex:TFLREInt32;
 begin
  result:=false;
@@ -14670,11 +14878,11 @@ begin
              ParseNodes(NodeList,Node,ntALT);
              NewNodeList:=TList.Create;
              try
-              Visited:=TList.Create;
+              Visited:=TFLRENodeHashSet.Create;
               try
                for NodeIndex:=NodeList.Count-1 downto 0 do begin
                 SeedNode:=NodeList[NodeIndex];
-                if Visited.IndexOf(SeedNode)<0 then begin
+                if Visited.NotContains(SeedNode) then begin
                  Visited.Add(SeedNode);
                  TempNodeList:=TList.Create;
                  try
@@ -14685,7 +14893,7 @@ begin
                   end;
                   for SubNodeIndex:=NodeIndex-1 downto 0 do begin
                    TestNode:=NodeList[SubNodeIndex];
-                   if Visited.IndexOf(TestNode)<0 then begin
+                   if Visited.NotContains(TestNode) then begin
                     r:=TestNode;
                     while assigned(r) and (r^.NodeType=ntCAT) do begin
                      r:=r^.Left;
@@ -14765,11 +14973,11 @@ begin
              ParseNodes(NodeList,Node,ntALT);
              NewNodeList:=TList.Create;
              try
-              Visited:=TList.Create;
+              Visited:=TFLRENodeHashSet.Create;
               try
                for NodeIndex:=NodeList.Count-1 downto 0 do begin
                 SeedNode:=NodeList[NodeIndex];
-                if Visited.IndexOf(SeedNode)<0 then begin
+                if Visited.NotContains(SeedNode) then begin
                  Visited.Add(SeedNode);
                  TempNodeList:=TList.Create;
                  try
@@ -14780,7 +14988,7 @@ begin
                   end;
                   for SubNodeIndex:=NodeIndex-1 downto 0 do begin
                    TestNode:=NodeList[SubNodeIndex];
-                   if Visited.IndexOf(TestNode)<0 then begin
+                   if Visited.NotContains(TestNode) then begin
                     r:=TestNode;
                     while assigned(r) and (r^.NodeType=ntCAT) do begin
                      r:=r^.Right;
