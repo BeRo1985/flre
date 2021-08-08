@@ -391,6 +391,8 @@ type EFLRE=class(Exception);
      PFLREParallelLock=^TFLREParallelLock;
      TFLREParallelLock=TFLREInt32;
 
+     TFLREPointerList = {$ifdef fpc}TFPList{$else}TList{$endif};
+
      TFLRE=class;
 
      PFLREFlag=^TFLREFlag;
@@ -847,7 +849,7 @@ type EFLRE=class(Exception);
 
      TFLREPrefilterNode=class;
 
-     TFLREPrefilterNodeList=class(TList)
+     TFLREPrefilterNodeList=class(TFLREPointerList)
       protected
        function GetNodeItem(Index:TFLREInt32):TFLREPrefilterNode;
        procedure SetNodeItem(Index:TFLREInt32;Value:TFLREPrefilterNode);
@@ -884,7 +886,7 @@ type EFLRE=class(Exception);
        Generation:TFLREInt64;
        InstructionGenerations:TFLREInstructionGenerations;
        FreeStates:PFLREParallelNFAState;
-       AllStates:TList;
+       AllStates:TFLREPointerList;
        CurrentSatisfyFlags:TFLREUInt32;
        constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
        destructor Destroy; override;
@@ -1067,7 +1069,7 @@ type EFLRE=class(Exception);
 
        RegularExpressionHasCharClasses:longbool;
 
-       Nodes:TList;
+       Nodes:TFLREPointerList;
 
        CountCaptures:TFLREInt32;
 
@@ -1293,7 +1295,7 @@ type EFLRE=class(Exception);
      TFLRECache=class
       private
        ParallelLock:TFLREParallelLock;
-       List:TList;
+       List:TFLREPointerList;
        HashMap:TFLRECacheHashMap;
       public
        constructor Create;
@@ -11071,7 +11073,7 @@ begin
  SetLength(ParallelNFAStack,Instance.CountForwardInstructions*2);
 
  FreeStates:=nil;
- AllStates:=TList.Create;
+ AllStates:=TFLREPointerList.Create;
 
 end;
 
@@ -13878,7 +13880,7 @@ begin
 
  RegularExpressionHasCharClasses:=false;
 
- Nodes:=TList.Create;
+ Nodes:=TFLREPointerList.Create;
 
  ForwardInstructions:=nil;
  CountForwardInstructions:=0;
@@ -14294,13 +14296,13 @@ end;
 procedure TFLRE.FreeUnusedNodes(RootNode:PFLRENode);
 var OldIndex,NewIndex,Count:TFLREInt32;
     Visited: TFLRENodeHashSet;
-    Stack:TList;
+    Stack:TFLREPointerList;
     Node:PFLRENode;
 begin
  Visited:=TFLRENodeHashSet.Create;
  try
   Count:=0;
-  Stack:=TList.Create;
+  Stack:=TFLREPointerList.Create;
   try
    Stack.Add(RootNode);
    while Stack.Count>0 do begin
@@ -14666,7 +14668,7 @@ begin
 end;
 
 function TFLRE.OptimizeNode(StartNodeEx:PPFLRENode):boolean;
- procedure ParseNodes(NodeList:TList;n:PFLRENode;NodeType:TFLREInt32);
+ procedure ParseNodes(NodeList:TFLREPointerList;n:PFLRENode;NodeType:TFLREInt32);
  begin
   while assigned(n) do begin
    if n^.NodeType=NodeType then begin
@@ -14697,12 +14699,12 @@ var NodeEx:PPFLRENode;
     Node,SeedNode,TestNode,l,r,Prefix,Suffix,Alternative,TempNode:PFLRENode;
     pr,pl:PPFLRENode;
     HasOptimizations,DoContinue,Optimized:boolean;
-    NodeStack,NodeList,NodeListLeft,TempNodeList,NewNodeList:TList;
+    NodeStack,NodeList,NodeListLeft,TempNodeList,NewNodeList:TFLREPointerList;
     Visited: TFLRENodeHashSet;
     NodeIndex,SubNodeIndex,NewNodeIndex:TFLREInt32;
 begin
  result:=false;
- NodeStack:=TList.Create;
+ NodeStack:=TFLREPointerList.Create;
  try
   repeat
    HasOptimizations:=false;
@@ -14800,7 +14802,7 @@ begin
           HasOptimizations:=true;
           continue;
          end else begin
-          NodeList:=TList.Create;
+          NodeList:=TFLREPointerList.Create;
           try
            ParseNodes(NodeList,Node,ntCAT);
            Optimized:=false;
@@ -14875,10 +14877,10 @@ begin
            Optimized:=false;
            repeat
             DoContinue:=false;
-            NodeList:=TList.Create;
+            NodeList:=TFLREPointerList.Create;
             try
              ParseNodes(NodeList,Node,ntALT);
-             NewNodeList:=TList.Create;
+             NewNodeList:=TFLREPointerList.Create;
              try
               Visited:=TFLRENodeHashSet.Create;
               try
@@ -14886,7 +14888,7 @@ begin
                 SeedNode:=NodeList[NodeIndex];
                 if Visited.NotContains(SeedNode) then begin
                  Visited.Add(SeedNode);
-                 TempNodeList:=TList.Create;
+                 TempNodeList:=TFLREPointerList.Create;
                  try
                   TempNodeList.Add(SeedNode);
                   l:=SeedNode;
@@ -14911,7 +14913,7 @@ begin
                    Alternative:=nil;
                    for SubNodeIndex:=0 to TempNodeList.Count-1 do begin
                     TestNode:=TempNodeList[SubNodeIndex];
-                    NodeListLeft:=TList.Create;
+                    NodeListLeft:=TFLREPointerList.Create;
                     try
                      ParseNodes(NodeListLeft,TestNode,ntCAT);
                      NodeListLeft.Delete(NodeListLeft.Count-1);
@@ -14970,10 +14972,10 @@ begin
            Optimized:=false;
            repeat
             DoContinue:=false;
-            NodeList:=TList.Create;
+            NodeList:=TFLREPointerList.Create;
             try
              ParseNodes(NodeList,Node,ntALT);
-             NewNodeList:=TList.Create;
+             NewNodeList:=TFLREPointerList.Create;
              try
               Visited:=TFLRENodeHashSet.Create;
               try
@@ -14981,7 +14983,7 @@ begin
                 SeedNode:=NodeList[NodeIndex];
                 if Visited.NotContains(SeedNode) then begin
                  Visited.Add(SeedNode);
-                 TempNodeList:=TList.Create;
+                 TempNodeList:=TFLREPointerList.Create;
                  try
                   TempNodeList.Add(SeedNode);
                   l:=SeedNode;
@@ -15006,7 +15008,7 @@ begin
                    Alternative:=nil;
                    for SubNodeIndex:=0 to TempNodeList.Count-1 do begin
                     TestNode:=TempNodeList[SubNodeIndex];
-                    NodeListLeft:=TList.Create;
+                    NodeListLeft:=TFLREPointerList.Create;
                     try
                      ParseNodes(NodeListLeft,TestNode,ntCAT);
                      NodeListLeft.Delete(0);
@@ -17651,7 +17653,7 @@ end;
 
 procedure TFLRE.Compile;
  procedure GenerateInstructions(var Instructions:TFLREInstructions;var CountInstructions:TFLREInt32;const Reversed:boolean);
- var NodeStack:TList;
+ var NodeStack:TFLREPointerList;
   function NewInstruction(Opcode:TFLREUInt32):TFLREInt32;
   begin
    result:=CountInstructions;
@@ -18284,7 +18286,7 @@ procedure TFLRE.Compile;
   CountInstructions:=0;
   try
    try
-    NodeStack:=TList.Create;
+    NodeStack:=TFLREPointerList.Create;
     try
      if Reversed then begin
       Emit(AnchoredRootNode,nil);
@@ -19220,7 +19222,7 @@ type TStackItem=record
      end;
      TStack=array of TStackItem;
 var Instruction:PFLREInstruction;
-    ToVisit,WorkQueue:TList;
+    ToVisit,WorkQueue:TFLREPointerList;
     Stack:TStack;
     StackPointer,Len,MaxNodes,StateSize,i,NextIndex,NodesCount,b,ToVisitIndex,IndexValue:TFLREInt32;
     Condition,Action,NewAction:TFLREUInt32;
@@ -19253,9 +19255,9 @@ begin
     NodeByID[AnchoredStartInstruction^.IDandOpcode shr 8]:=0;
     NodesCount:=1;
     Condition:=0;
-    ToVisit:=TList.Create;
+    ToVisit:=TFLREPointerList.Create;
     try
-     WorkQueue:=TList.Create;
+     WorkQueue:=TFLREPointerList.Create;
      try
       ToVisit.Add(AnchoredStartInstruction);
       ToVisitIndex:=0;
@@ -22178,7 +22180,7 @@ constructor TFLRECache.Create;
 begin
  inherited Create;
  ParallelLock:=0;
- List:=TList.Create;
+ List:=TFLREPointerList.Create;
  HashMap:=TFLRECacheHashMap.Create;
 end;
 
