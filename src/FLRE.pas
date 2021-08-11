@@ -8103,8 +8103,9 @@ const m=TFLREUInt32($57559429);
 var
     h,k:TFLREUInt32;
     p:TFLREUInt64;
-    intData: PtrUInt absolute data;
+    intData: PtrUInt;
 begin
+ intData := PPtrUInt(@data)^;
  p:=TFLREUInt32(intData and $ffffffff)*TFLREUInt64(n);
  result := m xor (p and $ffffffff) xor (p shr 32);
  {$ifdef CPU64}
