@@ -8101,7 +8101,6 @@ function HashPointer(Data:pointer):TFLREUInt32;
 const m=TFLREUInt32($57559429);
       n=TFLREUInt32($5052acdb);
 var
-    h,k:TFLREUInt32;
     p:TFLREUInt64;
     intData: PtrUInt;
 begin
