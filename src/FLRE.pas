@@ -3,7 +3,7 @@
 ********************************************************************************
 
 FLRE - Fast Light Regular Expressions - A fast light regular expression library
-Copyright (C) 2015-2018, Benjamin 'BeRo' Rosseaux
+Copyright (C) 2015-2022, Benjamin 'BeRo' Rosseaux
 
 The source code of the FLRE engine library and helper tools are
 distributed under the Library GNU Lesser General Public License Version 2.1 
@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2018.12.21.17.05.0000';
+      FLREVersionString='1.00.2022.09.26.02.59.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -3699,7 +3699,7 @@ type TXMMValue=record
      end{$ifndef fpc}{$if CompilerVersion>=28.0}align 16{$ifend}{$endif};
 
 function PtrPosCharSetOf2Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
 {$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
@@ -3807,7 +3807,7 @@ begin
 end;
 
 function PtrPosCharSetOf3Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
 {$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
@@ -3942,7 +3942,7 @@ begin
 end;
 
 function PtrPosCharSetOf4Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
       XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
@@ -4095,7 +4095,7 @@ begin
 end;
 
 function PtrPosCharSetOf5Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
       XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
@@ -4236,7 +4236,7 @@ begin
 end;
 
 function PtrPosCharSetOf6Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
       XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
@@ -4389,7 +4389,7 @@ begin
 end;
 
 function PtrPosCharSetOf7Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
       XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
@@ -4554,7 +4554,7 @@ begin
 end;
 
 function PtrPosCharSetOf8Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
       XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
@@ -4731,7 +4731,7 @@ begin
 end;
 
 function PtrPosCharPairSearch(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
 {$if defined(fpc) and (fpc_version>=3)}{$pop}{$ifend}
 asm
@@ -4858,7 +4858,7 @@ begin
 end;
 
 function PtrPosCharSetOf2Of2Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
       XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
@@ -5029,7 +5029,7 @@ begin
 end;
 
 function PtrPosCharSetOf2Of3Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
       XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
@@ -5190,7 +5190,7 @@ begin
 end;
 
 function PtrPosCharSetOf2Of4Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
       XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
@@ -5373,7 +5373,7 @@ begin
 end;
 
 function PtrPosCharRangeSearch(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM126Constant:TXMMValue=(Lo:TFLREQWord($7e7e7e7e7e7e7e7e);Hi:TFLREQWord($7e7e7e7e7e7e7e7e));
       XMM127Constant:TXMMValue=(Lo:TFLREQWord($7f7f7f7f7f7f7f7f);Hi:TFLREQWord($7f7f7f7f7f7f7f7f));
@@ -5490,7 +5490,7 @@ begin
 end;
 
 function PtrPosCharRangeOf2Search(const p:pointer;const v:TFLREQWord;const pEnd:pointer):TFLREPtrInt; assembler; register;
-{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$ifend}
+{$if defined(fpc) and (fpc_version>=3)}{$push}{$codealign localmin=16}{$codealign varmin=16}{$codealign constmin=16}{$ifend}
 const XMM1Constant:TXMMValue=(Lo:TFLREQWord($0101010101010101);Hi:TFLREQWord($0101010101010101));
       XMM2Constant:TXMMValue=(Lo:TFLREQWord($0202020202020202);Hi:TFLREQWord($0202020202020202));
       XMM3Constant:TXMMValue=(Lo:TFLREQWord($0303030303030303);Hi:TFLREQWord($0303030303030303));
