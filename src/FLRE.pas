@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2022.09.26.02.59.0000';
+      FLREVersionString='1.00.2022.09.26.03.21.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -5756,9 +5756,18 @@ begin
 {$else}
      CurrentChar:=pointer({$ifdef BIG_ENDIAN}TFLREPtrUInt(TFLREPtrUInt(CurrentChunk)+TFLREPtrUInt(SizeOf(TFLREPtrUInt)-1)){$else}CurrentChunk{$endif});
      XoredChunk:=XoredChunk xor XorMask;
-     while (XoredChunk<>0) and ((XoredChunk and $ff)<>TFLREUInt8(SearchChar)) do begin
-      XoredChunk:=XoredChunk shr 8;
-      {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+     if TFLREUInt8(SearchChar)=0 then begin
+      // Special case
+      XoredChunked:=not XoredChunked;
+      while (XoredChunk<>0) and ((XoredChunk and $ff)<>$ff) do begin
+       XoredChunk:=XoredChunk shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
+     end else begin
+      while (XoredChunk<>0) and ((XoredChunk and $ff)<>TFLREUInt8(SearchChar)) do begin
+       XoredChunk:=XoredChunk shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
      end;
      if XoredChunk<>0 then begin
       result:=TFLREPtrUInt(pointer(CurrentChar))-TFLREPtrUInt(Text);
@@ -5901,12 +5910,25 @@ begin
      CurrentChar:=pointer({$ifdef BIG_ENDIAN}TFLREPtrUInt(TFLREPtrUInt(CurrentChunk)+TFLREPtrUInt(SizeOf(TFLREPtrUInt)-1)){$else}CurrentChunk{$endif});
      XoredChunk0:=XoredChunk0 xor XorMask0;
      XoredChunk1:=XoredChunk1 xor XorMask1;
-     while ((XoredChunk0 or XoredChunk1)<>0) and
-           ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
-           ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) do begin
-      XoredChunk0:=XoredChunk0 shr 8;
-      XoredChunk1:=XoredChunk1 shr 8;
-      {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+     if (TFLREUInt8(SearchChar0)=0) and (TFLREUInt8(SearchChar1)=0) then begin
+      // Special case
+      XoredChunk0:=not XoredChunk0;
+      XoredChunk1:=not XoredChunk1;
+      while ((XoredChunk0 or XoredChunk1)<>0) and
+            ((XoredChunk0 and $ff)<>$ff) and
+            ((XoredChunk1 and $ff)<>$ff) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
+     end else begin
+      while ((XoredChunk0 or XoredChunk1)<>0) and
+            ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
+            ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
      end;
      if (XoredChunk0 or XoredChunk1)<>0 then begin
       result:=TFLREPtrUInt(pointer(CurrentChar))-TFLREPtrUInt(Text);
@@ -6062,14 +6084,30 @@ begin
      XoredChunk0:=XoredChunk0 xor XorMask0;
      XoredChunk1:=XoredChunk1 xor XorMask1;
      XoredChunk2:=XoredChunk2 xor XorMask2;
-     while ((XoredChunk0 or XoredChunk1 or XoredChunk2)<>0) and
-           ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
-           ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
-           ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) do begin
-      XoredChunk0:=XoredChunk0 shr 8;
-      XoredChunk1:=XoredChunk1 shr 8;
-      XoredChunk2:=XoredChunk2 shr 8;
-      {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+     if (TFLREUInt8(SearchChar0)=0) and (TFLREUInt8(SearchChar1)=0) and (TFLREUInt8(SearchChar2)=0) then begin
+      // Special case
+      XoredChunk0:=not XoredChunk0;
+      XoredChunk1:=not XoredChunk1;
+      XoredChunk2:=not XoredChunk2;
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2)<>0) and
+            ((XoredChunk0 and $ff)<>$ff) and
+            ((XoredChunk1 and $ff)<>$ff) and
+            ((XoredChunk2 and $ff)<>$ff) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
+     end else begin
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2)<>0) and
+            ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
+            ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
+            ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
      end;
      if (XoredChunk0 or XoredChunk1 or XoredChunk2)<>0 then begin
       result:=TFLREPtrUInt(pointer(CurrentChar))-TFLREPtrUInt(Text);
@@ -6238,16 +6276,36 @@ begin
      XoredChunk1:=XoredChunk1 xor XorMask1;
      XoredChunk2:=XoredChunk2 xor XorMask2;
      XoredChunk3:=XoredChunk3 xor XorMask3;
-     while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3)<>0) and
-           ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
-           ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
-           ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
-           ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) do begin
-      XoredChunk0:=XoredChunk0 shr 8;
-      XoredChunk1:=XoredChunk1 shr 8;
-      XoredChunk2:=XoredChunk2 shr 8;
-      XoredChunk3:=XoredChunk3 shr 8;
-      {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+     if (TFLREUInt8(SearchChar0)=0) and (TFLREUInt8(SearchChar1)=0) and
+        (TFLREUInt8(SearchChar2)=0) and (TFLREUInt8(SearchChar3)=0) then begin
+      // Special case
+      XoredChunk0:=not XoredChunk0;
+      XoredChunk1:=not XoredChunk1;
+      XoredChunk2:=not XoredChunk2;
+      XoredChunk3:=not XoredChunk3;
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3)<>0) and
+            ((XoredChunk0 and $ff)<>$ff) and
+            ((XoredChunk1 and $ff)<>$ff) and
+            ((XoredChunk2 and $ff)<>$ff) and
+            ((XoredChunk3 and $ff)<>$ff) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
+     end else begin
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3)<>0) and
+            ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
+            ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
+            ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
+            ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
      end;
      if (XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3)<>0 then begin
       result:=TFLREPtrUInt(pointer(CurrentChar))-TFLREPtrUInt(Text);
@@ -6429,18 +6487,42 @@ begin
      XoredChunk2:=XoredChunk2 xor XorMask2;
      XoredChunk3:=XoredChunk3 xor XorMask3;
      XoredChunk4:=XoredChunk4 xor XorMask4;
-     while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4)<>0) and
-           ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
-           ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
-           ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
-           ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) and
-           ((XoredChunk4 and $ff)<>TFLREUInt8(SearchChar4)) do begin
-      XoredChunk0:=XoredChunk0 shr 8;
-      XoredChunk1:=XoredChunk1 shr 8;
-      XoredChunk2:=XoredChunk2 shr 8;
-      XoredChunk3:=XoredChunk3 shr 8;
-      XoredChunk4:=XoredChunk4 shr 8;
-      {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+     if (TFLREUInt8(SearchChar0)=0) and (TFLREUInt8(SearchChar1)=0) and
+        (TFLREUInt8(SearchChar2)=0) and (TFLREUInt8(SearchChar3)=0) and
+        (TFLREUInt8(SearchChar4)=0) then begin
+      // Special case
+      XoredChunk0:=not XoredChunk0;
+      XoredChunk1:=not XoredChunk1;
+      XoredChunk2:=not XoredChunk2;
+      XoredChunk3:=not XoredChunk3;
+      XoredChunk4:=not XoredChunk4;
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4)<>0) and
+            ((XoredChunk0 and $ff)<>$ff) and
+            ((XoredChunk1 and $ff)<>$ff) and
+            ((XoredChunk2 and $ff)<>$ff) and
+            ((XoredChunk3 and $ff)<>$ff) and
+            ((XoredChunk4 and $ff)<>$ff) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       XoredChunk4:=XoredChunk4 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
+     end else begin
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4)<>0) and
+            ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
+            ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
+            ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
+            ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) and
+            ((XoredChunk4 and $ff)<>TFLREUInt8(SearchChar4)) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       XoredChunk4:=XoredChunk4 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
      end;
      if (XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4)<>0 then begin
       result:=TFLREPtrUInt(pointer(CurrentChar))-TFLREPtrUInt(Text);
@@ -6635,20 +6717,47 @@ begin
      XoredChunk3:=XoredChunk3 xor XorMask3;
      XoredChunk4:=XoredChunk4 xor XorMask4;
      XoredChunk5:=XoredChunk5 xor XorMask5;
-     while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5)<>0) and
-           ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
-           ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
-           ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
-           ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) and
-           ((XoredChunk4 and $ff)<>TFLREUInt8(SearchChar4)) and
-           ((XoredChunk5 and $ff)<>TFLREUInt8(SearchChar5)) do begin
-      XoredChunk0:=XoredChunk0 shr 8;
-      XoredChunk1:=XoredChunk1 shr 8;
-      XoredChunk2:=XoredChunk2 shr 8;
-      XoredChunk3:=XoredChunk3 shr 8;
-      XoredChunk4:=XoredChunk4 shr 8;
-      XoredChunk5:=XoredChunk5 shr 8;
-      {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+     if (TFLREUInt8(SearchChar0)=0) and (TFLREUInt8(SearchChar1)=0) and
+        (TFLREUInt8(SearchChar2)=0) and (TFLREUInt8(SearchChar3)=0) and
+        (TFLREUInt8(SearchChar4)=0) and (TFLREUInt8(SearchChar5)=0) then begin
+      // Special case
+      XoredChunk0:=not XoredChunk0;
+      XoredChunk1:=not XoredChunk1;
+      XoredChunk2:=not XoredChunk2;
+      XoredChunk3:=not XoredChunk3;
+      XoredChunk4:=not XoredChunk4;
+      XoredChunk5:=not XoredChunk5;
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5)<>0) and
+            ((XoredChunk0 and $ff)<>$ff) and
+            ((XoredChunk1 and $ff)<>$ff) and
+            ((XoredChunk2 and $ff)<>$ff) and
+            ((XoredChunk3 and $ff)<>$ff) and
+            ((XoredChunk4 and $ff)<>$ff) and
+            ((XoredChunk5 and $ff)<>$ff) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       XoredChunk4:=XoredChunk4 shr 8;
+       XoredChunk5:=XoredChunk5 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
+     end else begin
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5)<>0) and
+            ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
+            ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
+            ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
+            ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) and
+            ((XoredChunk4 and $ff)<>TFLREUInt8(SearchChar4)) and
+            ((XoredChunk5 and $ff)<>TFLREUInt8(SearchChar5)) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       XoredChunk4:=XoredChunk4 shr 8;
+       XoredChunk5:=XoredChunk5 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
      end;
      if (XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5)<>0 then begin
       result:=TFLREPtrUInt(pointer(CurrentChar))-TFLREPtrUInt(Text);
@@ -6856,22 +6965,53 @@ begin
      XoredChunk4:=XoredChunk4 xor XorMask4;
      XoredChunk5:=XoredChunk5 xor XorMask5;
      XoredChunk6:=XoredChunk6 xor XorMask6;
-     while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5 or XoredChunk6)<>0) and
-           ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
-           ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
-           ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
-           ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) and
-           ((XoredChunk4 and $ff)<>TFLREUInt8(SearchChar4)) and
-           ((XoredChunk5 and $ff)<>TFLREUInt8(SearchChar5)) and
-           ((XoredChunk6 and $ff)<>TFLREUInt8(SearchChar6)) do begin
-      XoredChunk0:=XoredChunk0 shr 8;
-      XoredChunk1:=XoredChunk1 shr 8;
-      XoredChunk2:=XoredChunk2 shr 8;
-      XoredChunk3:=XoredChunk3 shr 8;
-      XoredChunk4:=XoredChunk4 shr 8;
-      XoredChunk5:=XoredChunk5 shr 8;
-      XoredChunk6:=XoredChunk6 shr 8;
-      {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+     if (TFLREUInt8(SearchChar0)=0) and (TFLREUInt8(SearchChar1)=0) and
+        (TFLREUInt8(SearchChar2)=0) and (TFLREUInt8(SearchChar3)=0) and
+        (TFLREUInt8(SearchChar4)=0) and (TFLREUInt8(SearchChar5)=0) and
+        (TFLREUInt8(SearchChar6)=0) then begin
+      // Special case
+      XoredChunk0:=not XoredChunk0;
+      XoredChunk1:=not XoredChunk1;
+      XoredChunk2:=not XoredChunk2;
+      XoredChunk3:=not XoredChunk3;
+      XoredChunk4:=not XoredChunk4;
+      XoredChunk5:=not XoredChunk5;
+      XoredChunk6:=not XoredChunk6;
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5 or XoredChunk6)<>0) and
+            ((XoredChunk0 and $ff)<>$ff) and
+            ((XoredChunk1 and $ff)<>$ff) and
+            ((XoredChunk2 and $ff)<>$ff) and
+            ((XoredChunk3 and $ff)<>$ff) and
+            ((XoredChunk4 and $ff)<>$ff) and
+            ((XoredChunk5 and $ff)<>$ff) and
+            ((XoredChunk6 and $ff)<>$ff) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       XoredChunk4:=XoredChunk4 shr 8;
+       XoredChunk5:=XoredChunk5 shr 8;
+       XoredChunk6:=XoredChunk6 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
+     end else begin
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5 or XoredChunk6)<>0) and
+            ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
+            ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
+            ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
+            ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) and
+            ((XoredChunk4 and $ff)<>TFLREUInt8(SearchChar4)) and
+            ((XoredChunk5 and $ff)<>TFLREUInt8(SearchChar5)) and
+            ((XoredChunk6 and $ff)<>TFLREUInt8(SearchChar6)) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       XoredChunk4:=XoredChunk4 shr 8;
+       XoredChunk5:=XoredChunk5 shr 8;
+       XoredChunk6:=XoredChunk6 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
      end;
      if (XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5 or XoredChunk6)<>0 then begin
       result:=TFLREPtrUInt(pointer(CurrentChar))-TFLREPtrUInt(Text);
@@ -7094,24 +7234,58 @@ begin
      XoredChunk5:=XoredChunk5 xor XorMask5;
      XoredChunk6:=XoredChunk6 xor XorMask6;
      XoredChunk7:=XoredChunk7 xor XorMask7;
-     while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5 or XoredChunk6 or XoredChunk7)<>0) and
-           ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
-           ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
-           ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
-           ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) and
-           ((XoredChunk4 and $ff)<>TFLREUInt8(SearchChar4)) and
-           ((XoredChunk5 and $ff)<>TFLREUInt8(SearchChar5)) and
-           ((XoredChunk6 and $ff)<>TFLREUInt8(SearchChar6)) and
-           ((XoredChunk7 and $ff)<>TFLREUInt8(SearchChar7)) do begin
-      XoredChunk0:=XoredChunk0 shr 8;
-      XoredChunk1:=XoredChunk1 shr 8;
-      XoredChunk2:=XoredChunk2 shr 8;
-      XoredChunk3:=XoredChunk3 shr 8;
-      XoredChunk4:=XoredChunk4 shr 8;
-      XoredChunk5:=XoredChunk5 shr 8;
-      XoredChunk6:=XoredChunk6 shr 8;
-      XoredChunk7:=XoredChunk7 shr 8;
-      {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+     if (TFLREUInt8(SearchChar0)=0) and (TFLREUInt8(SearchChar1)=0) and
+        (TFLREUInt8(SearchChar2)=0) and (TFLREUInt8(SearchChar3)=0) and
+        (TFLREUInt8(SearchChar4)=0) and (TFLREUInt8(SearchChar5)=0) and
+        (TFLREUInt8(SearchChar6)=0) and (TFLREUInt8(SearchChar7)=0) then begin
+      // Special case
+      XoredChunk0:=not XoredChunk0;
+      XoredChunk1:=not XoredChunk1;
+      XoredChunk2:=not XoredChunk2;
+      XoredChunk3:=not XoredChunk3;
+      XoredChunk4:=not XoredChunk4;
+      XoredChunk5:=not XoredChunk5;
+      XoredChunk6:=not XoredChunk6;
+      XoredChunk7:=not XoredChunk7;
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5 or XoredChunk6 or XoredChunk7)<>0) and
+            ((XoredChunk0 and $ff)<>$ff) and
+            ((XoredChunk1 and $ff)<>$ff) and
+            ((XoredChunk2 and $ff)<>$ff) and
+            ((XoredChunk3 and $ff)<>$ff) and
+            ((XoredChunk4 and $ff)<>$ff) and
+            ((XoredChunk5 and $ff)<>$ff) and
+            ((XoredChunk6 and $ff)<>$ff) and
+            ((XoredChunk7 and $ff)<>$ff) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       XoredChunk4:=XoredChunk4 shr 8;
+       XoredChunk5:=XoredChunk5 shr 8;
+       XoredChunk6:=XoredChunk6 shr 8;
+       XoredChunk7:=XoredChunk7 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
+     end else begin
+      while ((XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5 or XoredChunk6 or XoredChunk7)<>0) and
+            ((XoredChunk0 and $ff)<>TFLREUInt8(SearchChar0)) and
+            ((XoredChunk1 and $ff)<>TFLREUInt8(SearchChar1)) and
+            ((XoredChunk2 and $ff)<>TFLREUInt8(SearchChar2)) and
+            ((XoredChunk3 and $ff)<>TFLREUInt8(SearchChar3)) and
+            ((XoredChunk4 and $ff)<>TFLREUInt8(SearchChar4)) and
+            ((XoredChunk5 and $ff)<>TFLREUInt8(SearchChar5)) and
+            ((XoredChunk6 and $ff)<>TFLREUInt8(SearchChar6)) and
+            ((XoredChunk7 and $ff)<>TFLREUInt8(SearchChar7)) do begin
+       XoredChunk0:=XoredChunk0 shr 8;
+       XoredChunk1:=XoredChunk1 shr 8;
+       XoredChunk2:=XoredChunk2 shr 8;
+       XoredChunk3:=XoredChunk3 shr 8;
+       XoredChunk4:=XoredChunk4 shr 8;
+       XoredChunk5:=XoredChunk5 shr 8;
+       XoredChunk6:=XoredChunk6 shr 8;
+       XoredChunk7:=XoredChunk7 shr 8;
+       {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
+      end;
      end;
      if (XoredChunk0 or XoredChunk1 or XoredChunk2 or XoredChunk3 or XoredChunk4 or XoredChunk5 or XoredChunk6 or XoredChunk7)<>0 then begin
       result:=TFLREPtrUInt(pointer(CurrentChar))-TFLREPtrUInt(Text);
