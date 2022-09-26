@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2022.09.26.03.21.0000';
+      FLREVersionString='1.00.2022.09.26.04.53.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -5758,7 +5758,7 @@ begin
      XoredChunk:=XoredChunk xor XorMask;
      if TFLREUInt8(SearchChar)=0 then begin
       // Special case
-      XoredChunked:=not XoredChunked;
+      XoredChunk:=not XoredChunk;
       while (XoredChunk<>0) and ((XoredChunk and $ff)<>$ff) do begin
        XoredChunk:=XoredChunk shr 8;
        {$ifdef BIG_ENDIAN}dec{$else}inc{$endif}(CurrentChar);
