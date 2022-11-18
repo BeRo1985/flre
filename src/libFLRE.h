@@ -271,7 +271,7 @@ public:
 
   TFLREInstance m_instance = NULL;
 
-  TFLRE(const std::string &regularExpression = "", uint32_t flags = 0u);
+  TFLRE(const std::string &regularExpression = "", uint32_t flags = FLRE_carfDELIMITERS);
    
   virtual ~TFLRE();
 
@@ -429,7 +429,7 @@ bool TFLRE::getRange(std::string &lowRange, std::string &highRange){
 bool TFLRE::match(const std::string& input, TCaptures& captures, const int32_t startPosition/*, const int32_t maxCaptures*/){
   AutoDelete<void*> captures_(NULL);
   AutoDeleteFLRECharString error(NULL);
-  int32_t countCaptures = 0;
+  int32_t countCaptures = 0; 
   if(FLREMatch(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
