@@ -271,244 +271,274 @@ public:
 
   TFLREInstance m_instance = NULL;
 
-  TFLRE(const std::string &regularExpression = "", uint32_t flags = 0u){
-    AutoDeleteFLRECharString error(NULL);
-    m_instance = FLRECreate(regularExpression.c_str(), regularExpression.size(), flags, &error.stringPointer);
-    if(error.stringPointer){
-      throw new TFLRE::TError(error.getString());
-    }
-  }
+  TFLRE(const std::string &regularExpression = "", uint32_t flags = 0u);
    
-  virtual ~TFLRE(){
-    if(m_instance){
-      FLREDestroy(m_instance);
-      m_instance = NULL;
-    }
-  }
+  virtual ~TFLRE();
 
-  int32_t getCountCaptures(){
-    return FLREGetCountCaptures(m_instance);
-  }
+  int32_t getCountCaptures();
 
-  int32_t getNamedGroupIndex(const std::string& groupName){
-    return FLREGetNamedGroupIndex(m_instance, groupName.c_str());
-  }
+  int32_t getNamedGroupIndex(const std::string& groupName);
 
-  std::string dumpRegularExpression(){
-    AutoDeleteFLRECharString regularExpression(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    if(FLREDumpRegularExpression(m_instance, &regularExpression.stringPointer, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return regularExpression.getString();
-    }else{
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return "";
-    }
-  }
+  std::string dumpRegularExpression();
 
-  std::string getPrefilterExpression(){
-    AutoDeleteFLRECharString expression(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    if(FLREGetPrefilterExpression(m_instance, &expression.stringPointer, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return expression.getString();
-    }else{
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return "";
-    }
-  }
+  std::string getPrefilterExpression();
 
-  std::string getPrefilterShortExpression(){
-    AutoDeleteFLRECharString shortExpression(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    if(FLREGetPrefilterShortExpression(m_instance, &shortExpression.stringPointer, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return shortExpression.getString();
-    }else{
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return "";
-    }
-  }
+  std::string getPrefilterShortExpression();
 
-  std::string getPrefilterSQLBooleanFullTextExpression(){
-    AutoDeleteFLRECharString SQLBooleanFullTextExpression(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    if(FLREGetPrefilterSQLBooleanFullTextExpression(m_instance, &SQLBooleanFullTextExpression.stringPointer, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return SQLBooleanFullTextExpression.getString();
-    }else{
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return "";
-    }
-  }
+  std::string getPrefilterSQLBooleanFullTextExpression();
 
-  std::string getPrefilterSQLExpression(){
-    AutoDeleteFLRECharString SQLExpression(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    if(FLREGetPrefilterSQLExpression(m_instance, &SQLExpression.stringPointer, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return SQLExpression.getString();
-    }else{
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return "";
-    }
-  }
+  std::string getPrefilterSQLExpression();
 
-  bool getRange(std::string &lowRange, std::string &highRange){
-    AutoDeleteFLRECharString lowRange_(NULL);
-    AutoDeleteFLRECharString highRange_(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    int32_t lowRangeLength = 0;
-    int32_t highRangeLength = 0;
-    if(FLREGetRange(m_instance, &lowRange_.stringPointer, &highRange_.stringPointer, &lowRangeLength, &highRangeLength, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      lowRange = (lowRangeLength > 0) ? std::string(lowRange_.stringPointer, lowRangeLength) : "";
-      highRange = (highRangeLength > 0) ? std::string(highRange_.stringPointer, highRangeLength) : "";
-      return true;
-    }else{
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      return false;
-    }
-  }
+  bool getRange(std::string &lowRange, std::string &highRange);
 
-  bool match(const std::string& input, TCaptures& captures, const int32_t startPosition = 0/*, const int32_t maxCaptures = -1*/){
-    AutoDelete<void*> captures_(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    int32_t countCaptures = 0;
-    if(FLREMatch(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      if(countCaptures > 0){
-        captures.resize(countCaptures);
-        for(int32_t index = 0; index < countCaptures; index++){
-          TCapture &capture = captures.at(index);
-          capture.start = ((int32_t*)captures_.pointer)[(index << 1) | 0];
-          capture.length = ((int32_t*)captures_.pointer)[(index << 1) | 1];
-        }
-      }else{
-        captures.clear();
-      }
-      return true; 
-    }else{
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      captures.clear();
-      return false; 
-    }
-  }
+  bool match(const std::string& input, TCaptures& captures, const int32_t startPosition = 0/*, const int32_t maxCaptures = -1*/);
 
-  bool matchNext(const std::string& input, TCaptures& captures, const int32_t startPosition = 0/*, const int32_t maxCaptures = -1*/){
-    AutoDelete<void*> captures_(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    int32_t countCaptures = 0;
-    if(FLREMatchNext(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      if(countCaptures > 0){
-        captures.resize(countCaptures);
-        for(int32_t index = 0; index < countCaptures; index++){
-          TCapture &capture = captures.at(index);
-          capture.start = ((int32_t*)captures_.pointer)[(index << 1) | 0];
-          capture.length = ((int32_t*)captures_.pointer)[(index << 1) | 1];
-        }
-      }else{
-        captures.clear();
-      }
-      return true; 
-    }else{
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      captures.clear();
-      return false; 
-    }
-  }
+  bool matchNext(const std::string& input, TCaptures& captures, const int32_t startPosition = 0/*, const int32_t maxCaptures = -1*/);
 
-  bool matchAll(const std::string& input, TMultiCaptures& multiCaptures, const int32_t startPosition = 0, const int32_t limit = -1, const int32_t maxMultiCaptures = -1){
-    AutoDelete<void*> multiCaptures_(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    int32_t countMultiCaptures = 0;
-    int32_t countCaptures = 0;
-    if(FLREMatchAll(m_instance, input.c_str(), input.size(), (void**)&multiCaptures_.pointer, /*maxMultiCaptures*/-1, &countMultiCaptures, &countCaptures, startPosition, limit, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new std::runtime_error(error.getString());    
-      }
-      if((countMultiCaptures > 0) && (countCaptures > 0)){
-        multiCaptures.resize(countMultiCaptures);
-        for(int32_t index = 0; index < countMultiCaptures; index++){
-          TCaptures &captures = multiCaptures.at(index);
-          captures.resize(countCaptures);
-          for(int32_t otherIndex = 0; otherIndex < countCaptures; otherIndex++){
-            TCapture &capture = captures.at(otherIndex);
-            int32_t endIndex = (index * countCaptures) + otherIndex;
-            capture.start = ((int32_t*)multiCaptures_.pointer)[(endIndex << 1) | 0];
-            capture.length = ((int32_t*)multiCaptures_.pointer)[(endIndex << 1) | 1];
-          }
-        }
-      }else{
-        multiCaptures.clear();
-      }
-      return true; 
-    }else{
-      if(error.stringPointer){
-        throw new std::runtime_error(error.getString());    
-      }
-      multiCaptures.clear();
-      return false; 
-    }
-  }
+  bool matchAll(const std::string& input, TMultiCaptures& multiCaptures, const int32_t startPosition = 0, const int32_t limit = -1, const int32_t maxMultiCaptures = -1);
 
-  bool replaceAll(const std::string& input, const std::string& replacement, std::string& result, const int32_t startPosition = 0, const int32_t limit = -1){
-    AutoDeleteFLRECharString result_(NULL);
-    AutoDeleteFLRECharString error(NULL);
-    int32_t resultLength = 0;
-    if(FLREReplaceAll(m_instance, input.c_str(), input.size(), replacement.c_str(), replacement.size(), (void**)&result_.stringPointer, &resultLength, startPosition, limit, &error.stringPointer)){
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      if(resultLength > 0){
-        result.assign(result_.stringPointer, resultLength);
-      }else{
-        result.clear();
-      }
-      return true; 
-    }else{
-      if(error.stringPointer){
-        throw new TFLRE::TError(error.getString());    
-      }
-      result.clear();
-      return false; 
-    }
-  }
+  bool replaceAll(const std::string& input, const std::string& replacement, std::string& result, const int32_t startPosition = 0, const int32_t limit = -1);
 
 };
+
+#ifdef LIBFLRE_IMPL
+TFLRE::TFLRE(const std::string &regularExpression, uint32_t flags){
+  AutoDeleteFLRECharString error(NULL);
+  m_instance = FLRECreate(regularExpression.c_str(), regularExpression.size(), flags, &error.stringPointer);
+  if(error.stringPointer){
+    throw new TFLRE::TError(error.getString());
+  }
+}
+  
+TFLRE::~TFLRE(){
+  if(m_instance){
+    FLREDestroy(m_instance);
+    m_instance = NULL;
+  }
+}
+
+int32_t TFLRE::getCountCaptures(){
+  return FLREGetCountCaptures(m_instance);
+}
+
+int32_t TFLRE::getNamedGroupIndex(const std::string& groupName){
+  return FLREGetNamedGroupIndex(m_instance, groupName.c_str());
+}
+
+std::string TFLRE::dumpRegularExpression(){
+  AutoDeleteFLRECharString regularExpression(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  if(FLREDumpRegularExpression(m_instance, &regularExpression.stringPointer, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return regularExpression.getString();
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return "";
+  }
+}
+
+std::string TFLRE::getPrefilterExpression(){
+  AutoDeleteFLRECharString expression(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  if(FLREGetPrefilterExpression(m_instance, &expression.stringPointer, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return expression.getString();
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return "";
+  }
+}
+
+std::string TFLRE::getPrefilterShortExpression(){
+  AutoDeleteFLRECharString shortExpression(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  if(FLREGetPrefilterShortExpression(m_instance, &shortExpression.stringPointer, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return shortExpression.getString();
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return "";
+  }
+}
+
+std::string TFLRE::getPrefilterSQLBooleanFullTextExpression(){
+  AutoDeleteFLRECharString SQLBooleanFullTextExpression(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  if(FLREGetPrefilterSQLBooleanFullTextExpression(m_instance, &SQLBooleanFullTextExpression.stringPointer, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return SQLBooleanFullTextExpression.getString();
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return "";
+  }
+}
+
+std::string TFLRE::getPrefilterSQLExpression(){
+  AutoDeleteFLRECharString SQLExpression(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  if(FLREGetPrefilterSQLExpression(m_instance, &SQLExpression.stringPointer, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return SQLExpression.getString();
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return "";
+  }
+}
+
+bool TFLRE::getRange(std::string &lowRange, std::string &highRange){
+  AutoDeleteFLRECharString lowRange_(NULL);
+  AutoDeleteFLRECharString highRange_(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  int32_t lowRangeLength = 0;
+  int32_t highRangeLength = 0;
+  if(FLREGetRange(m_instance, &lowRange_.stringPointer, &highRange_.stringPointer, &lowRangeLength, &highRangeLength, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    lowRange = (lowRangeLength > 0) ? std::string(lowRange_.stringPointer, lowRangeLength) : "";
+    highRange = (highRangeLength > 0) ? std::string(highRange_.stringPointer, highRangeLength) : "";
+    return true;
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return false;
+  }
+}
+
+bool TFLRE::match(const std::string& input, TCaptures& captures, const int32_t startPosition/*, const int32_t maxCaptures*/){
+  AutoDelete<void*> captures_(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  int32_t countCaptures = 0;
+  if(FLREMatch(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    if(countCaptures > 0){
+      captures.resize(countCaptures);
+      for(int32_t index = 0; index < countCaptures; index++){
+        TCapture &capture = captures.at(index);
+        capture.start = ((int32_t*)captures_.pointer)[(index << 1) | 0];
+        capture.length = ((int32_t*)captures_.pointer)[(index << 1) | 1];
+      }
+    }else{
+      captures.clear();
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    captures.clear();
+    return false; 
+  }
+}
+
+bool TFLRE::matchNext(const std::string& input, TCaptures& captures, const int32_t startPosition/*, const int32_t maxCaptures*/){
+  AutoDelete<void*> captures_(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  int32_t countCaptures = 0;
+  if(FLREMatchNext(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    if(countCaptures > 0){
+      captures.resize(countCaptures);
+      for(int32_t index = 0; index < countCaptures; index++){
+        TCapture &capture = captures.at(index);
+        capture.start = ((int32_t*)captures_.pointer)[(index << 1) | 0];
+        capture.length = ((int32_t*)captures_.pointer)[(index << 1) | 1];
+      }
+    }else{
+      captures.clear();
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    captures.clear();
+    return false; 
+  }
+}
+
+bool TFLRE::matchAll(const std::string& input, TMultiCaptures& multiCaptures, const int32_t startPosition, const int32_t limit, const int32_t maxMultiCaptures){
+  AutoDelete<void*> multiCaptures_(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  int32_t countMultiCaptures = 0;
+  int32_t countCaptures = 0;
+  if(FLREMatchAll(m_instance, input.c_str(), input.size(), (void**)&multiCaptures_.pointer, /*maxMultiCaptures*/-1, &countMultiCaptures, &countCaptures, startPosition, limit, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new std::runtime_error(error.getString());    
+    }
+    if((countMultiCaptures > 0) && (countCaptures > 0)){
+      multiCaptures.resize(countMultiCaptures);
+      for(int32_t index = 0; index < countMultiCaptures; index++){
+        TCaptures &captures = multiCaptures.at(index);
+        captures.resize(countCaptures);
+        for(int32_t otherIndex = 0; otherIndex < countCaptures; otherIndex++){
+          TCapture &capture = captures.at(otherIndex);
+          int32_t endIndex = (index * countCaptures) + otherIndex;
+          capture.start = ((int32_t*)multiCaptures_.pointer)[(endIndex << 1) | 0];
+          capture.length = ((int32_t*)multiCaptures_.pointer)[(endIndex << 1) | 1];
+        }
+      }
+    }else{
+      multiCaptures.clear();
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new std::runtime_error(error.getString());    
+    }
+    multiCaptures.clear();
+    return false; 
+  }
+}
+
+bool TFLRE::replaceAll(const std::string& input, const std::string& replacement, std::string& result, const int32_t startPosition, const int32_t limit){
+  AutoDeleteFLRECharString result_(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  int32_t resultLength = 0;
+  if(FLREReplaceAll(m_instance, input.c_str(), input.size(), replacement.c_str(), replacement.size(), (void**)&result_.stringPointer, &resultLength, startPosition, limit, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    if(resultLength > 0){
+      result.assign(result_.stringPointer, resultLength);
+    }else{
+      result.clear();
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    result.clear();
+    return false; 
+  }
+}
+#endif
 
 #endif
 
