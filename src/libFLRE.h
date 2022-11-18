@@ -22,6 +22,8 @@ typedef char TFLREChar;
 
 typedef TFLREChar* PFLREChar;
 
+typedef const TFLREChar* PFLREConstChar;
+
 typedef void* TFLREInstance;
 
 #if defined(__GNUC__) && (defined(WIN32) || defined(_WIN32)) && (defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)) 
@@ -48,21 +50,21 @@ static const uint32_t FLRE_carfDELIMITERS = 1u << 11;
  
 typedef FLRE_CALLCONV uint32_t (*_FLREGetVersion)();
 typedef FLRE_CALLCONV PFLREChar (*_FLREGetVersionString)();
-typedef FLRE_CALLCONV TFLREInstance (*_FLRECreate)(PFLREChar RegularExpression, int32_t RegularExpressionLength, uint32_t Flags, PFLREChar* Error);
+typedef FLRE_CALLCONV TFLREInstance (*_FLRECreate)(PFLREConstChar RegularExpression, int32_t RegularExpressionLength, uint32_t Flags, PFLREChar* Error);
 typedef FLRE_CALLCONV TFLREInstance (*_FLREDestroy)(TFLREInstance Instance);
 typedef FLRE_CALLCONV void (*_FLREFree)(void* Data);
 typedef FLRE_CALLCONV int32_t (*_FLREGetCountCaptures)(TFLREInstance Instance);
-typedef FLRE_CALLCONV int32_t (*_FLREGetNamedGroupIndex)(TFLREInstance Instance, PFLREChar GroupName);
+typedef FLRE_CALLCONV int32_t (*_FLREGetNamedGroupIndex)(TFLREInstance Instance, PFLREConstChar GroupName);
 typedef FLRE_CALLCONV int32_t (*_FLREDumpRegularExpression)(TFLREInstance Instance, PFLREChar* RegularExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterExpression)(TFLREInstance Instance, PFLREChar* Expression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterShortExpression)(TFLREInstance Instance, PFLREChar* ShortExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterSQLBooleanFullTextExpression)(TFLREInstance Instance, PFLREChar* SQLBooleanFullTextExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterSQLExpression)(TFLREInstance Instance, PFLREChar* SQLExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetRange)(TFLREInstance Instance, PFLREChar* LowRange, PFLREChar* HighRange, int32_t* LowRangeLength, int32_t* HighRangeLength, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREMatch)(TFLREInstance Instance, void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREMatchNext)(TFLREInstance Instance, void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREMatchAll)(TFLREInstance Instance, void* Input, int32_t InputLength, void** MultiCaptures, int32_t MaxMultiCaptures, int32_t* CountMultiCaptures, int32_t* CountCaptures, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREReplaceAll)(TFLREInstance Instance, void* Input, int32_t InputLength, void* Replacement, int32_t ReplacementLength, void** ResultString, int32_t* ResultStringLength, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREMatch)(TFLREInstance Instance, const void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREMatchNext)(TFLREInstance Instance, const void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREMatchAll)(TFLREInstance Instance, const void* Input, int32_t InputLength, void** MultiCaptures, int32_t MaxMultiCaptures, int32_t* CountMultiCaptures, int32_t* CountCaptures, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREReplaceAll)(TFLREInstance Instance, const void* Input, int32_t InputLength, void* Replacement, int32_t ReplacementLength, void** ResultString, int32_t* ResultStringLength, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
 
 extern _FLREGetVersion FLREGetVersion;
 extern _FLREGetVersionString FLREGetVersionString;
@@ -220,6 +222,98 @@ int32_t FLREUnload(){
 
 #ifdef __cplusplus
 }
+
+#include <string>
+#include <vector>
+#include <exception>
+#include <stdexcept>
+
+class TFLRE {
+private: 
+
+  class AutoDeleteFLRECharString {
+  private:
+  public:
+      PFLREChar stringPointer = NULL;
+      explicit AutoDeleteFLRECharString(PFLREChar s = NULL): stringPointer(s){}
+      ~AutoDeleteFLRECharString(){ if(stringPointer){ FLREFree(stringPointer); stringPointer = NULL; } }
+      std::string getString(){ return std::string(stringPointer); }
+  };
+   
+public:
+
+  TFLREInstance m_instance = NULL;
+
+  TFLRE(const std::string &regularExpression = "", uint32_t flags = 0u){
+    AutoDeleteFLRECharString error(NULL);
+    m_instance = FLRECreate(regularExpression.c_str(), regularExpression.length(), flags, &error.stringPointer);
+    if(!m_instance){
+      throw new std::runtime_error(error.getString());
+    }
+  }
+   
+  virtual ~TFLRE(){
+    if(m_instance){
+      FLREDestroy(m_instance);
+      m_instance = NULL;
+    }
+  }
+
+  int32_t getCountCaptures(){
+    return FLREGetCountCaptures(m_instance);
+  }
+
+  int32_t getNamedGroupIndex(const std::string& groupName){
+    return FLREGetNamedGroupIndex(m_instance, groupName.c_str());
+  }
+
+  std::string dumpRegularExpression(){
+    AutoDeleteFLRECharString regularExpression(NULL);
+    AutoDeleteFLRECharString error(NULL);
+    if(FLREDumpRegularExpression(m_instance, &regularExpression.stringPointer, &error.stringPointer)){
+      return regularExpression.getString();
+    }
+    throw new std::runtime_error(error.getString());
+  }
+
+  std::string getPrefilterExpression(){
+    AutoDeleteFLRECharString expression(NULL);
+    AutoDeleteFLRECharString error(NULL);
+    if(FLREGetPrefilterExpression(m_instance, &expression.stringPointer, &error.stringPointer)){
+      return expression.getString();
+    }
+    throw new std::runtime_error(error.getString());    
+  }
+
+  std::string getPrefilterShortExpression(){
+    AutoDeleteFLRECharString shortExpression(NULL);
+    AutoDeleteFLRECharString error(NULL);
+    if(FLREGetPrefilterShortExpression(m_instance, &shortExpression.stringPointer, &error.stringPointer)){
+      return shortExpression.getString();
+    }
+    throw new std::runtime_error(error.getString());    
+  }
+
+  std::string getPrefilterSQLBooleanFullTextExpression(){
+    AutoDeleteFLRECharString SQLBooleanFullTextExpression(NULL);
+    AutoDeleteFLRECharString error(NULL);
+    if(FLREGetPrefilterSQLBooleanFullTextExpression(m_instance, &SQLBooleanFullTextExpression.stringPointer, &error.stringPointer)){
+      return SQLBooleanFullTextExpression.getString();
+    }
+    throw new std::runtime_error(error.getString());    
+  }
+
+  std::string getPrefilterSQLExpression(){
+    AutoDeleteFLRECharString SQLExpression(NULL);
+    AutoDeleteFLRECharString error(NULL);
+    if(FLREGetPrefilterSQLExpression(m_instance, &SQLExpression.stringPointer, &error.stringPointer)){
+      return SQLExpression.getString();
+    }
+    throw new std::runtime_error(error.getString());    
+  }
+  
+};
+
 #endif
 
 #endif
