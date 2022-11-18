@@ -1,4 +1,4 @@
-library FLRELib;
+library libFLRE;
 {$ifdef fpc}
  {$mode delphi}
 {$endif}
