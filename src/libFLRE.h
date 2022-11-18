@@ -50,7 +50,7 @@ typedef FLRE_CALLCONV uint32_t (*_FLREGetVersion)();
 typedef FLRE_CALLCONV PFLREChar (*_FLREGetVersionString)();
 typedef FLRE_CALLCONV TFLREInstance (*_FLRECreate)(PFLREChar RegularExpression, int32_t RegularExpressionLength, uint32_t Flags, PFLREChar* Error);
 typedef FLRE_CALLCONV TFLREInstance (*_FLREDestroy)(TFLREInstance Instance);
-typedef FLRE_CALLCONV TFLREFree (*_FLREFree)(void* Data);
+typedef FLRE_CALLCONV void (*_FLREFree)(void* Data);
 typedef FLRE_CALLCONV int32_t (*_FLREGetCountCaptures)(TFLREInstance Instance);
 typedef FLRE_CALLCONV int32_t (*_FLREGetNamedGroupIndex)(TFLREInstance Instance, PFLREChar GroupName);
 typedef FLRE_CALLCONV int32_t (*_FLREDumpRegularExpression)(TFLREInstance Instance, PFLREChar* RegularExpression, PFLREChar* Error);
@@ -58,11 +58,11 @@ typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterExpression)(TFLREInstance Insta
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterShortExpression)(TFLREInstance Instance, PFLREChar* ShortExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterSQLBooleanFullTextExpression)(TFLREInstance Instance, PFLREChar* SQLBooleanFullTextExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterSQLExpression)(TFLREInstance Instance, PFLREChar* SQLExpression, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREGetRange(TFLREInstance Instance, PFLREChar* LowRange, PFLREChar* HighRange, int32_t* LowRangeLength, int32_t* HighRangeLength, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREMatch(TFLREInstance Instance, void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREMatchNext(TFLREInstance Instance, void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREMatchAll(TFLREInstance Instance, void* Input, int32_t InputLength, void** MultiCaptures, int32_t MaxMultiCaptures, int32_t* CountMultiCaptures, int32_t* CountCaptures, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREReplaceAll(TFLREInstance Instance, void* Input, int32_t InputLength, void* Replacement, int32_t ReplacementLength, void** ResultString, int32_t* ResultStringLength, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREGetRange)(TFLREInstance Instance, PFLREChar* LowRange, PFLREChar* HighRange, int32_t* LowRangeLength, int32_t* HighRangeLength, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREMatch)(TFLREInstance Instance, void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREMatchNext)(TFLREInstance Instance, void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREMatchAll)(TFLREInstance Instance, void* Input, int32_t InputLength, void** MultiCaptures, int32_t MaxMultiCaptures, int32_t* CountMultiCaptures, int32_t* CountCaptures, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREReplaceAll)(TFLREInstance Instance, void* Input, int32_t InputLength, void* Replacement, int32_t ReplacementLength, void** ResultString, int32_t* ResultStringLength, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
 
 extern _FLREGetVersion FLREGetVersion;
 extern _FLREGetVersionString FLREGetVersionString;
