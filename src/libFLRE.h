@@ -61,7 +61,7 @@ typedef FLRE_CALLCONV int32_t (*_FLREDumpRegularExpression)(TFLREInstance Instan
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterExpression)(TFLREInstance Instance, PFLREChar* Expression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterShortExpression)(TFLREInstance Instance, PFLREChar* ShortExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterSQLBooleanFullTextExpression)(TFLREInstance Instance, PFLREChar* SQLBooleanFullTextExpression, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterSQLExpression)(TFLREInstance Instance, PFLREChar* SQLExpression, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterSQLExpression)(TFLREInstance Instance, PFLREConstChar field, PFLREChar* SQLExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetRange)(TFLREInstance Instance, PFLREChar* LowRange, PFLREChar* HighRange, int32_t* LowRangeLength, int32_t* HighRangeLength, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREMatch)(TFLREInstance Instance, const void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREMatchNext)(TFLREInstance Instance, const void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
@@ -287,7 +287,7 @@ public:
 
   std::string getPrefilterSQLBooleanFullTextExpression();
 
-  std::string getPrefilterSQLExpression();
+  std::string getPrefilterSQLExpression(const std::string &field);
 
   bool getRange(std::string &lowRange, std::string &highRange);
 
@@ -389,10 +389,10 @@ std::string TFLRE::getPrefilterSQLBooleanFullTextExpression(){
   }
 }
 
-std::string TFLRE::getPrefilterSQLExpression(){
+std::string TFLRE::getPrefilterSQLExpression(const std::string &field){
   AutoDeleteFLRECharString SQLExpression(NULL);
   AutoDeleteFLRECharString error(NULL);
-  if(FLREGetPrefilterSQLExpression(m_instance, &SQLExpression.stringPointer, &error.stringPointer)){
+  if(FLREGetPrefilterSQLExpression(m_instance, field.c_str(), &SQLExpression.stringPointer, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
     }
