@@ -74,6 +74,9 @@ extern _FLREMatchNext FLREMatchNext;
 extern _FLREMatchAll FLREMatchAll;
 extern _FLREReplaceAll FLREReplaceAll;
 
+extern int32_t FLRELoad();
+extern int32_t FLREUnload();
+
 #ifdef LIBFLRE_IMPL
 int32_t FLRELoaded = 0;
 
@@ -94,6 +97,16 @@ _FLREMatch FLREMatch = NULL;
 _FLREMatchNext FLREMatchNext = NULL;
 _FLREMatchAll FLREMatchAll = NULL;
 _FLREReplaceAll FLREReplaceAll = NULL;
+
+int32_t FLRELoad(){
+  return 0;
+}
+
+int32_t FLREUnload(){
+  return 0;
+}
+
+
 #endif
 
 #ifdef __cplusplus
