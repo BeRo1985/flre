@@ -25,6 +25,19 @@ typedef void* TFLREInstance;
 #define FLRE_CALLCONV
 #endif
 
+static const uint32_t FLRE_carfIGNORECASE = 1u << 0;
+static const uint32_t FLRE_carfSINGLELINE = 1u << 1;
+static const uint32_t FLRE_carfMULTILINE = 1u << 2;
+static const uint32_t FLRE_carfFREESPACING = 1u << 3;
+static const uint32_t FLRE_carfNAMED = 1u << 4;
+static const uint32_t FLRE_carfNOCAPTURES = 1u << 5;
+static const uint32_t FLRE_carfUNGREEDY = 1u << 6;
+static const uint32_t FLRE_carfLONGEST = 1u << 7;
+static const uint32_t FLRE_carfMULTIMATCH = 1u << 8;
+static const uint32_t FLRE_carfUTF8 = 1u << 9;
+static const uint32_t FLRE_carfONLYFASTOPTIMIZATIONS = 1u << 10;
+static const uint32_t FLRE_carfDELIMITERS = 1u << 11;
+ 
 typedef FLRE_CALLCONV uint32_t (*_FLREGetVersion)();
 typedef FLRE_CALLCONV PFLREChar (*_FLREGetVersionString)();
 typedef FLRE_CALLCONV TFLREInstance (*_FLRECreate)(PFLREChar RegularExpression, int32_t RegularExpressionLength, uint32_t Flags, PFLREChar* Error);
