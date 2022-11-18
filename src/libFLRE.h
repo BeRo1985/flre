@@ -129,7 +129,7 @@ int32_t FLRELoad(){
     return 1;
   }else{ 
 #ifdef WINDOWS
-#if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386))
+#if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)
     FLRELibraryHandle = dlopen("libFLRE_i386.dll");
 #elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
     FLRELibraryHandle = LoadLibrary("libFLRE_x86_64.dll");
@@ -144,7 +144,7 @@ int32_t FLRELoad(){
       FLRELibraryHandle = LoadLibrary("libFLRE.dll");
     }
 #else
-#if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386))
+#if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)
     FLRELibraryHandle = dlopen("libFLRE_i386.so");
 #elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
     FLRELibraryHandle = dlopen("libFLRE_x86_64.so");
