@@ -8,7 +8,15 @@ extern "C" {
 #include <stdint.h>
 #include <stdio.h>
 
-extern int FLRELoaded;
+#if defined(_WIN32) || defined(_WIN64)
+  #define WINDOWS
+#endif
+#ifdef WINDOWS
+  #include <windows.h>
+#else
+  #include <dlfcn.h>
+  #include <sys/types.h>
+#endif
 
 typedef char TFLREChar;
 
@@ -74,11 +82,25 @@ extern _FLREMatchNext FLREMatchNext;
 extern _FLREMatchAll FLREMatchAll;
 extern _FLREReplaceAll FLREReplaceAll;
 
+extern int32_t FLRELoaded;
+
+#ifdef WINDOWS
+extern HINSTANCE FLRELibraryHandle;
+#else
+extern void* FLRELibraryHandle;
+#endif
+
 extern int32_t FLRELoad();
 extern int32_t FLREUnload();
 
 #ifdef LIBFLRE_IMPL
 int32_t FLRELoaded = 0;
+
+#ifdef WINDOWS
+HINSTANCE FLRELibraryHandle = NULL;
+#else
+void* FLRELibraryHandle = NULL;
+#endif
 
 _FLREGetVersion FLREGetVersion = NULL;
 _FLREGetVersionString FLREGetVersionString = NULL;
@@ -99,13 +121,100 @@ _FLREMatchAll FLREMatchAll = NULL;
 _FLREReplaceAll FLREReplaceAll = NULL;
 
 int32_t FLRELoad(){
-  return 0;
+  if(FLRELoaded){
+    return 1;
+  }else{ 
+#ifdef WINDOWS
+#if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386))
+    FLRELibraryHandle = dlopen("libFLRE_i386.dll");
+#elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
+    FLRELibraryHandle = LoadLibrary("libFLRE_x86_64.dll");
+#elif defined(__aarch64) || defined(__aarch64__)
+    FLRELibraryHandle = LoadLibrary("libFLRE_aarch64.dll");
+#elif defined(__arm__)
+    FLRELibraryHandle = LoadLibrary("libFLRE_arm32.dll");
+#else
+    #error "Unsupported CPU/OS target combination"
+#endif
+    if(FLRELibraryHandle == NULL){
+      FLRELibraryHandle = LoadLibrary("libFLRE.dll");
+    }
+#else
+#if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386))
+    FLRELibraryHandle = dlopen("libFLRE_i386.so");
+#elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
+    FLRELibraryHandle = dlopen("libFLRE_x86_64.so");
+#elif defined(__aarch64) || defined(__aarch64__)
+    FLRELibraryHandle = dlopen("libFLRE_aarch64.so");
+#elif defined(__arm__)
+    FLRELibraryHandle = dlopen("libFLRE_arm32.so");
+#else
+    #error "Unsupported CPU/OS target combination"
+#endif    
+    if(FLRELibraryHandle == NULL){
+      FLRELibraryHandle = dlopen("libFLRE.so");
+    }
+#endif          
+    if(FLRELibraryHandle != NULL){
+#ifdef WINDOWS
+#define FLREGetProcAddress GetProcAddress
+#else
+#define FLREGetProcAddress dlsym
+#endif
+      FLREGetVersion = (_FLREGetVersion)FLREGetProcAddress(FLRELibraryHandle, "FLREGetVersion");
+      FLREGetVersionString = (_FLREGetVersionString)FLREGetProcAddress(FLRELibraryHandle, "FLREGetVersionString");
+      FLRECreate = (_FLRECreate)FLREGetProcAddress(FLRELibraryHandle, "FLRECreate");
+      FLREDestroy = (_FLREDestroy)FLREGetProcAddress(FLRELibraryHandle, "FLREDestroy");
+      FLREFree = (_FLREFree)FLREGetProcAddress(FLRELibraryHandle, "FLREFree");
+      FLREGetCountCaptures = (_FLREGetCountCaptures)FLREGetProcAddress(FLRELibraryHandle, "FLREGetCountCaptures");
+      FLREGetNamedGroupIndex = (_FLREGetNamedGroupIndex)FLREGetProcAddress(FLRELibraryHandle, "FLREGetNamedGroupIndex");
+      FLREDumpRegularExpression = (_FLREDumpRegularExpression)FLREGetProcAddress(FLRELibraryHandle, "FLREDumpRegularExpression");
+      FLREGetPrefilterExpression = (_FLREGetPrefilterExpression)FLREGetProcAddress(FLRELibraryHandle, "FLREGetPrefilterExpression");
+      FLREGetPrefilterShortExpression = (_FLREGetPrefilterShortExpression)FLREGetProcAddress(FLRELibraryHandle, "FLREGetPrefilterShortExpression");
+      FLREGetPrefilterSQLBooleanFullTextExpression = (_FLREGetPrefilterSQLBooleanFullTextExpression)FLREGetProcAddress(FLRELibraryHandle, "FLREGetPrefilterSQLBooleanFullTextExpression");
+      FLREGetPrefilterSQLExpression = (_FLREGetPrefilterSQLExpression)FLREGetProcAddress(FLRELibraryHandle, "FLREGetPrefilterSQLExpression");
+      FLREGetRange = (_FLREGetRange)FLREGetProcAddress(FLRELibraryHandle, "FLREGetRange");
+      FLREMatch = (_FLREMatch)FLREGetProcAddress(FLRELibraryHandle, "FLREMatch");
+      FLREMatchNext = (_FLREMatchNext)FLREGetProcAddress(FLRELibraryHandle, "FLREMatchNext");
+      FLREMatchAll = (_FLREMatchAll)FLREGetProcAddress(FLRELibraryHandle, "FLREMatchAll");
+      FLREReplaceAll = (_FLREReplaceAll)FLREGetProcAddress(FLRELibraryHandle, "FLREReplaceAll");
+#undef FLREGetProcAddress
+      if(FLREGetVersion &&
+         FLREGetVersionString &&
+         FLRECreate &&
+         FLREDestroy &&
+         FLREFree &&
+         FLREGetCountCaptures &&
+         FLREGetNamedGroupIndex &&
+         FLREDumpRegularExpression &&
+         FLREGetPrefilterExpression &&
+         FLREGetPrefilterShortExpression &&
+         FLREGetPrefilterSQLBooleanFullTextExpression &&
+         FLREGetPrefilterSQLExpression &&
+         FLREGetRange &&
+         FLREMatch &&
+         FLREMatchNext &&
+         FLREMatchAll &&
+         FLREReplaceAll){
+        FLRELoaded = 1;
+        return 1;
+      }     
+    }
+    return 0;
+  } 
 }
 
 int32_t FLREUnload(){
+  if(FLRELoaded){
+#ifdef WINDOWS
+    FreeLibrary(FLRELibraryHandle);
+#else
+    dlclose(FLRELibraryHandle);
+#endif    
+    FLRELoaded = 0;
+  }
   return 0;
 }
-
 
 #endif
 
