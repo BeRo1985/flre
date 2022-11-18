@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2022.09.26.04.53.0000';
+      FLREVersionString='1.00.2022.11.18.23.15.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -22632,16 +22632,16 @@ begin
       if MaxCaptures<0 then begin
        GetMem(Captures^,length(LocalCaptures)*(sizeof(TFLREInt32)*2));
        for Index:=0 to length(LocalCaptures)-1 do begin
-        PFLREInt32s(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
-        PFLREInt32s(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+        PFLREInt32s(Captures^)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+        PFLREInt32s(Captures^)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
        end;
       end else begin
        for Index:=0 to length(LocalCaptures)-1 do begin
         if Index>=MaxCaptures then begin
          break;
         end;
-        PFLREInt32s(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
-        PFLREInt32s(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+        PFLREInt32s(Captures^)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+        PFLREInt32s(Captures^)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
        end;
       end;
       if assigned(CountCaptures) then begin
@@ -22704,16 +22704,16 @@ begin
       if MaxCaptures<0 then begin
        GetMem(Captures^,length(LocalCaptures)*(sizeof(TFLREInt32)*2));
        for Index:=0 to length(LocalCaptures)-1 do begin
-        PFLREInt32s(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
-        PFLREInt32s(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+        PFLREInt32s(Captures^)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+        PFLREInt32s(Captures^)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
        end;
       end else begin
        for Index:=0 to length(LocalCaptures)-1 do begin
         if Index>=MaxCaptures then begin
          break;
         end;
-        PFLREInt32s(Captures)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
-        PFLREInt32s(Captures)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
+        PFLREInt32s(Captures^)^[(Index shl 1) or 0]:=LocalCaptures[Index].Start;
+        PFLREInt32s(Captures^)^[(Index shl 1) or 1]:=LocalCaptures[Index].Length;
        end;
       end;
       if assigned(CountCaptures) then begin
