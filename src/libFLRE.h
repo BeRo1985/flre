@@ -393,11 +393,11 @@ public:
     }
   }
 
-  bool match(const std::string& input, TCaptures& captures, const int32_t maxCaptures = 32, const int32_t startPosition = 0){
+  bool match(const std::string& input, TCaptures& captures, const int32_t startPosition = 0/*, const int32_t maxCaptures = -1*/){
     AutoDelete<void*> captures_(NULL);
     AutoDeleteFLRECharString error(NULL);
     int32_t countCaptures = 0;
-    if(FLREMatch(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, maxCaptures, &countCaptures, startPosition, &error.stringPointer)){
+    if(FLREMatch(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
       if(error.stringPointer){
         throw new TFLRE::TError(error.getString());    
       }
@@ -421,11 +421,11 @@ public:
     }
   }
 
-  bool matchNext(const std::string& input, TCaptures& captures, const int32_t maxCaptures = 32, const int32_t startPosition = 0){
+  bool matchNext(const std::string& input, TCaptures& captures, const int32_t startPosition = 0/*, const int32_t maxCaptures = -1*/){
     AutoDelete<void*> captures_(NULL);
     AutoDeleteFLRECharString error(NULL);
     int32_t countCaptures = 0;
-    if(FLREMatchNext(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, maxCaptures, &countCaptures, startPosition, &error.stringPointer)){
+    if(FLREMatchNext(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
       if(error.stringPointer){
         throw new TFLRE::TError(error.getString());    
       }
