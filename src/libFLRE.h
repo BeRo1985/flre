@@ -272,7 +272,7 @@ public:
   TFLRE(const std::string &regularExpression = "", uint32_t flags = 0u){
     AutoDeleteFLRECharString error(NULL);
     m_instance = FLRECreate(regularExpression.c_str(), regularExpression.size(), flags, &error.stringPointer);
-    if(!m_instance){
+    if(error.stringPointer){
       throw new TFLRE::TError(error.getString());
     }
   }
