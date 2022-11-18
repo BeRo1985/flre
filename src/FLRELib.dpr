@@ -14,7 +14,7 @@ uses
   SysUtils,
   Classes,
   FLRE in 'FLRE.pas',
-  FLREUnicode in 'FLREUnicode.pas';
+  PUCU in 'PUCU.pas';
 
 exports FLREGetVersion name 'FLREGetVersion',
         FLREGetVersionString name 'FLREGetVersionString',
