@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000004;
 
-      FLREVersionString='1.00.2022.11.18.23.15.0000';
+      FLREVersionString='1.00.2022.11.19.01.49.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -896,7 +896,7 @@ type EFLRE=class(Exception);
        CountJobs:TFLREInt32;
        MaxJob:TFLREInt32;
        WorkSubMatches:TFLREBitStateNFASubMatches;
-       MatchSubMatches:TFLREBitStateNFASubMatches;
+       MatchSubMatches:TFLREBitStateNFASubMatches;       
        constructor Create(const AThreadLocalStorageInstance:TFLREThreadLocalStorageInstance);
        destructor Destroy; override;
        function SearchMatch(var Captures:TFLRECaptures;const StartPosition,UntilExcludingPosition:TFLREInt32;const UnanchoredStart:boolean):TFLREInt32;
@@ -1115,6 +1115,8 @@ type EFLRE=class(Exception);
        RangeHigh:TFLRERawByteString;
 
        PrefilterRootNode:TFLREPrefilterNode;
+       
+       MaxBitStateNFATextSize:TFLREInt32;
 
        function NewCharClass(const CharClass:TFLRECharClass;const FromRegularExpression:boolean):TFLREInt32;
        function GetCharClass(const CharClass:TFLREInt32):TFLRECharClass;
@@ -14056,6 +14058,9 @@ begin
 
   if (CountForwardInstructions>0) and (CountForwardInstructions<512) then begin
    Include(InternalFlags,fifBitStateNFAReady);
+   MaxBitStateNFATextSize:=(length(TFLREBitStateNFAVisited)*SizeOf(TFLREUInt32)) div CountForwardInstructions;
+  end else begin
+   MaxBitStateNFATextSize:=0;
   end;
 
   if not (fifBeginTextAnchor in InternalFlags) then begin
@@ -20687,7 +20692,18 @@ begin
  end;
 
  // Then try DFA
- if fifDFAReady in InternalFlags then begin
+ if (fifDFAReady in InternalFlags) and
+ 
+    // If we have only a small amount of text and we need submatch information anyway and we 
+    // use OnePass or BitState to do it, we can save the trouble with DFA. OnePass or BitState 
+    // perform fast enough for that. For very small texts, OnePass will actually beat DFA and 
+    // doesn't have the shared state and occasional overhead that DFA has.     
+    (not 
+     ((((fifOnePassNFAReady in InternalFlags) and not UnanchoredStart) and 
+       ((UntilExcludingPosition-StartPosition)<=4096) and
+       ((CountCaptures>=2) or ((UntilExcludingPosition-StartPosition)<=16))) or
+      ((fifBitStateNFAReady in InternalFlags) and (CountCaptures>=2) and ((UntilExcludingPosition-StartPosition)<=MaxBitStateNFATextSize)))) 
+     then begin
   ThreadLocalStorageInstance.DFA.IsUnanchored:=UnanchoredStart;
   case ThreadLocalStorageInstance.DFA.SearchMatch(StartPosition,UntilExcludingPosition,MatchEnd,UnanchoredStart) of
    DFAMatch:begin
@@ -20745,7 +20761,7 @@ begin
    exit;
   end;
  end else begin
-  if fifBitStateNFAReady in InternalFlags then begin
+  if (fifBitStateNFAReady in InternalFlags) and ((UntilExcludingPosition-StartPosition)<=MaxBitStateNFATextSize) then begin
    case ThreadLocalStorageInstance.BitStateNFA.SearchMatch(Captures,StartPosition,UntilExcludingPosition,UnanchoredStart) of
     BitStateNFAFail:begin
      result:=false;
