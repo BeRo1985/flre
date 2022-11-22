@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000005;
 
-      FLREVersionString='1.00.2022.11.22.17.30.0000';
+      FLREVersionString='1.00.2022.11.22.17.48.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -5685,7 +5685,7 @@ var CurrentChar:PFLRERawByteChar;
 begin
  result:=-1;
 
- Size:=(TextLength-Offset)+1;
+ Size:=TextLength-Offset;
  if (Offset<TextLength) and (TFLREPtrInt(Size)>0) then begin
 
   XorMask:=TFLREUInt8(SearchChar);
@@ -5822,7 +5822,7 @@ var CurrentChar:PFLRERawByteChar;
 begin
  result:=-1;
 
- Size:=(TextLength-Offset)+1;
+ Size:=TextLength-Offset;
  if (Offset<TextLength) and (TFLREPtrInt(Size)>0) then begin
 
   XorMask0:=TFLREUInt8(SearchChar0);
@@ -5983,7 +5983,7 @@ var CurrentChar:PFLRERawByteChar;
 begin
  result:=-1;
 
- Size:=(TextLength-Offset)+1;
+ Size:=TextLength-Offset;
  if (Offset<TextLength) and (TFLREPtrInt(Size)>0) then begin
 
   XorMask0:=TFLREUInt8(SearchChar0);
@@ -6162,7 +6162,7 @@ var CurrentChar:PFLRERawByteChar;
 begin
  result:=-1;
 
- Size:=(TextLength-Offset)+1;
+ Size:=TextLength-Offset;
  if (Offset<TextLength) and (TFLREPtrInt(Size)>0) then begin
 
   XorMask0:=TFLREUInt8(SearchChar0);
@@ -6360,7 +6360,7 @@ var CurrentChar:PFLRERawByteChar;
 begin
  result:=-1;
 
- Size:=(TextLength-Offset)+1;
+ Size:=TextLength-Offset;
  if (Offset<TextLength) and (TFLREPtrInt(Size)>0) then begin
 
   XorMask0:=TFLREUInt8(SearchChar0);
@@ -6577,7 +6577,7 @@ var CurrentChar:PFLRERawByteChar;
 begin
  result:=-1;
 
- Size:=(TextLength-Offset)+1;
+ Size:=TextLength-Offset;
  if (Offset<TextLength) and (TFLREPtrInt(Size)>0) then begin
 
   XorMask0:=TFLREUInt8(SearchChar0);
@@ -6812,7 +6812,7 @@ var CurrentChar:PFLRERawByteChar;
 begin
  result:=-1;
 
- Size:=(TextLength-Offset)+1;
+ Size:=TextLength-Offset;
  if (Offset<TextLength) and (TFLREPtrInt(Size)>0) then begin
 
   XorMask0:=TFLREUInt8(SearchChar0);
@@ -7068,7 +7068,7 @@ var CurrentChar:PFLRERawByteChar;
 begin
  result:=-1;
 
- Size:=(TextLength-Offset)+1;
+ Size:=TextLength-Offset;
  if (Offset<TextLength) and (TFLREPtrInt(Size)>0) then begin
 
   XorMask0:=TFLREUInt8(SearchChar0);
