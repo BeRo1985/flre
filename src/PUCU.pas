@@ -1,7 +1,7 @@
 (******************************************************************************
  *                     PUCU Pascal UniCode Utils Libary                       *
  ******************************************************************************
- *                        Version 2022-11-19-16-17-0000                       *
+ *                        Version 2022-11-22-16-12-0000                       *
  ******************************************************************************
  *                                zlib license                                *
  *============================================================================*
@@ -48066,6 +48066,7 @@ begin
  end;
 end;
 
+{$ifdef fpc}{$notes off}{$endif}
 function PUCUUTF32CharToUTF8At(CharValue:TPUCUUTF32Char;var s:TPUCURawByteString;const Index:TPUCUInt32):TPUCUInt32;
 var Data:array[0..{$ifdef PUCUStrictUTF8}3{$else}5{$endif}] of TPUCURawByteChar;
     ResultLen:TPUCUInt32;
@@ -48133,6 +48134,7 @@ begin
   result:=ResultLen;
  end;
 end;
+{$ifdef fpc}{$notes on}{$endif}
 
 function PUCUUTF32CharToUTF8Len(CharValue:TPUCUUTF32Char):TPUCUInt32;
 begin
@@ -48263,10 +48265,11 @@ begin
    inc(j);
   end;
  end;
- SetLength(result,j);
+ result:=nil;
  if j=0 then begin
   exit;
  end;
+ SetLength(result,j);
  j:=0;
  i:=1;
  while i<=length(s) do begin

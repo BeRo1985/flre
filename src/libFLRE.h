@@ -1,3 +1,33 @@
+/*******************************************************************************
+                                 L I C E N S E
+********************************************************************************
+
+FLRE - Fast Light Regular Expressions - A fast light regular expression library
+Copyright (C) 2015-2022, Benjamin 'BeRo' Rosseaux
+
+The source code of the FLRE engine library and helper tools are
+distributed under the Library GNU Lesser General Public License Version 2.1 
+(see the files COPYING and COPYING.FLRE) with the following modification:
+
+As a special exception, the copyright holders of this library give you
+permission to link this library with independent modules to produce an
+executable, regardless of the license terms of these independent modules,
+and to copy and distribute the resulting executable under terms of your choice,
+provided that you also meet, for each linked independent module, the terms
+and conditions of the license of that module. An independent module is a module
+which is not derived from or based on this library. If you modify this
+library, you may extend this exception to your version of the library, but you
+are not obligated to do so. If you do not wish to do so, delete this exception
+statement from your version.
+
+If you didn't receive a copy of the license, see <http://www.gnu.org/licenses/>
+or contact:
+      Free Software Foundation
+      675 Mass Ave
+      Cambridge, MA  02139
+      USA
+
+*******************************************************************************/
 #ifndef LIBFLRE_H
 #define LIBFLRE_H
 
@@ -20,9 +50,45 @@ extern "C" {
   #include <sys/types.h>
 #endif
 
+#undef FLRE32
+#undef FLRE64
+#if defined(INTPTR_MAX) 
+  #if INTPTR_MAX == INT32_MAX
+    #define FLRE32 
+   #elif INTPTR_MAX == INT64_MAX 
+    #define FLRE64
+  #else
+    #error "32-bit or 64-bit target is needed!"
+  #endif
+#else
+  #if _WIN32 || _WIN64
+    #if _WIN64
+      #define FLRE64
+    #else
+      #define FLRE32
+    #endif
+  #elif defined(__GNUC__)
+    #if __x86_64__ || __ppc64__ || __aarch64__ || __aarch64
+      #define FLRE64
+    #else
+      #define FLRE32
+    #endif
+  #else
+    #error "32-bit or 64-bit target is needed!"
+  #endif
+#endif
+
 typedef char TFLREChar;
 
 typedef TFLREChar* PFLREChar;
+
+#if defined(FLRE32)
+typedef int32_t TFLRESizeInt;
+#elif defined(FLRE64)
+typedef int64_t TFLRESizeInt;
+#endif
+
+typedef TFLRESizeInt* PFLRESizeInt;
 
 typedef const TFLREChar* PFLREConstChar;
 
@@ -52,7 +118,7 @@ static const uint32_t FLRE_carfDELIMITERS = 1u << 11;
  
 typedef FLRE_CALLCONV uint32_t (*_FLREGetVersion)();
 typedef FLRE_CALLCONV PFLREChar (*_FLREGetVersionString)();
-typedef FLRE_CALLCONV TFLREInstance (*_FLRECreate)(PFLREConstChar RegularExpression, int32_t RegularExpressionLength, uint32_t Flags, PFLREChar* Error);
+typedef FLRE_CALLCONV TFLREInstance (*_FLRECreate)(PFLREConstChar RegularExpression, TFLRESizeInt RegularExpressionLength, uint32_t Flags, PFLREChar* Error);
 typedef FLRE_CALLCONV TFLREInstance (*_FLREDestroy)(TFLREInstance Instance);
 typedef FLRE_CALLCONV void (*_FLREFree)(void* Data);
 typedef FLRE_CALLCONV int32_t (*_FLREGetCountCaptures)(TFLREInstance Instance);
@@ -62,11 +128,11 @@ typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterExpression)(TFLREInstance Insta
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterShortExpression)(TFLREInstance Instance, PFLREChar* ShortExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterSQLBooleanFullTextExpression)(TFLREInstance Instance, PFLREChar* SQLBooleanFullTextExpression, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREGetPrefilterSQLExpression)(TFLREInstance Instance, PFLREConstChar field, PFLREChar* SQLExpression, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREGetRange)(TFLREInstance Instance, PFLREChar* LowRange, PFLREChar* HighRange, int32_t* LowRangeLength, int32_t* HighRangeLength, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREMatch)(TFLREInstance Instance, const void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREMatchNext)(TFLREInstance Instance, const void* Input, int32_t InputLength, void** Captures, int32_t MaxCaptures, int32_t* CountCaptures, int32_t StartPosition, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREMatchAll)(TFLREInstance Instance, const void* Input, int32_t InputLength, void** MultiCaptures, int32_t MaxMultiCaptures, int32_t* CountMultiCaptures, int32_t* CountCaptures, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
-typedef FLRE_CALLCONV int32_t (*_FLREReplaceAll)(TFLREInstance Instance, const void* Input, int32_t InputLength, const void* Replacement, int32_t ReplacementLength, void** ResultString, int32_t* ResultStringLength, int32_t StartPosition, int32_t Limit, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREGetRange)(TFLREInstance Instance, PFLREChar* LowRange, PFLREChar* HighRange, TFLRESizeInt* LowRangeLength, TFLRESizeInt* HighRangeLength, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREMatch)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, void** Captures, TFLRESizeInt MaxCaptures, TFLRESizeInt* CountCaptures, TFLRESizeInt StartPosition, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREMatchNext)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, void** Captures, TFLRESizeInt MaxCaptures, TFLRESizeInt* CountCaptures, TFLRESizeInt StartPosition, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREMatchAll)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, void** MultiCaptures, TFLRESizeInt MaxMultiCaptures, TFLRESizeInt* CountMultiCaptures, TFLRESizeInt* CountCaptures, TFLRESizeInt StartPosition, TFLRESizeInt Limit, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREReplaceAll)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, const void* Replacement, TFLRESizeInt ReplacementLength, void** ResultString, TFLRESizeInt* ResultStringLength, TFLRESizeInt StartPosition, TFLRESizeInt Limit, PFLREChar* Error);
 
 extern _FLREGetVersion FLREGetVersion;
 extern _FLREGetVersionString FLREGetVersionString;
@@ -259,8 +325,8 @@ public:
   };
 
   typedef struct TCapture {
-    int32_t start;
-    int32_t length;
+    TFLRESizeInt start;
+    TFLRESizeInt length;
   } TCapture;
 
   typedef TCapture* PCapture;
@@ -291,13 +357,13 @@ public:
 
   bool getRange(std::string &lowRange, std::string &highRange);
 
-  bool match(const std::string& input, TCaptures& captures, const int32_t startPosition = 0/*, const int32_t maxCaptures = -1*/);
+  bool match(const std::string& input, TCaptures& captures, const TFLRESizeInt startPosition = 0/*, const TFLRESizeInt maxCaptures = -1*/);
 
-  bool matchNext(const std::string& input, TCaptures& captures, const int32_t startPosition = 0/*, const int32_t maxCaptures = -1*/);
+  bool matchNext(const std::string& input, TCaptures& captures, const TFLRESizeInt startPosition = 0/*, const TFLRESizeInt maxCaptures = -1*/);
 
-  bool matchAll(const std::string& input, TMultiCaptures& multiCaptures, const int32_t startPosition = 0, const int32_t limit = -1, const int32_t maxMultiCaptures = -1);
+  bool matchAll(const std::string& input, TMultiCaptures& multiCaptures, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1/*, const TFLRESizeInt maxMultiCaptures = -1*/);
 
-  bool replaceAll(const std::string& input, const std::string& replacement, std::string& result, const int32_t startPosition = 0, const int32_t limit = -1);
+  bool replaceAll(const std::string& input, const std::string& replacement, std::string& result, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1);
 
 };
 
@@ -409,8 +475,8 @@ bool TFLRE::getRange(std::string &lowRange, std::string &highRange){
   AutoDeleteFLRECharString lowRange_(NULL);
   AutoDeleteFLRECharString highRange_(NULL);
   AutoDeleteFLRECharString error(NULL);
-  int32_t lowRangeLength = 0;
-  int32_t highRangeLength = 0;
+  TFLRESizeInt lowRangeLength = 0;
+  TFLRESizeInt highRangeLength = 0;
   if(FLREGetRange(m_instance, &lowRange_.stringPointer, &highRange_.stringPointer, &lowRangeLength, &highRangeLength, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
@@ -426,20 +492,20 @@ bool TFLRE::getRange(std::string &lowRange, std::string &highRange){
   }
 }
 
-bool TFLRE::match(const std::string& input, TCaptures& captures, const int32_t startPosition/*, const int32_t maxCaptures*/){
+bool TFLRE::match(const std::string& input, TCaptures& captures, const TFLRESizeInt startPosition/*, const TFLRESizeInt maxCaptures*/){
   AutoDelete<void*> captures_(NULL);
   AutoDeleteFLRECharString error(NULL);
-  int32_t countCaptures = 0; 
+  TFLRESizeInt countCaptures = 0; 
   if(FLREMatch(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
     }
     if(countCaptures > 0){
       captures.resize(countCaptures);
-      for(int32_t index = 0; index < countCaptures; index++){
+      for(TFLRESizeInt index = 0; index < countCaptures; index++){
         TCapture &capture = captures.at(index);
-        capture.start = ((int32_t*)captures_.pointer)[(index << 1) | 0];
-        capture.length = ((int32_t*)captures_.pointer)[(index << 1) | 1];
+        capture.start = ((TFLRESizeInt*)captures_.pointer)[(index << 1) | 0];
+        capture.length = ((TFLRESizeInt*)captures_.pointer)[(index << 1) | 1];
       }
     }else{
       captures.clear();
@@ -454,20 +520,20 @@ bool TFLRE::match(const std::string& input, TCaptures& captures, const int32_t s
   }
 }
 
-bool TFLRE::matchNext(const std::string& input, TCaptures& captures, const int32_t startPosition/*, const int32_t maxCaptures*/){
+bool TFLRE::matchNext(const std::string& input, TCaptures& captures, const TFLRESizeInt startPosition/*, const TFLRESizeInt maxCaptures*/){
   AutoDelete<void*> captures_(NULL);
   AutoDeleteFLRECharString error(NULL);
-  int32_t countCaptures = 0;
+  TFLRESizeInt countCaptures = 0;
   if(FLREMatchNext(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
     }
     if(countCaptures > 0){
       captures.resize(countCaptures);
-      for(int32_t index = 0; index < countCaptures; index++){
+      for(TFLRESizeInt index = 0; index < countCaptures; index++){
         TCapture &capture = captures.at(index);
-        capture.start = ((int32_t*)captures_.pointer)[(index << 1) | 0];
-        capture.length = ((int32_t*)captures_.pointer)[(index << 1) | 1];
+        capture.start = ((TFLRESizeInt*)captures_.pointer)[(index << 1) | 0];
+        capture.length = ((TFLRESizeInt*)captures_.pointer)[(index << 1) | 1];
       }
     }else{
       captures.clear();
@@ -482,25 +548,25 @@ bool TFLRE::matchNext(const std::string& input, TCaptures& captures, const int32
   }
 }
 
-bool TFLRE::matchAll(const std::string& input, TMultiCaptures& multiCaptures, const int32_t startPosition, const int32_t limit, const int32_t maxMultiCaptures){
+bool TFLRE::matchAll(const std::string& input, TMultiCaptures& multiCaptures, const TFLRESizeInt startPosition, const TFLRESizeInt limit/*, const TFLRESizeInt maxMultiCaptures*/){
   AutoDelete<void*> multiCaptures_(NULL);
   AutoDeleteFLRECharString error(NULL);
-  int32_t countMultiCaptures = 0;
-  int32_t countCaptures = 0;
+  TFLRESizeInt countMultiCaptures = 0;
+  TFLRESizeInt countCaptures = 0;
   if(FLREMatchAll(m_instance, input.c_str(), input.size(), (void**)&multiCaptures_.pointer, /*maxMultiCaptures*/-1, &countMultiCaptures, &countCaptures, startPosition, limit, &error.stringPointer)){
     if(error.stringPointer){
       throw new std::runtime_error(error.getString());    
     }
     if((countMultiCaptures > 0) && (countCaptures > 0)){
       multiCaptures.resize(countMultiCaptures);
-      for(int32_t index = 0; index < countMultiCaptures; index++){
+      for(TFLRESizeInt index = 0; index < countMultiCaptures; index++){
         TCaptures &captures = multiCaptures.at(index);
         captures.resize(countCaptures);
-        for(int32_t otherIndex = 0; otherIndex < countCaptures; otherIndex++){
+        for(TFLRESizeInt otherIndex = 0; otherIndex < countCaptures; otherIndex++){
           TCapture &capture = captures.at(otherIndex);
           int32_t endIndex = (index * countCaptures) + otherIndex;
-          capture.start = ((int32_t*)multiCaptures_.pointer)[(endIndex << 1) | 0];
-          capture.length = ((int32_t*)multiCaptures_.pointer)[(endIndex << 1) | 1];
+          capture.start = ((TFLRESizeInt*)multiCaptures_.pointer)[(endIndex << 1) | 0];
+          capture.length = ((TFLRESizeInt*)multiCaptures_.pointer)[(endIndex << 1) | 1];
         }
       }
     }else{
@@ -516,10 +582,10 @@ bool TFLRE::matchAll(const std::string& input, TMultiCaptures& multiCaptures, co
   }
 }
 
-bool TFLRE::replaceAll(const std::string& input, const std::string& replacement, std::string& result, const int32_t startPosition, const int32_t limit){
+bool TFLRE::replaceAll(const std::string& input, const std::string& replacement, std::string& result, const TFLRESizeInt startPosition, const TFLRESizeInt limit){
   AutoDeleteFLRECharString result_(NULL);
   AutoDeleteFLRECharString error(NULL);
-  int32_t resultLength = 0;
+  TFLRESizeInt resultLength = 0;
   if(FLREReplaceAll(m_instance, input.c_str(), input.size(), replacement.c_str(), replacement.size(), (void**)&result_.stringPointer, &resultLength, startPosition, limit, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
