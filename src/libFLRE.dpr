@@ -20,6 +20,7 @@ exports FLREGetVersion name 'FLREGetVersion',
         FLREGetVersionString name 'FLREGetVersionString',
         FLRECreate name 'FLRECreate',
         FLREDestroy name 'FLREDestroy',
+        FLREAlloc name 'FLREAlloc',
         FLREFree name 'FLREFree',
         FLREGetCountCaptures name 'FLREGetCountCaptures',
         FLREGetNamedGroupIndex name 'FLREGetNamedGroupIndex',
@@ -31,7 +32,12 @@ exports FLREGetVersion name 'FLREGetVersion',
         FLREMatch name 'FLREMatch',
         FLREMatchNext name 'FLREMatchNext',
         FLREMatchAll name 'FLREMatchAll',
-        FLREReplaceAll name 'FLREReplaceAll';
+        FLREReplaceAll name 'FLREReplaceAll',
+        FLREReplaceCallback name 'FLREReplaceCallback',
+        FLRESplit name 'FLRESplit',
+        FLRETest name 'FLRETest',
+        FLRETestAll name 'FLRETestAll',
+        FLREFind name 'FLREFind';
 
 begin
  InitializeFLRE;

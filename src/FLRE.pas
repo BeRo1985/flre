@@ -310,9 +310,9 @@ interface
 
 uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$endif}SysUtils,Classes,PUCU;
 
-const FLREVersion=$00000005;
+const FLREVersion=$00000006;
 
-      FLREVersionString='1.00.2022.11.22.17.48.0000';
+      FLREVersionString='1.00.2022.11.22.23.18.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -446,7 +446,11 @@ type EFLRE=class(Exception);
 
      TFLRECharClassChars=array of TFLRERawByteChar;
 
-     TFLREReplacementCallback=function(const Input:PFLRERawByteChar;const Captures:TFLRECaptures):TFLRERawByteString of object;
+     TFLREReplacementCallback=function(const Data:pointer;const Input:PFLRERawByteChar;const InputLength:TFLRESizeInt;const Captures:TFLRECaptures):TFLRERawByteString;
+
+     TFLREReplacementObjectCallback=function(const Input:PFLRERawByteChar;const InputLength:TFLRESizeInt;const Captures:TFLRECaptures):TFLRERawByteString of object;
+
+     TFLREReplacementExternalCallback=function(const Data:pointer;const Input:PFLRERawByteChar;const InputLength:TFLRESizeInt;const Captures:Pointer;const CountCaptures:TFLRESizeInt;const Replacement:PPAnsiChar;const ReplacementLength:PFLRESizeInt):TFLREInt32; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 
      PPFLRENode=^PFLRENode;
      PFLRENode=^TFLRENode;
@@ -1208,7 +1212,8 @@ type EFLRE=class(Exception);
        function PtrMatchAll(const Input:pointer;const InputLength:TFLRESizeInt;var MultiCaptures:TFLREMultiCaptures;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1):boolean;
        function PtrExtractAll(const Input:pointer;const InputLength:TFLRESizeInt;var MultiExtractions:TFLREMultiStrings;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1):boolean;
        function PtrReplace(const Input:pointer;const InputLength:TFLRESizeInt;const Replacement:pointer;const ReplacementLength:TFLRESizeInt;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1):TFLRERawByteString;
-       function PtrReplaceCallback(const Input:pointer;const InputLength:TFLRESizeInt;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1):TFLRERawByteString;
+       function PtrReplaceCallback(const Input:pointer;const InputLength:TFLRESizeInt;const ReplacementCallbackData:pointer;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1):TFLRERawByteString; overload;
+       function PtrReplaceCallback(const Input:pointer;const InputLength:TFLRESizeInt;const ReplacementCallback:TFLREReplacementObjectCallback;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1):TFLRERawByteString; overload;
        function PtrSplit(const Input:pointer;const InputLength:TFLRESizeInt;var SplittedStrings:TFLREStrings;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1;const WithEmpty:boolean=true):boolean;
        function PtrTest(const Input:pointer;const InputLength:TFLRESizeInt;const StartPosition:TFLRESizeInt=0):boolean;
        function PtrTestAll(const Input:pointer;const InputLength:TFLRESizeInt;const StartPosition:TFLRESizeInt=0):boolean;
@@ -1219,7 +1224,8 @@ type EFLRE=class(Exception);
        function MatchAll(const Input:TFLRERawByteString;var MultiCaptures:TFLREMultiCaptures;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):boolean;
        function ExtractAll(const Input:TFLRERawByteString;var MultiExtractions:TFLREMultiStrings;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):boolean;
        function Replace(const Input,Replacement:TFLRERawByteString;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString;
-       function ReplaceCallback(const Input:TFLRERawByteString;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString;
+       function ReplaceCallback(const Input:TFLRERawByteString;const ReplacementCallbackData:pointer;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString; overload;
+       function ReplaceCallback(const Input:TFLRERawByteString;const ReplacementCallback:TFLREReplacementObjectCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString; overload;
        function Split(const Input:TFLRERawByteString;var SplittedStrings:TFLREStrings;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1;const WithEmpty:boolean=true):boolean;
        function Test(const Input:TFLRERawByteString;const StartPosition:TFLRESizeInt=1):boolean;
        function TestAll(const Input:TFLRERawByteString;const StartPosition:TFLRESizeInt=1):boolean;
@@ -1230,7 +1236,8 @@ type EFLRE=class(Exception);
        function UTF8MatchAll(const Input:TFLREUTF8String;var MultiCaptures:TFLREMultiCaptures;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):boolean;
        function UTF8ExtractAll(const Input:TFLREUTF8String;var MultiExtractions:TFLREMultiStrings;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):boolean;
        function UTF8Replace(const Input,Replacement:TFLREUTF8String;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLREUTF8String;
-       function UTF8ReplaceCallback(const Input:TFLREUTF8String;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString;
+       function UTF8ReplaceCallback(const Input:TFLREUTF8String;const ReplacementCallbackData:pointer;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString; overload;
+       function UTF8ReplaceCallback(const Input:TFLREUTF8String;const ReplacementCallback:TFLREReplacementObjectCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString; overload;
        function UTF8Split(const Input:TFLREUTF8String;var SplittedStrings:TFLREStrings;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1;const WithEmpty:boolean=true):boolean;
        function UTF8Test(const Input:TFLREUTF8String;const StartPosition:TFLRESizeInt=1):boolean;
        function UTF8TestAll(const Input:TFLREUTF8String;const StartPosition:TFLRESizeInt=1):boolean;
@@ -1312,6 +1319,7 @@ function FLREGetVersion:TFLREUInt32; {$ifdef win32}{$ifdef cpu386}stdcall;{$endi
 function FLREGetVersionString:PFLRERawByteChar; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLRECreate(const RegularExpression:PFLRERawByteChar;const RegularExpressionLength:TFLRESizeInt;const Flags:TFLREUInt32;const Error:PPAnsiChar):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 procedure FLREDestroy(const Instance:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+function FLREAlloc(const Size:TFLRESizeInt):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 procedure FLREFree(const Data:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetCountCaptures(const Instance:pointer):TFLREInt32; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 function FLREGetNamedGroupIndex(const Instance:pointer;const GroupName:PFLRERawByteChar):TFLREInt32; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
@@ -1325,6 +1333,11 @@ function FLREMatch(const Instance:pointer;const Input:pointer;const InputLength:
 function FLREMatchNext(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const Captures:PPointer;const MaxCaptures:TFLRESizeInt;const CountCaptures:PFLRESizeInt;const StartPosition:TFLRESizeInt;const Error:PPAnsiChar):TFLREInt32;
 function FLREMatchAll(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const MultiCaptures:PPointer;const MaxMultiCaptures:TFLRESizeInt;const CountMultiCaptures,CountCaptures:PFLRESizeInt;const StartPosition,Limit:TFLRESizeInt;const Error:PPAnsiChar):TFLREInt32;
 function FLREReplaceAll(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const Replacement:pointer;const ReplacementLength:TFLRESizeInt;const ResultString:PPointer;const ResultStringLength:PFLREInt32;const StartPosition,Limit:TFLRESizeInt;const Error:PPAnsiChar):TFLREInt32;
+function FLREReplaceCallback(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const ReplacementCallbackData:pointer;const ReplacementCallback:TFLREReplacementExternalCallback;const ResultString:PPointer;const ResultStringLength:PFLREInt32;const StartPosition,Limit:TFLRESizeInt;const Error:PPAnsiChar):TFLREInt32;
+function FLRESplit(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;SplittedStrings:PPointer;const CountSplittedStrings:PFLRESizeInt;const StartPosition:TFLRESizeInt;const Limit:TFLRESizeInt;const WithEmpty:TFLREInt32;const Error:PPAnsiChar):TFLREInt32;
+function FLRETest(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const StartPosition:TFLRESizeInt;const Error:PPAnsiChar):TFLREInt32;
+function FLRETestAll(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const StartPosition:TFLRESizeInt;const Error:PPAnsiChar):TFLREInt32;
+function FLREFind(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const StartPosition:TFLRESizeInt;const Error:PPAnsiChar):TFLRESizeInt;
 
 procedure InitializeFLRE;
 
@@ -21045,7 +21058,7 @@ begin
  end;
 end;
 
-function TFLRE.PtrReplaceCallback(const Input:pointer;const InputLength:TFLRESizeInt;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1):TFLRERawByteString;
+function TFLRE.PtrReplaceCallback(const Input:pointer;const InputLength:TFLRESizeInt;const ReplacementCallbackData:pointer;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1):TFLRERawByteString;
 var CurrentPosition,Next,LastPosition:TFLRESizeInt;
     Captures:TFLRECaptures;
     ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
@@ -21078,7 +21091,63 @@ begin
       if LastPosition<Captures[0].Start then begin
        result:=result+FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,Captures[0].Start-LastPosition);
       end;
-      result:=result+ReplacementCallback(PFLRERawByteChar(Input),Captures);
+      result:=result+ReplacementCallback(ReplacementCallbackData,PFLRERawByteChar(Input),InputLength,Captures);
+      CurrentPosition:=Captures[0].Start+Captures[0].Length;
+      if CurrentPosition<Next then begin
+       CurrentPosition:=Next;
+      end;
+      LastPosition:=CurrentPosition;
+     end;
+     if Limit>0 then begin
+      dec(Limit);
+     end;
+    end;
+    if LastPosition<InputLength then begin
+     result:=result+FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,InputLength-LastPosition);
+    end;
+   finally
+    ReleaseThreadLocalStorageInstance(ThreadLocalStorageInstance);
+   end;
+  end;
+ finally
+  SetLength(Captures,0);
+ end;
+end;
+
+function TFLRE.PtrReplaceCallback(const Input:pointer;const InputLength:TFLRESizeInt;const ReplacementCallback:TFLREReplacementObjectCallback;const StartPosition:TFLRESizeInt=0;Limit:TFLRESizeInt=-1):TFLRERawByteString;
+var CurrentPosition,Next,LastPosition:TFLRESizeInt;
+    Captures:TFLRECaptures;
+    ThreadLocalStorageInstance:TFLREThreadLocalStorageInstance;
+begin
+ result:='';
+ if rfMULTIMATCH in Flags then begin
+  raise EFLRE.Create('ReplaceCallback unsupported in multi match mode');
+ end;
+ if not assigned(ReplacementCallback) then begin
+  raise EFLRE.Create('ReplaceCallback does need a replacement callback');
+ end;
+ Captures:=nil;
+ try
+  CurrentPosition:=StartPosition;
+  LastPosition:=CurrentPosition;
+  if CurrentPosition>=0 then begin
+   ThreadLocalStorageInstance:=AcquireThreadLocalStorageInstance;
+   try
+    ThreadLocalStorageInstance.Input:=Input;
+    ThreadLocalStorageInstance.InputLength:=InputLength;
+    SetLength(Captures,CountCaptures);
+    while (CurrentPosition<InputLength) and (Limit<>0) and SearchMatch(ThreadLocalStorageInstance,Captures,CurrentPosition,InputLength,fifHaveUnanchoredStart in InternalFlags) do begin
+     Next:=CurrentPosition+1;
+     if (Captures[0].Start+Captures[0].Length)=LastPosition then begin
+      CurrentPosition:=Captures[0].Start+Captures[0].Length;
+      if CurrentPosition<Next then begin
+       CurrentPosition:=Next;
+      end;
+     end else begin
+      if LastPosition<Captures[0].Start then begin
+       result:=result+FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,Captures[0].Start-LastPosition);
+      end;
+      result:=result+ReplacementCallback(PFLRERawByteChar(Input),InputLength,Captures);
       CurrentPosition:=Captures[0].Start+Captures[0].Length;
       if CurrentPosition<Next then begin
        CurrentPosition:=Next;
@@ -21386,7 +21455,12 @@ begin
  result:=PtrReplace(PFLRERawByteChar(@Input[1]),length(Input),PFLRERawByteChar(@Replacement[1]),length(Replacement),StartPosition-1,Limit);
 end;
 
-function TFLRE.ReplaceCallback(const Input:TFLRERawByteString;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString;
+function TFLRE.ReplaceCallback(const Input:TFLRERawByteString;const ReplacementCallbackData:pointer;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString;
+begin
+ result:=PtrReplaceCallback(PFLRERawByteChar(@Input[1]),length(Input),ReplacementCallbackData,ReplacementCallback,StartPosition-1,Limit);
+end;
+
+function TFLRE.ReplaceCallback(const Input:TFLRERawByteString;const ReplacementCallback:TFLREReplacementObjectCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString;
 begin
  result:=PtrReplaceCallback(PFLRERawByteChar(@Input[1]),length(Input),ReplacementCallback,StartPosition-1,Limit);
 end;
@@ -21459,7 +21533,12 @@ begin
  result:=PtrReplace(PFLRERawByteChar(@Input[1]),length(Input),PFLRERawByteChar(@Replacement[1]),length(Replacement),StartPosition-1,Limit);
 end;
 
-function TFLRE.UTF8ReplaceCallback(const Input:TFLREUTF8String;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString;
+function TFLRE.UTF8ReplaceCallback(const Input:TFLREUTF8String;const ReplacementCallbackData:pointer;const ReplacementCallback:TFLREReplacementCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString;
+begin
+ result:=PtrReplaceCallback(PFLRERawByteChar(@Input[1]),length(Input),ReplacementCallbackData,ReplacementCallback,StartPosition-1,Limit);
+end;
+
+function TFLRE.UTF8ReplaceCallback(const Input:TFLREUTF8String;const ReplacementCallback:TFLREReplacementObjectCallback;const StartPosition:TFLRESizeInt=1;Limit:TFLRESizeInt=-1):TFLRERawByteString;
 begin
  result:=PtrReplaceCallback(PFLRERawByteChar(@Input[1]),length(Input),ReplacementCallback,StartPosition-1,Limit);
 end;
@@ -22156,6 +22235,11 @@ begin
  TFLRE(Instance).Free;
 end;
 
+function FLREAlloc(const Size:TFLRESizeInt):pointer; {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
+begin
+ GetMem(result,Size);
+end;
+
 procedure FLREFree(const Data:pointer); {$ifdef win32}{$ifdef cpu386}stdcall;{$endif}{$endif}
 begin
  FreeMem(Data);
@@ -22742,6 +22826,292 @@ begin
      s:='';
     end;
     result:=0;
+   end;
+  end;
+ end;
+end;
+
+type TFLREReplaceCallbackData=record
+      Input:pointer;
+      InputLength:TFLRESizeInt;
+      CallbackData:pointer;
+      Callback:TFLREReplacementExternalCallback;
+     end;
+     PFLREReplaceCallbackData=^TFLREReplaceCallbackData;
+
+function FLREReplaceCallbackHandler(const Data:pointer;const Input:PFLRERawByteChar;const InputLength:TFLRESizeInt;const Captures:TFLRECaptures):TFLRERawByteString;
+type TTFLRESizeInts=array[0..65535] of TFLRESizeInt;
+     PFLRESizeInts=^TTFLRESizeInts;
+var CallbackData:PFLREReplaceCallbackData;
+    Replacement:PAnsiChar;
+    ReplacementLength,Index:TFLRESizeInt;
+    TemporaryCaptures:Pointer;
+begin
+ result:='';
+ CallbackData:=Data;
+ if (length(Captures)>0) and assigned(CallbackData) and assigned(CallbackData^.Callback) then begin
+  TemporaryCaptures:=nil;
+  try
+   Replacement:=nil;
+   ReplacementLength:=0;
+   try
+    GetMem(TemporaryCaptures,length(Captures)*(sizeof(TFLRESizeInt)*2));
+    for Index:=0 to length(Captures)-1 do begin
+     PFLRESizeInts(TemporaryCaptures)^[(Index shl 1) or 0]:=Captures[Index].Start;
+     PFLRESizeInts(TemporaryCaptures)^[(Index shl 1) or 1]:=Captures[Index].Length;
+    end;
+    if CallbackData^.Callback(CallbackData^.CallbackData,
+                              CallbackData^.Input,
+                              CallbackData^.InputLength,
+                              TemporaryCaptures,
+                              length(Captures),
+                              @Replacement,
+                              @ReplacementLength)>0 then begin
+     SetLength(result,ReplacementLength);
+     if ReplacementLength>0 then begin
+      Move(Replacement^,result[1],ReplacementLength);
+     end;
+    end;
+   finally
+    if assigned(Replacement) then begin
+     FreeMem(Replacement);
+     Replacement:=nil;
+    end;
+   end;
+  finally
+   if assigned(TemporaryCaptures) then begin
+    FreeMem(TemporaryCaptures);
+    TemporaryCaptures:=nil;
+   end;
+  end;
+ end;
+end;
+
+function FLREReplaceCallback(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const ReplacementCallbackData:pointer;const ReplacementCallback:TFLREReplacementExternalCallback;const ResultString:PPointer;const ResultStringLength:PFLREInt32;const StartPosition,Limit:TFLRESizeInt;const Error:PPAnsiChar):TFLREInt32;
+var s:TFLRERawByteString;
+    Len:TFLRESizeInt;
+    CallbackData:TFLREReplaceCallbackData;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(ResultString) and assigned(ResultString^) then begin
+  FreeMem(ResultString^);
+  ResultString^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if assigned(ResultString) then begin
+    CallbackData.Input:=Input;
+    CallbackData.InputLength:=InputLength;
+    CallbackData.CallbackData:=ReplacementCallbackData;
+    CallbackData.Callback:=ReplacementCallback;
+    s:='';
+    try
+     s:=TFLRE(Instance).PtrReplaceCallback(Input,InputLength,@CallbackData,FLREReplaceCallbackHandler,StartPosition,Limit);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(ResultString^,(Len+1)*SizeOf(TFLRERawByteChar));
+      Move(s[1],PFLRERawByteChar(ResultString^)[0],Len);
+      PFLRERawByteChar(ResultString^)[Len]:=#0;
+     end else begin
+      ResultString^:=nil;
+     end;
+     if assigned(ResultStringLength) then begin
+      ResultStringLength^:=Len;
+     end;
+     result:=1;
+    finally
+     s:='';
+    end;
+   end;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=TFLRERawByteString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(TFLRERawByteChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLRESplit(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;SplittedStrings:PPointer;const CountSplittedStrings:PFLRESizeInt;const StartPosition:TFLRESizeInt;const Limit:TFLRESizeInt;const WithEmpty:TFLREInt32;const Error:PPAnsiChar):TFLREInt32;
+var s:TFLRERawByteString;
+    Len,Index:TFLRESizeInt;
+    TemporarySplittedStrings:TFLREStrings;
+    p:PFLREUInt8;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(SplittedStrings) and assigned(SplittedStrings^) then begin
+  FreeMem(SplittedStrings^);
+  SplittedStrings^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   TemporarySplittedStrings:=nil;
+   try
+    if TFLRE(Instance).PtrSplit(Input,InputLength,TemporarySplittedStrings,StartPosition,LImit,WithEmpty<>0) then begin
+     CountSplittedStrings^:=length(TemporarySplittedStrings);
+     if length(TemporarySplittedStrings)>0 then begin
+      Len:=0;
+      for Index:=0 to length(TemporarySplittedStrings)-1 do begin
+       inc(Len,SizeOf(TFLRESizeInt)+((length(TemporarySplittedStrings[Index])+1)*SizeOf(TFLRERawByteChar)));
+      end;
+      GetMem(SplittedStrings^,Len);
+      p:=SplittedStrings^;
+      for Index:=0 to length(TemporarySplittedStrings)-1 do begin
+       TFLRESizeInt(pointer(p)^):=length(TemporarySplittedStrings[Index]);
+       inc(p,SizeOf(TFLRESizeInt));
+       if length(TemporarySplittedStrings[Index])>0 then begin
+        Move(TemporarySplittedStrings[Index][1],p^,length(TemporarySplittedStrings[Index])*SizeOf(TFLRERawByteChar));
+        inc(p,length(TemporarySplittedStrings[Index])*SizeOf(TFLRERawByteChar));
+       end;
+       TFLRERawByteChar(pointer(p)^):=#0;
+       inc(p,SizeOf(TFLRERawByteChar));
+      end;
+     end;
+     result:=1;
+    end else begin
+     result:=0;
+    end;
+   finally
+    TemporarySplittedStrings:=nil;
+   end;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=TFLRERawByteString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(TFLRERawByteChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLRETest(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const StartPosition:TFLRESizeInt;const Error:PPAnsiChar):TFLREInt32;
+var s:TFLRERawByteString;
+    Len:TFLRESizeInt;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if TFLRE(Instance).PtrTest(Input,InputLength,StartPosition) then begin
+    result:=1;
+   end else begin
+    result:=0;
+   end;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=TFLRERawByteString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(TFLRERawByteChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLRETestAll(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const StartPosition:TFLRESizeInt;const Error:PPAnsiChar):TFLREInt32;
+var s:TFLRERawByteString;
+    Len:TFLRESizeInt;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   if TFLRE(Instance).PtrTestAll(Input,InputLength,StartPosition) then begin
+    result:=1;
+   end else begin
+    result:=0;
+   end;
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=TFLRERawByteString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(TFLRERawByteChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=0;
+   end;
+  end;
+ end;
+end;
+
+function FLREFind(const Instance:pointer;const Input:pointer;const InputLength:TFLRESizeInt;const StartPosition:TFLRESizeInt;const Error:PPAnsiChar):TFLRESizeInt;
+var s:TFLRERawByteString;
+    Len:TFLRESizeInt;
+begin
+ result:=0;
+ if assigned(Error) and assigned(Error^) then begin
+  FreeMem(Error^);
+  Error^:=nil;
+ end;
+ if assigned(Instance) then begin
+  try
+   result:=TFLRE(Instance).PtrFind(Input,InputLength,StartPosition);
+  except
+   on e:Exception do begin
+    if assigned(Error) then begin
+     s:=TFLRERawByteString(e.Message);
+     Len:=length(s);
+     if Len>0 then begin
+      GetMem(Error^,(Len+1)*SizeOf(TFLRERawByteChar));
+      Move(s[1],Error^[0],Len);
+      Error^[Len]:=#0;
+     end else begin
+      Error^:=nil;
+     end;
+     s:='';
+    end;
+    result:=-1;
    end;
   end;
  end;
