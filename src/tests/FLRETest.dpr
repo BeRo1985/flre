@@ -42,6 +42,7 @@ begin
 //test;
  ExecuteSearchTests;
  ExecuteReplaceTests;
+//readln;
 {$ifndef fpc}
  if DebugHook<>0 then begin
   readln;

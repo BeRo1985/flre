@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000005;
 
-      FLREVersionString='1.00.2022.11.22.17.05.0000';
+      FLREVersionString='1.00.2022.11.22.17.30.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -14179,13 +14179,25 @@ begin
 end;
 
 function TFLRE.Concat(NodeLeft,NodeRight:PFLRENode):PFLRENode;
+ function ConcatEqualPlus(const NodeLeftMightBecomeCat,PlusNodeRight:PFLRENode):PFLRENode;
+ begin
+  if (NodeLeftMightBecomeCat^.NodeType=ntPLUS) and
+     assigned(NodeLeftMightBecomeCat^.Right) and
+     (PlusNodeRight^.NodeType=ntPLUS) then begin
+   NodeLeftMightBecomeCat^.NodeType:=ntCAT;
+   NodeLeftMightBecomeCat^.Right:=PlusNodeRight;
+   result:=NodeLeftMightBecomeCat;
+  end else begin
+   result:=PlusNodeRight;
+  end;
+ end;
 begin
  if assigned(NodeLeft) and assigned(NodeRight) then begin
   if (NodeLeft^.NodeType=ntZEROWIDTH) and (NodeRight^.NodeType=ntZEROWIDTH) then begin
    NodeLeft^.Value:=NodeLeft^.Value or NodeRight^.Value;
    result:=NodeLeft;
   end else if ((NodeLeft^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (NodeRight^.NodeType=ntPLUS)) and AreNodesEqualSafe(NodeLeft^.Left,NodeRight^.Left) and (NodeLeft^.Value=0) and (NodeRight^.Value=0) then begin
-   result:=NodeRight;
+   result:=ConcatEqualPlus(NodeLeft,NodeRight);
   end else if ((NodeLeft^.NodeType in [ntSTAR,ntPLUS]) and (NodeRight^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(NodeLeft^.Left,NodeRight^.Left) and (NodeLeft^.Value=0) and (NodeRight^.Value=0) then begin
    result:=NodeLeft;
   end else if (NodeLeft^.NodeType=ntCAT) and assigned(NodeLeft^.Left) and assigned(NodeLeft^.Right) then begin
@@ -14193,7 +14205,7 @@ begin
     NodeLeft^.Right^.Value:=NodeLeft^.Right^.Value or NodeRight^.Value;
     result:=NodeLeft;
    end else if ((NodeLeft^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (NodeRight^.NodeType=ntPLUS)) and AreNodesEqualSafe(NodeLeft^.Right^.Left,NodeRight^.Left) and (NodeLeft^.Right^.Value=0) and (NodeRight^.Value=0) then begin
-    NodeLeft^.Right:=NodeRight;
+    NodeLeft^.Right:=ConcatEqualPlus(NodeLeft^.Right,NodeRight);
     result:=NodeLeft;
    end else if ((NodeLeft^.Right^.NodeType in [ntSTAR,ntPLUS]) and (NodeRight^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(NodeLeft^.Right^.Left,NodeRight^.Left) and (NodeLeft^.Right^.Value=0) and (NodeRight^.Value=0) then begin
     result:=NodeLeft;
@@ -14224,7 +14236,7 @@ begin
     continue;
    end else if (result^.Left^.NodeType=ntCAT) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and assigned(result^.Left^.Right) and (result^.Right^.Value=0) then begin
     if ((result^.Left^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Right^.Left,result^.Right^.Left) then begin
-     result^.Left^.Right:=result^.Right;
+     result^.Left^.Right:=ConcatEqualPlus(result^.Left^.Right,result^.Right);
      result:=result^.Left;
      continue;
     end else if ((result^.Left^.Right^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Right^.Left,result^.Right^.Left) then begin
@@ -14233,7 +14245,11 @@ begin
     end;
    end else if (result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntCAT) and assigned(result^.Right^.Left) and (result^.Left^.Value=0) then begin
     if ((result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.Left^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left^.Left) and (result^.Right^.Left^.Value=0) then begin
-     result:=result^.Right;
+     if (result^.Left^.NodeType=ntPLUS) and assigned(result^.Left^.Right) then begin
+      result^.Left:=result^.Left^.Left;
+     end else begin
+      result:=result^.Right;
+     end;
      continue;
     end else if ((result^.Left^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.Left^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left^.Left) and (result^.Right^.Left^.Value=0) then begin
      result^.Right^.Left:=result^.Left;
@@ -14242,7 +14258,11 @@ begin
     end;
    end else if (result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Left^.Value=0) and (result^.Right^.Value=0) then begin
     if ((result^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (result^.Right^.NodeType=ntPLUS)) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left) then begin
-     result:=result^.Right;
+     if (result^.Left^.NodeType=ntPLUS) and assigned(result^.Left^.Right) then begin
+      result^.Left:=result^.Left^.Left;
+     end else begin
+      result:=result^.Right;
+     end;
      continue;
     end else if ((result^.Left^.NodeType in [ntSTAR,ntPLUS]) and (result^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqualSafe(result^.Left^.Left,result^.Right^.Left) then begin
      result:=result^.Left;
@@ -14581,7 +14601,11 @@ begin
           HasOptimizations:=true;
           continue;
          end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (Node^.Right^.NodeType=ntPLUS)) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
-          NodeEx^:=Node^.Right;
+          if Node^.Left^.NodeType=ntPLUS then begin
+           Node^.Left:=Node^.Left^.Left;
+          end else begin
+           NodeEx^:=Node^.Right;
+          end;
           HasOptimizations:=true;
           continue;
          end else if ((Node^.Left^.NodeType in [ntSTAR,ntPLUS]) and (Node^.Right^.NodeType in [ntSTAR,ntQUEST])) and AreNodesEqual(Node^.Left^.Left,Node^.Right^.Left) then begin
@@ -14609,9 +14633,13 @@ begin
               DoContinue:=true;
               Optimized:=true;
              end else if ((l^.NodeType in [ntSTAR,ntPLUS,ntQUEST]) and (r^.NodeType=ntPLUS)) and AreNodesEqualSafe(l^.Left,r^.Left) then begin
-              NodeList.Delete(NodeIndex);
-              if NodeIndex>=NodeList.Count then begin
-               NodeIndex:=NodeList.Count-1;
+              if l^.NodeType=ntPLUS then begin
+               NodeList[NodeIndex]:=l^.Left;
+              end else begin
+               NodeList.Delete(NodeIndex);
+               if NodeIndex>=NodeList.Count then begin
+                NodeIndex:=NodeList.Count-1;
+               end;
               end;
               DoContinue:=true;
               Optimized:=true;
