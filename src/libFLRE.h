@@ -404,11 +404,11 @@ public:
 
   bool split(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1, const bool WithEmpty = true);
 
-  bool test(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0);
+  bool test(const std::string& input, const TFLRESizeInt startPosition = 0);
 
-  bool testAll(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0);
+  bool testAll(const std::string& input, const TFLRESizeInt startPosition = 0);
 
-  TFLRESizeInt find(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0);
+  TFLRESizeInt find(const std::string& input, const TFLRESizeInt startPosition = 0);
 
 };
 
@@ -740,7 +740,7 @@ bool TFLRE::split(const std::string& input, std::vector<std::string>& splittedSt
   }
 }
 
-bool TFLRE::test(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition){
+bool TFLRE::test(const std::string& input, const TFLRESizeInt startPosition){
   AutoDeleteFLRECharString error(NULL);
   if(FLRETest(m_instance, input.c_str(), input.size(), startPosition, &error.stringPointer)){
     if(error.stringPointer){
@@ -755,7 +755,7 @@ bool TFLRE::test(const std::string& input, std::vector<std::string>& splittedStr
   }
 }
 
-bool TFLRE::testAll(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition){
+bool TFLRE::testAll(const std::string& input, const TFLRESizeInt startPosition){
   AutoDeleteFLRECharString error(NULL);
   if(FLRETestAll(m_instance, input.c_str(), input.size(), startPosition, &error.stringPointer)){
     if(error.stringPointer){
@@ -770,7 +770,7 @@ bool TFLRE::testAll(const std::string& input, std::vector<std::string>& splitted
   }
 }
 
-TFLRESizeInt TFLRE::find(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition){
+TFLRESizeInt TFLRE::find(const std::string& input, const TFLRESizeInt startPosition){
   AutoDeleteFLRECharString error(NULL);
   TFLRESizeInt result = FLRETest(m_instance, input.c_str(), input.size(), startPosition, &error.stringPointer);
   if(error.stringPointer){
