@@ -116,10 +116,13 @@ static const uint32_t FLRE_carfUTF8 = 1u << 9;
 static const uint32_t FLRE_carfONLYFASTOPTIMIZATIONS = 1u << 10;
 static const uint32_t FLRE_carfDELIMITERS = 1u << 11;
  
+typedef FLRE_CALLCONV int32_t (*TFLREReplaceCallback)(const void* Data, const void* Input, const TFLRESizeInt InputLength, const void* Captures, const TFLRESizeInt CountCaptures, void** ReplacementString, TFLRESizeInt* ReplacementStringLength);
+
 typedef FLRE_CALLCONV uint32_t (*_FLREGetVersion)();
 typedef FLRE_CALLCONV PFLREChar (*_FLREGetVersionString)();
 typedef FLRE_CALLCONV TFLREInstance (*_FLRECreate)(PFLREConstChar RegularExpression, TFLRESizeInt RegularExpressionLength, uint32_t Flags, PFLREChar* Error);
 typedef FLRE_CALLCONV TFLREInstance (*_FLREDestroy)(TFLREInstance Instance);
+typedef FLRE_CALLCONV void* (*_FLREAlloc)(const TFLRESizeInt Size);
 typedef FLRE_CALLCONV void (*_FLREFree)(void* Data);
 typedef FLRE_CALLCONV int32_t (*_FLREGetCountCaptures)(TFLREInstance Instance);
 typedef FLRE_CALLCONV int32_t (*_FLREGetNamedGroupIndex)(TFLREInstance Instance, PFLREConstChar GroupName);
@@ -133,11 +136,17 @@ typedef FLRE_CALLCONV int32_t (*_FLREMatch)(TFLREInstance Instance, const void* 
 typedef FLRE_CALLCONV int32_t (*_FLREMatchNext)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, void** Captures, TFLRESizeInt MaxCaptures, TFLRESizeInt* CountCaptures, TFLRESizeInt StartPosition, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREMatchAll)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, void** MultiCaptures, TFLRESizeInt MaxMultiCaptures, TFLRESizeInt* CountMultiCaptures, TFLRESizeInt* CountCaptures, TFLRESizeInt StartPosition, TFLRESizeInt Limit, PFLREChar* Error);
 typedef FLRE_CALLCONV int32_t (*_FLREReplaceAll)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, const void* Replacement, TFLRESizeInt ReplacementLength, void** ResultString, TFLRESizeInt* ResultStringLength, TFLRESizeInt StartPosition, TFLRESizeInt Limit, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREReplaceCallback)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, const void* CallbackData, const TFLREReplaceCallback Callback, void** ResultString, TFLRESizeInt* ResultStringLength, TFLRESizeInt StartPosition, TFLRESizeInt Limit, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLRESplit)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, void** SplittedStrings, TFLRESizeInt* CountSplittedStrings, TFLRESizeInt StartPosition, TFLRESizeInt Limit, int32_t WithEmpty, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLRETest)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, TFLRESizeInt StartPosition, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLRETestAll)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, TFLRESizeInt StartPosition, PFLREChar* Error);
+typedef FLRE_CALLCONV int32_t (*_FLREFind)(TFLREInstance Instance, const void* Input, TFLRESizeInt InputLength, TFLRESizeInt StartPosition, PFLREChar* Error);
 
 extern _FLREGetVersion FLREGetVersion;
 extern _FLREGetVersionString FLREGetVersionString;
 extern _FLRECreate FLRECreate;
 extern _FLREDestroy FLREDestroy;
+extern _FLREAlloc FLREAlloc;
 extern _FLREFree FLREFree;
 extern _FLREGetCountCaptures FLREGetCountCaptures;
 extern _FLREGetNamedGroupIndex FLREGetNamedGroupIndex;
@@ -151,6 +160,11 @@ extern _FLREMatch FLREMatch;
 extern _FLREMatchNext FLREMatchNext;
 extern _FLREMatchAll FLREMatchAll;
 extern _FLREReplaceAll FLREReplaceAll;
+extern _FLREReplaceCallback FLREReplaceCallback;
+extern _FLRESplit FLRESplit;
+extern _FLRETest FLRETest;
+extern _FLRETestAll FLRETestAll;
+extern _FLREFind FLREFind;
 
 extern int32_t FLRELoaded;
 
@@ -176,6 +190,7 @@ _FLREGetVersion FLREGetVersion = NULL;
 _FLREGetVersionString FLREGetVersionString = NULL;
 _FLRECreate FLRECreate = NULL;
 _FLREDestroy FLREDestroy = NULL;
+_FLREAlloc FLREAlloc = NULL;
 _FLREFree FLREFree = NULL;
 _FLREGetCountCaptures FLREGetCountCaptures = NULL;
 _FLREGetNamedGroupIndex FLREGetNamedGroupIndex = NULL;
@@ -189,6 +204,11 @@ _FLREMatch FLREMatch = NULL;
 _FLREMatchNext FLREMatchNext = NULL;
 _FLREMatchAll FLREMatchAll = NULL;
 _FLREReplaceAll FLREReplaceAll = NULL;
+_FLREReplaceCallback FLREReplaceCallback = NULL;
+_FLRESplit FLRESplit = NULL;
+_FLRETest FLRETest = NULL;
+_FLRETestAll FLRETestAll = NULL;
+_FLREFind FLREFind = NULL;
 
 int32_t FLRELoad(){
   if(FLRELoaded){
@@ -235,6 +255,7 @@ int32_t FLRELoad(){
       FLREGetVersionString = (_FLREGetVersionString)FLREGetProcAddress(FLRELibraryHandle, "FLREGetVersionString");
       FLRECreate = (_FLRECreate)FLREGetProcAddress(FLRELibraryHandle, "FLRECreate");
       FLREDestroy = (_FLREDestroy)FLREGetProcAddress(FLRELibraryHandle, "FLREDestroy");
+      FLREAlloc = (_FLREAlloc)FLREGetProcAddress(FLRELibraryHandle, "FLREAlloc");
       FLREFree = (_FLREFree)FLREGetProcAddress(FLRELibraryHandle, "FLREFree");
       FLREGetCountCaptures = (_FLREGetCountCaptures)FLREGetProcAddress(FLRELibraryHandle, "FLREGetCountCaptures");
       FLREGetNamedGroupIndex = (_FLREGetNamedGroupIndex)FLREGetProcAddress(FLRELibraryHandle, "FLREGetNamedGroupIndex");
@@ -248,11 +269,17 @@ int32_t FLRELoad(){
       FLREMatchNext = (_FLREMatchNext)FLREGetProcAddress(FLRELibraryHandle, "FLREMatchNext");
       FLREMatchAll = (_FLREMatchAll)FLREGetProcAddress(FLRELibraryHandle, "FLREMatchAll");
       FLREReplaceAll = (_FLREReplaceAll)FLREGetProcAddress(FLRELibraryHandle, "FLREReplaceAll");
+      FLREReplaceCallback = (_FLREReplaceCallback)FLREGetProcAddress(FLRELibraryHandle, "FLREReplaceCallback");
+      FLRESplit = (_FLRESplit)FLREGetProcAddress(FLRELibraryHandle, "FLRESplit");
+      FLRETest = (_FLRETest)FLREGetProcAddress(FLRELibraryHandle, "FLRETest");
+      FLRETestAll = (_FLRETestAll)FLREGetProcAddress(FLRELibraryHandle, "FLRETestAll");
+      FLREFind = (_FLREFind)FLREGetProcAddress(FLRELibraryHandle, "FLREFind");
 #undef FLREGetProcAddress
       if(FLREGetVersion &&
          FLREGetVersionString &&
          FLRECreate &&
          FLREDestroy &&
+         FLREAlloc &&
          FLREFree &&
          FLREGetCountCaptures &&
          FLREGetNamedGroupIndex &&
@@ -265,7 +292,12 @@ int32_t FLRELoad(){
          FLREMatch &&
          FLREMatchNext &&
          FLREMatchAll &&
-         FLREReplaceAll){
+         FLREReplaceAll &&
+         FLREReplaceCallback &&
+         FLRESplit &&
+         FLRETest &&
+         FLRETestAll &&
+         FLREFind){
         FLRELoaded = 1;
         return 1;
       }     
@@ -295,6 +327,7 @@ int32_t FLREUnload(){
 #include <vector>
 #include <exception>
 #include <stdexcept>
+#include <functional>
 
 class TFLRE {
 private: 
@@ -316,7 +349,7 @@ private:
       explicit AutoDelete(T p = NULL): pointer(p){}
       ~AutoDelete(){ if(pointer){ FLREFree(pointer); pointer = NULL; } }
   };
-   
+  
 public:
 
   class TError : public std::runtime_error {
@@ -334,6 +367,8 @@ public:
   using TCaptures = std::vector<TCapture>;
 
   using TMultiCaptures = std::vector<TCaptures>;
+
+  using TReplacementCallback = std::function<int32_t(void* /*Data*/, const void* /*Input*/, const TFLRESizeInt /*InputLength*/, const TCaptures& /*Captures*/, std::string& /*ReplacementString*/)>;
 
   TFLREInstance m_instance = NULL;
 
@@ -364,6 +399,16 @@ public:
   bool matchAll(const std::string& input, TMultiCaptures& multiCaptures, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1/*, const TFLRESizeInt maxMultiCaptures = -1*/);
 
   bool replaceAll(const std::string& input, const std::string& replacement, std::string& result, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1);
+
+  bool replaceCallback(const std::string& input, void* replacementCallbackData, const TReplacementCallback& replacementCallback, std::string& result, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1);
+
+  bool split(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1, const bool WithEmpty = true);
+
+  bool test(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0);
+
+  bool testAll(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0);
+
+  TFLRESizeInt find(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0);
 
 };
 
@@ -604,6 +649,136 @@ bool TFLRE::replaceAll(const std::string& input, const std::string& replacement,
     return false; 
   }
 }
+
+typedef struct TFLRE_replaceCallbackHandlerData {
+  void* replacementCallbackData;
+  const TFLRE::TReplacementCallback *replacementCallback;
+  TFLRE::TCaptures captures;
+} TFLRE_replaceCallbackHandlerData;
+
+int32_t TFLRE_replaceCallbackHandler(const void* Data, const void* Input, const TFLRESizeInt InputLength, const void* Captures, const TFLRESizeInt CountCaptures, void** ReplacementString, TFLRESizeInt* ReplacementStringLength){
+  if(CountCaptures > 0){
+    TFLRE_replaceCallbackHandlerData* replaceCallbackHandlerData = (TFLRE_replaceCallbackHandlerData*)Data;
+    if(replaceCallbackHandlerData->replacementCallback){
+      if(replaceCallbackHandlerData->captures.size() != CountCaptures){
+        replaceCallbackHandlerData->captures.resize(CountCaptures);
+      }
+      for(TFLRESizeInt index = 0; index < CountCaptures; index++){
+        TFLRE::TCapture &capture = replaceCallbackHandlerData->captures.at(index);
+        capture.start = ((TFLRESizeInt*)Captures)[(index << 1) | 0];
+        capture.length = ((TFLRESizeInt*)Captures)[(index << 1) | 1];
+      }
+      std::string replacementString = "";
+      if((*(replaceCallbackHandlerData->replacementCallback))(replaceCallbackHandlerData->replacementCallbackData, Input, InputLength, replaceCallbackHandlerData->captures, replacementString)){
+        *ReplacementString = FLREAlloc(replacementString.size() + 1);
+        memcpy(*ReplacementString, replacementString.c_str(), replacementString.size() + 1);
+        return 1;
+      }
+    }
+  }  
+  return 0;
+}
+
+bool TFLRE::replaceCallback(const std::string& input, void* replacementCallbackData, const TReplacementCallback& replacementCallback, std::string& result, const TFLRESizeInt startPosition, const TFLRESizeInt limit){
+  AutoDeleteFLRECharString result_(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  TFLRESizeInt resultLength = 0;
+  TFLRE_replaceCallbackHandlerData replaceCallbackHandlerData;
+  replaceCallbackHandlerData.replacementCallbackData = replacementCallbackData;  
+  replaceCallbackHandlerData.replacementCallback = &replacementCallback;    
+  if(FLREReplaceCallback(m_instance, input.c_str(), input.size(), &replaceCallbackHandlerData, &TFLRE_replaceCallbackHandler, (void**)&result_.stringPointer, &resultLength, startPosition, limit, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    if(resultLength > 0){
+      result.assign(result_.stringPointer, resultLength);
+    }else{
+      result.clear();
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    result.clear();
+    return false; 
+  }
+}
+
+bool TFLRE::split(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition, const TFLRESizeInt limit, const bool WithEmpty){
+  AutoDelete<void*> splittedStrings_(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  TFLRESizeInt countSplittedStrings = 0;
+  if(FLRESplit(m_instance, input.c_str(), input.size(), &splittedStrings_.pointer, &countSplittedStrings, startPosition, limit, WithEmpty ? 1 : 0, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    if(splittedStrings_.pointer && (countSplittedStrings > 0)){      
+      splittedStrings.resize(countSplittedStrings);
+      uint8_t* p = (uint8_t*)splittedStrings_.pointer;
+      for(TFLRESizeInt index = 0; index < countSplittedStrings; index++){
+        std::string &splittedString = splittedStrings.at(index);
+        TFLRESizeInt stringLength = *((TFLRESizeInt*)p);
+        p += sizeof(TFLRESizeInt);
+        if(stringLength > 0){
+          splittedString.assign((char*)p, stringLength);
+        }else{
+          splittedString.clear();
+        }
+        p += stringLength + 1;        
+      }
+    }else{
+      splittedStrings.clear();
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    splittedStrings.clear();
+    return false; 
+  }
+}
+
+bool TFLRE::test(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition){
+  AutoDeleteFLRECharString error(NULL);
+  if(FLRETest(m_instance, input.c_str(), input.size(), startPosition, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return false; 
+  }
+}
+
+bool TFLRE::testAll(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition){
+  AutoDeleteFLRECharString error(NULL);
+  if(FLRETestAll(m_instance, input.c_str(), input.size(), startPosition, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return false; 
+  }
+}
+
+TFLRESizeInt TFLRE::find(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition){
+  AutoDeleteFLRECharString error(NULL);
+  TFLRESizeInt result = FLRETest(m_instance, input.c_str(), input.size(), startPosition, &error.stringPointer);
+  if(error.stringPointer){
+    throw new TFLRE::TError(error.getString());    
+  }
+  return result; 
+}
+
 #endif
 
 #endif
