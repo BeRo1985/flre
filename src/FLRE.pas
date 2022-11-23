@@ -21397,7 +21397,7 @@ begin
     Count:=CountCaptures;
    end;
    SetLength(Captures,Count);
-   if SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,true) then begin
+   if SearchMatch(ThreadLocalStorageInstance,Captures,StartPosition,InputLength,fifHaveUnanchoredStart in InternalFlags) then begin
     result:=Captures[0].Start;
    end else begin
     result:=-1;
