@@ -15,7 +15,8 @@ uses
   PUCU in '..\PUCU.pas',
   UnitTestGlobals in 'UnitTestGlobals.pas',
   UnitSearchTests in 'UnitSearchTests.pas',
-  UnitReplaceTests in 'UnitReplaceTests.pas';
+  UnitReplaceTests in 'UnitReplaceTests.pas',
+  UnitSplitTests in 'UnitSplitTests.pas';
 
 {procedure test;
 var FLREInstance:TFLRE;
@@ -42,6 +43,7 @@ begin
 //test;
  ExecuteSearchTests;
  ExecuteReplaceTests;
+ ExecuteSplitTests;
 //readln;
 {$ifndef fpc}
  if DebugHook<>0 then begin

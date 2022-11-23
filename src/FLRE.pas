@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000006;
 
-      FLREVersionString='1.00.2022.11.22.23.18.0000';
+      FLREVersionString='1.00.2022.11.23.11.32.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -21211,6 +21211,7 @@ begin
        Count:=1;
        SetLength(SplittedStrings,Count);
        SplittedStrings[0]:='';
+       result:=true;
       end;
 
      end else begin
@@ -21243,6 +21244,8 @@ begin
        end;
        SplittedStrings[Count]:=FLREPtrCopy(PFLRERawByteChar(Input),LastPosition,MatchPosition-LastPosition);
        inc(Count);
+
+       result:=true;
 
        if Limit>0 then begin
         dec(Limit);
@@ -22966,7 +22969,7 @@ begin
   try
    TemporarySplittedStrings:=nil;
    try
-    if TFLRE(Instance).PtrSplit(Input,InputLength,TemporarySplittedStrings,StartPosition,LImit,WithEmpty<>0) then begin
+    if TFLRE(Instance).PtrSplit(Input,InputLength,TemporarySplittedStrings,StartPosition,Limit,WithEmpty<>0) then begin
      CountSplittedStrings^:=length(TemporarySplittedStrings);
      if length(TemporarySplittedStrings)>0 then begin
       Len:=0;
