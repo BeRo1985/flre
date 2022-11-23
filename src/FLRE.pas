@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000006;
 
-      FLREVersionString='1.00.2022.11.23.11.32.0000';
+      FLREVersionString='1.00.2022.11.23.12.04.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -23092,7 +23092,7 @@ function FLREFind(const Instance:pointer;const Input:pointer;const InputLength:T
 var s:TFLRERawByteString;
     Len:TFLRESizeInt;
 begin
- result:=0;
+ result:=-1;
  if assigned(Error) and assigned(Error^) then begin
   FreeMem(Error^);
   Error^:=nil;
