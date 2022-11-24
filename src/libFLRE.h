@@ -417,7 +417,7 @@ public:
 
   using TMultiCaptures = std::vector<TCaptures>;
 
-  using TReplacementCallback = std::function<int32_t(void* /*Data*/, const void* /*Input*/, const TFLRESizeInt /*InputLength*/, const TCaptures& /*Captures*/, std::string& /*ReplacementString*/)>;
+  using TReplacementCallback = std::function<bool(void* /*Data*/, const void* /*Input*/, const TFLRESizeInt /*InputLength*/, const TCaptures& /*Captures*/, std::string& /*ReplacementString*/)>;
 
   TFLREInstance m_instance = NULL;
 
@@ -755,6 +755,7 @@ int32_t TFLRE_replaceCallbackHandler(const void* Data, const void* Input, const 
       if((*(replaceCallbackHandlerData->replacementCallback))(replaceCallbackHandlerData->replacementCallbackData, Input, InputLength, replaceCallbackHandlerData->captures, replacementString)){
         *ReplacementString = FLREAlloc(replacementString.size() + 1);
         memcpy(*ReplacementString, replacementString.c_str(), replacementString.size() + 1);
+        *ReplacementStringLength = replacementString.size();
         return 1;
       }
     }
