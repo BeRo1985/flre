@@ -392,21 +392,39 @@ public:
 
   bool getRange(std::string &lowRange, std::string &highRange);
 
+  bool match(const void* input, const TFLRESizeInt inputLength, TCaptures& captures, const TFLRESizeInt startPosition = 0/*, const TFLRESizeInt maxCaptures = -1*/);
+
   bool match(const std::string& input, TCaptures& captures, const TFLRESizeInt startPosition = 0/*, const TFLRESizeInt maxCaptures = -1*/);
+
+  bool matchNext(const void* input, const TFLRESizeInt inputLength, TCaptures& captures, const TFLRESizeInt startPosition = 0/*, const TFLRESizeInt maxCaptures = -1*/);
 
   bool matchNext(const std::string& input, TCaptures& captures, const TFLRESizeInt startPosition = 0/*, const TFLRESizeInt maxCaptures = -1*/);
 
+  bool matchAll(const void* input, const TFLRESizeInt inputLength, TMultiCaptures& multiCaptures, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1/*, const TFLRESizeInt maxMultiCaptures = -1*/);
+
   bool matchAll(const std::string& input, TMultiCaptures& multiCaptures, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1/*, const TFLRESizeInt maxMultiCaptures = -1*/);
+
+  bool replaceAll(const void* input, const TFLRESizeInt inputLength, const std::string& replacement, std::string& result, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1);
 
   bool replaceAll(const std::string& input, const std::string& replacement, std::string& result, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1);
 
+  bool replaceCallback(const void* input, const TFLRESizeInt inputLength, void* replacementCallbackData, const TReplacementCallback& replacementCallback, std::string& result, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1);
+
   bool replaceCallback(const std::string& input, void* replacementCallbackData, const TReplacementCallback& replacementCallback, std::string& result, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1);
 
-  bool split(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1, const bool WithEmpty = true);
+  bool split(const void* input, const TFLRESizeInt inputLength, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1, const bool withEmpty = true);
+
+  bool split(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition = 0, const TFLRESizeInt limit = -1, const bool withEmpty = true);
+
+  bool test(const void* input, const TFLRESizeInt inputLength, const TFLRESizeInt startPosition = 0);
 
   bool test(const std::string& input, const TFLRESizeInt startPosition = 0);
 
+  bool testAll(const void* input, const TFLRESizeInt inputLength, const TFLRESizeInt startPosition = 0);
+
   bool testAll(const std::string& input, const TFLRESizeInt startPosition = 0);
+
+  TFLRESizeInt find(const void* input, const TFLRESizeInt inputLength, const TFLRESizeInt startPosition = 0);
 
   TFLRESizeInt find(const std::string& input, const TFLRESizeInt startPosition = 0);
 
@@ -537,11 +555,43 @@ bool TFLRE::getRange(std::string &lowRange, std::string &highRange){
   }
 }
 
-bool TFLRE::match(const std::string& input, TCaptures& captures, const TFLRESizeInt startPosition/*, const TFLRESizeInt maxCaptures*/){
+bool TFLRE::match(const void* input, const TFLRESizeInt inputLength, TCaptures& captures, const TFLRESizeInt startPosition /*, const TFLRESizeInt maxCaptures*/){
   AutoDelete<void*> captures_(NULL);
   AutoDeleteFLRECharString error(NULL);
   TFLRESizeInt countCaptures = 0; 
-  if(FLREMatch(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
+  if(FLREMatch(m_instance, (void*)input, inputLength, (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    if(countCaptures > 0){
+      captures.resize(countCaptures);
+      for(TFLRESizeInt index = 0; index < countCaptures; index++){
+        TCapture &capture = captures.at(index);
+        capture.start = ((TFLRESizeInt*)captures_.pointer)[(index << 1) | 0];
+        capture.length = ((TFLRESizeInt*)captures_.pointer)[(index << 1) | 1];
+      }
+    }else{
+      captures.clear();
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    captures.clear();
+    return false; 
+  }
+}
+
+bool TFLRE::match(const std::string& input, TCaptures& captures, const TFLRESizeInt startPosition/*, const TFLRESizeInt maxCaptures*/){
+  return match(input.c_str(), input.size(), captures, startPosition/*, maxCaptures*/);
+}
+
+bool TFLRE::matchNext(const void* input, const TFLRESizeInt inputLength, TCaptures& captures, const TFLRESizeInt startPosition/*, const TFLRESizeInt maxCaptures*/){
+  AutoDelete<void*> captures_(NULL);
+  AutoDeleteFLRECharString error(NULL);
+  TFLRESizeInt countCaptures = 0;
+  if(FLREMatchNext(m_instance, (void*)input, inputLength, (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
     }
@@ -566,39 +616,15 @@ bool TFLRE::match(const std::string& input, TCaptures& captures, const TFLRESize
 }
 
 bool TFLRE::matchNext(const std::string& input, TCaptures& captures, const TFLRESizeInt startPosition/*, const TFLRESizeInt maxCaptures*/){
-  AutoDelete<void*> captures_(NULL);
-  AutoDeleteFLRECharString error(NULL);
-  TFLRESizeInt countCaptures = 0;
-  if(FLREMatchNext(m_instance, input.c_str(), input.size(), (void**)&captures_.pointer, /*maxCaptures*/-1, &countCaptures, startPosition, &error.stringPointer)){
-    if(error.stringPointer){
-      throw new TFLRE::TError(error.getString());    
-    }
-    if(countCaptures > 0){
-      captures.resize(countCaptures);
-      for(TFLRESizeInt index = 0; index < countCaptures; index++){
-        TCapture &capture = captures.at(index);
-        capture.start = ((TFLRESizeInt*)captures_.pointer)[(index << 1) | 0];
-        capture.length = ((TFLRESizeInt*)captures_.pointer)[(index << 1) | 1];
-      }
-    }else{
-      captures.clear();
-    }
-    return true; 
-  }else{
-    if(error.stringPointer){
-      throw new TFLRE::TError(error.getString());    
-    }
-    captures.clear();
-    return false; 
-  }
+  return matchNext(input.c_str(), input.size(), captures, startPosition/*, maxCaptures*/);
 }
 
-bool TFLRE::matchAll(const std::string& input, TMultiCaptures& multiCaptures, const TFLRESizeInt startPosition, const TFLRESizeInt limit/*, const TFLRESizeInt maxMultiCaptures*/){
+bool TFLRE::matchAll(const void* input, const TFLRESizeInt inputLength, TMultiCaptures& multiCaptures, const TFLRESizeInt startPosition, const TFLRESizeInt limit/*, const TFLRESizeInt maxMultiCaptures*/){
   AutoDelete<void*> multiCaptures_(NULL);
   AutoDeleteFLRECharString error(NULL);
   TFLRESizeInt countMultiCaptures = 0;
   TFLRESizeInt countCaptures = 0;
-  if(FLREMatchAll(m_instance, input.c_str(), input.size(), (void**)&multiCaptures_.pointer, /*maxMultiCaptures*/-1, &countMultiCaptures, &countCaptures, startPosition, limit, &error.stringPointer)){
+  if(FLREMatchAll(m_instance, (void*)input, inputLength, (void**)&multiCaptures_.pointer, /*maxMultiCaptures*/-1, &countMultiCaptures, &countCaptures, startPosition, limit, &error.stringPointer)){
     if(error.stringPointer){
       throw new std::runtime_error(error.getString());    
     }
@@ -627,11 +653,15 @@ bool TFLRE::matchAll(const std::string& input, TMultiCaptures& multiCaptures, co
   }
 }
 
-bool TFLRE::replaceAll(const std::string& input, const std::string& replacement, std::string& result, const TFLRESizeInt startPosition, const TFLRESizeInt limit){
+bool TFLRE::matchAll(const std::string& input, TMultiCaptures& multiCaptures, const TFLRESizeInt startPosition, const TFLRESizeInt limit/*, const TFLRESizeInt maxMultiCaptures*/){
+  return matchAll(input.c_str(), input.size(), multiCaptures, startPosition, limit/*, maxCaptures*/);
+}
+
+bool TFLRE::replaceAll(const void* input, const TFLRESizeInt inputLength, const std::string& replacement, std::string& result, const TFLRESizeInt startPosition, const TFLRESizeInt limit){
   AutoDeleteFLRECharString result_(NULL);
   AutoDeleteFLRECharString error(NULL);
   TFLRESizeInt resultLength = 0;
-  if(FLREReplaceAll(m_instance, input.c_str(), input.size(), replacement.c_str(), replacement.size(), (void**)&result_.stringPointer, &resultLength, startPosition, limit, &error.stringPointer)){
+  if(FLREReplaceAll(m_instance, (void*)input, inputLength, replacement.c_str(), replacement.size(), (void**)&result_.stringPointer, &resultLength, startPosition, limit, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
     }
@@ -648,6 +678,10 @@ bool TFLRE::replaceAll(const std::string& input, const std::string& replacement,
     result.clear();
     return false; 
   }
+}
+
+bool TFLRE::replaceAll(const std::string& input, const std::string& replacement, std::string& result, const TFLRESizeInt startPosition, const TFLRESizeInt limit){
+  return replaceAll(input.c_str(), input.size(), replacement, result, startPosition, limit);
 }
 
 typedef struct TFLRE_replaceCallbackHandlerData {
@@ -679,14 +713,14 @@ int32_t TFLRE_replaceCallbackHandler(const void* Data, const void* Input, const 
   return 0;
 }
 
-bool TFLRE::replaceCallback(const std::string& input, void* replacementCallbackData, const TReplacementCallback& replacementCallback, std::string& result, const TFLRESizeInt startPosition, const TFLRESizeInt limit){
+bool TFLRE::replaceCallback(const void* input, const TFLRESizeInt inputLength, void* replacementCallbackData, const TReplacementCallback& replacementCallback, std::string& result, const TFLRESizeInt startPosition, const TFLRESizeInt limit){
   AutoDeleteFLRECharString result_(NULL);
   AutoDeleteFLRECharString error(NULL);
   TFLRESizeInt resultLength = 0;
   TFLRE_replaceCallbackHandlerData replaceCallbackHandlerData;
   replaceCallbackHandlerData.replacementCallbackData = replacementCallbackData;  
   replaceCallbackHandlerData.replacementCallback = &replacementCallback;    
-  if(FLREReplaceCallback(m_instance, input.c_str(), input.size(), &replaceCallbackHandlerData, &TFLRE_replaceCallbackHandler, (void**)&result_.stringPointer, &resultLength, startPosition, limit, &error.stringPointer)){
+  if(FLREReplaceCallback(m_instance, (void*)input, inputLength, &replaceCallbackHandlerData, &TFLRE_replaceCallbackHandler, (void**)&result_.stringPointer, &resultLength, startPosition, limit, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
     }
@@ -705,11 +739,15 @@ bool TFLRE::replaceCallback(const std::string& input, void* replacementCallbackD
   }
 }
 
-bool TFLRE::split(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition, const TFLRESizeInt limit, const bool WithEmpty){
+bool TFLRE::replaceCallback(const std::string& input, void* replacementCallbackData, const TReplacementCallback& replacementCallback, std::string& result, const TFLRESizeInt startPosition, const TFLRESizeInt limit){
+  return replaceCallback(input.c_str(), input.size(), replacementCallbackData,replacementCallback, result, startPosition, limit);
+}
+
+bool TFLRE::split(const void* input, const TFLRESizeInt inputLength, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition, const TFLRESizeInt limit, const bool withEmpty){
   AutoDelete<void*> splittedStrings_(NULL);
   AutoDeleteFLRECharString error(NULL);
   TFLRESizeInt countSplittedStrings = 0;
-  if(FLRESplit(m_instance, input.c_str(), input.size(), &splittedStrings_.pointer, &countSplittedStrings, startPosition, limit, WithEmpty ? 1 : 0, &error.stringPointer)){
+  if(FLRESplit(m_instance, (void*)input, inputLength, &splittedStrings_.pointer, &countSplittedStrings, startPosition, limit, withEmpty ? 1 : 0, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
     }
@@ -740,9 +778,32 @@ bool TFLRE::split(const std::string& input, std::vector<std::string>& splittedSt
   }
 }
 
-bool TFLRE::test(const std::string& input, const TFLRESizeInt startPosition){
+bool TFLRE::split(const std::string& input, std::vector<std::string>& splittedStrings, const TFLRESizeInt startPosition, const TFLRESizeInt limit, const bool withEmpty){
+  return split(input.c_str(), input.size(), splittedStrings, startPosition, limit, withEmpty);
+}
+
+bool TFLRE::test(const void* input, const TFLRESizeInt inputLength, const TFLRESizeInt startPosition){
   AutoDeleteFLRECharString error(NULL);
-  if(FLRETest(m_instance, input.c_str(), input.size(), startPosition, &error.stringPointer)){
+  if(FLRETest(m_instance, (void*)input, inputLength, startPosition, &error.stringPointer)){
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return true; 
+  }else{
+    if(error.stringPointer){
+      throw new TFLRE::TError(error.getString());    
+    }
+    return false; 
+  }
+}
+
+bool TFLRE::test(const std::string& input, const TFLRESizeInt startPosition){
+  return test(input.c_str(), input.size(), startPosition);
+}
+
+bool TFLRE::testAll(const void* input, const TFLRESizeInt inputLength, const TFLRESizeInt startPosition){
+  AutoDeleteFLRECharString error(NULL);
+  if(FLRETestAll(m_instance, (void*)input, inputLength, startPosition, &error.stringPointer)){
     if(error.stringPointer){
       throw new TFLRE::TError(error.getString());    
     }
@@ -756,27 +817,20 @@ bool TFLRE::test(const std::string& input, const TFLRESizeInt startPosition){
 }
 
 bool TFLRE::testAll(const std::string& input, const TFLRESizeInt startPosition){
-  AutoDeleteFLRECharString error(NULL);
-  if(FLRETestAll(m_instance, input.c_str(), input.size(), startPosition, &error.stringPointer)){
-    if(error.stringPointer){
-      throw new TFLRE::TError(error.getString());    
-    }
-    return true; 
-  }else{
-    if(error.stringPointer){
-      throw new TFLRE::TError(error.getString());    
-    }
-    return false; 
-  }
+  return testAll(input.c_str(), input.size(), startPosition);
 }
 
-TFLRESizeInt TFLRE::find(const std::string& input, const TFLRESizeInt startPosition){
+TFLRESizeInt TFLRE::find(const void* input, const TFLRESizeInt inputLength, const TFLRESizeInt startPosition){
   AutoDeleteFLRECharString error(NULL);
-  TFLRESizeInt result = FLRETest(m_instance, input.c_str(), input.size(), startPosition, &error.stringPointer);
+  TFLRESizeInt result = FLREFind(m_instance, (void*)input, inputLength, startPosition, &error.stringPointer);
   if(error.stringPointer){
     throw new TFLRE::TError(error.getString());    
   }
   return result; 
+}
+
+TFLRESizeInt TFLRE::find(const std::string& input, const TFLRESizeInt startPosition){
+  return find(input.c_str(), input.size(), startPosition);
 }
 
 #endif
