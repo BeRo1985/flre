@@ -215,31 +215,80 @@ int32_t FLRELoad(){
     return 1;
   }else{ 
 #ifdef WINDOWS
-#if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)
+  #if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)
     FLRELibraryHandle = dlopen("libFLRE_i386.dll");
-#elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
+  #elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
     FLRELibraryHandle = LoadLibrary("libFLRE_x86_64.dll");
-#elif defined(__aarch64) || defined(__aarch64__)
+  #elif defined(__aarch64) || defined(__aarch64__)
     FLRELibraryHandle = LoadLibrary("libFLRE_aarch64.dll");
-#elif defined(__arm__)
-    FLRELibraryHandle = LoadLibrary("libFLRE_arm32.dll");
-#else
+  #elif defined(__arm__)
+    FLRELibraryHandle = LoadLibrary("libFLRE_arm.dll");
+  #else
     #error "Unsupported CPU/OS target combination"
-#endif
+  #endif
     if(FLRELibraryHandle == NULL){
       FLRELibraryHandle = LoadLibrary("libFLRE.dll");
     }
 #else
-#if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)
-    FLRELibraryHandle = dlopen("libFLRE_i386.so");
-#elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
-    FLRELibraryHandle = dlopen("libFLRE_x86_64.so");
-#elif defined(__aarch64) || defined(__aarch64__)
-    FLRELibraryHandle = dlopen("libFLRE_aarch64.so");
-#elif defined(__arm__)
-    FLRELibraryHandle = dlopen("libFLRE_arm32.so");
-#else
+#if defined(__ANDROID_API__)
+  #if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)
+    FLRELibraryHandle = dlopen("libFLRE_android_i386.so");
+  #elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
+    FLRELibraryHandle = dlopen("libFLRE_android_x86_64.so");
+  #elif defined(__aarch64) || defined(__aarch64__)
+    FLRELibraryHandle = dlopen("libFLRE_android_aarch64.so");
+  #elif defined(__arm__)
+    FLRELibraryHandle = dlopen("libFLRE_android_arm.so");
+  #else
     #error "Unsupported CPU/OS target combination"
+  #endif    
+#elif defined(__APPLE__)
+  #include "TargetConditionals.h"
+  #if defined(TARGET_OS_IPHONE) || defined(TARGET_IPHONE_SIMULATOR)
+    #if defined(__aarch64) || defined(__aarch64__)  
+    FLRELibraryHandle = dlopen("libFLRE_ios_aarch64.dylib");
+    #elif defined(__arm__)
+    FLRELibraryHandle = dlopen("libFLRE_ios_arm.dylib");
+    #else
+      #error "Unsupported CPU/OS target combination"
+    #endif    
+  #elif TARGET_OS_MAC
+    #if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)
+    FLRELibraryHandle = dlopen("libFLRE_darwin_i386.dylib");
+    #elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
+    FLRELibraryHandle = dlopen("libFLRE_darwin_x86_64.dylib");
+    #elif defined(__aarch64) || defined(__aarch64__)  
+    FLRELibraryHandle = dlopen("libFLRE_darwin_aarch64.dylib");
+    #else
+        #error "Unsupported CPU/OS target combination"
+    #endif    
+  #else
+    #error "Unsupported CPU/OS target combination"
+  #endif
+#elif defined(__linux__) || defined(__linux) || defined(linux)
+  #if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)
+    FLRELibraryHandle = dlopen("libFLRE_linux_i386.so");
+  #elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
+    FLRELibraryHandle = dlopen("libFLRE_linux_x86_64.so");
+  #elif defined(__aarch64) || defined(__aarch64__)
+    FLRELibraryHandle = dlopen("libFLRE_linux_aarch64.so");
+  #elif defined(__arm__)
+    FLRELibraryHandle = dlopen("libFLRE_linux_arm.so");
+  #else
+    #error "Unsupported CPU/OS target combination"
+  #endif    
+#elif defined(__FreeBSD__)
+  #if defined(i386) || defined(__i386) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(_M_IX86) || defined(__X86__) || defined(_X86_) || defined(__386)
+    FLRELibraryHandle = dlopen("libFLRE_freebsd_i386.so");
+  #elif defined(__amd64) || defined(__amd64__) || defined(__x86_64) || defined(__x86_64__) || defined(_M_AMD64) || defined(_M_X64)
+    FLRELibraryHandle = dlopen("libFLRE_freebsd_x86_64.so");
+  #else
+    #error "Unsupported CPU/OS target combination"
+  #endif    
+#elif defined(__unix__) || defined(__unix) || defined(unix)
+  #warning "Non-offical supported CPU/OS target combination (*BSD etc.)"
+#else
+  #error "Unsupported CPU/OS target combination"
 #endif    
     if(FLRELibraryHandle == NULL){
       FLRELibraryHandle = dlopen("libFLRE.so");
