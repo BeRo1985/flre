@@ -3,7 +3,7 @@
 ********************************************************************************
 
 FLRE - Fast Light Regular Expressions - A fast light regular expression library
-Copyright (C) 2015-2022, Benjamin 'BeRo' Rosseaux
+Copyright (C) 2015-2023, Benjamin 'BeRo' Rosseaux
 
 The source code of the FLRE engine library and helper tools are
 distributed under the Library GNU Lesser General Public License Version 2.1 
@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000006;
 
-      FLREVersionString='1.00.2022.11.23.12.04.0000';
+      FLREVersionString='1.00.2023.02.26.07.41.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -613,6 +613,8 @@ type EFLRE=class(Exception);
      TFLREBitStateNFAJobs=array of TFLREBitStateNFAJob;
 
      TFLREBitStateNFAVisited=array[0..(32768 div SizeOf(TFLREUInt32))-1] of TFLREUInt32;
+     
+     PFLREBitStateNFAVisited=^TFLREBitStateNFAVisited;     
 
      TFLREBitStateNFASubMatches=array of TFLRESizeInt;
 
@@ -11678,7 +11680,6 @@ begin
  BasePosition:=StartPosition;
  Position:=StartPosition;
 
-
  VisitedLength:=TFLRESizeUInt(TFLREUInt64((TFLREUInt64(Len+1)*TFLREUInt32(Instance.CountForwardInstructions))+31) shr 5);
  if TFLRESizeUInt(VisitedLength)>TFLRESizeUInt(SizeOf(TFLREBitStateNFAVisited) div SizeOf(TFLREUInt32)) then begin
   // Too big for 32kb visited bitmap
@@ -13866,7 +13867,7 @@ begin
 
   if (CountForwardInstructions>0) and (CountForwardInstructions<512) then begin
    Include(InternalFlags,fifBitStateNFAReady);
-   MaxBitStateNFATextSize:=(length(TFLREBitStateNFAVisited)*SizeOf(TFLREUInt32)) div CountForwardInstructions;
+   MaxBitStateNFATextSize:=SizeOf(TFLREBitStateNFAVisited) div CountForwardInstructions;
   end else begin
    MaxBitStateNFATextSize:=0;
   end;
