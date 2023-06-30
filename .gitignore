@@ -55,3 +55,7 @@ __history/
 
 # Castalia statistics file
 *.stat
+
+# Free Pascal compiler-generated binaries (safe to delete)
+*.o
+*.ppu
