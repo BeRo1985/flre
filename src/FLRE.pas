@@ -15125,8 +15125,8 @@ var SourcePosition,SourceLength:TFLRESizeInt;
     UnicodeCharClass.AddRange($21,$7e,IgnoreCase);
    end;
    UnicodeCharClass.Canonicalized:=true;
-  end else if (WithLowerCase and (LowerCaseName='inbasiclatin')) or
-              ((not WithLowerCase) and (Name='InBasicLatin')) then begin
+  end else if (WithLowerCase and ( (LowerCaseName='inbasiclatin') or (LowerCaseName='isbasiclatin') ) ) or
+              ((not WithLowerCase) and ( (Name='InBasicLatin') or (Name='IsBasicLatin') ) ) then begin
    UnicodeCharClass.AddRange($00,$7f,IgnoreCase);
    UnicodeCharClass.Canonicalized:=true;
   end else if (WithLowerCase and ((LowerCaseName='inno_block') or (LowerCaseName='isno_block') or (LowerCaseName='innoblock') or (LowerCaseName='isnoblock'))) or
