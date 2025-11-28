@@ -13798,9 +13798,9 @@ begin
       Include(Flags,rfONLYFASTOPTIMIZATIONS);
      end;
     end;
-    'g':begin
+    'a':begin
      if rfMULTIMATCH in Flags then begin
-      raise EFLRE.Create('Too many only fast global/multimatch regular expression modifier flags');
+      raise EFLRE.Create('Too many only fast multimatch regular expression modifier flags');
      end else begin
       Include(Flags,rfMULTIMATCH);
      end;
