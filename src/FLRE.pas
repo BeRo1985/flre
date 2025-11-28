@@ -16188,7 +16188,7 @@ var SourcePosition,SourceLength:TFLRESizeInt;
  function NewNumberedGroup:PFLRENode;
  var SubMatchIndex,GroupIndex:TFLREInt32;
  begin
-  if ([rfNAMED,rfNOCAPTURES,rfMULTIMATCH]*Flags)<>[] then begin
+  if ([rfNOCAPTURES,rfMULTIMATCH]*Flags)<>[] then begin
    result:=ParseDisjunction;
   end else begin
    SubMatchIndex:=CountInternalCaptures;
