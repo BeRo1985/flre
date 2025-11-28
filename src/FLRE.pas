@@ -3,7 +3,7 @@
 ********************************************************************************
 
 FLRE - Fast Light Regular Expressions - A fast light regular expression library
-Copyright (C) 2015-2023, Benjamin 'BeRo' Rosseaux
+Copyright (C) 2015-2025, Benjamin 'BeRo' Rosseaux
 
 The source code of the FLRE engine library and helper tools are
 distributed under the Library GNU Lesser General Public License Version 2.1 
@@ -312,7 +312,7 @@ uses {$ifdef windows}Windows,{$endif}{$ifdef unix}dl,BaseUnix,Unix,UnixType,{$en
 
 const FLREVersion=$00000006;
 
-      FLREVersionString='1.00.2023.02.26.07.41.0000';
+      FLREVersionString='1.00.2025.11.28.22.41.0000';
 
       FLREMaxPrefixCharClasses=32;
 
@@ -13796,6 +13796,13 @@ begin
       raise EFLRE.Create('Too many only fast optimization regular expression modifier flags');
      end else begin
       Include(Flags,rfONLYFASTOPTIMIZATIONS);
+     end;
+    end;
+    'g':begin
+     if rfMULTIMATCH in Flags then begin
+      raise EFLRE.Create('Too many only fast global/multimatch regular expression modifier flags');
+     end else begin
+      Include(Flags,rfMULTIMATCH);
      end;
     end;
     else begin
