@@ -1132,6 +1132,7 @@ type EFLRE=class(Exception);
 
        NamedGroupStringList:TStringList;
        NamedGroupStringIntegerPairHashMap:TFLREStringIntegerPairHashMap;
+       NamedGroupStringIndexList:TFLREIntegerList;
 
        ParallelLock:TFLREParallelLock;
 
@@ -1258,6 +1259,7 @@ type EFLRE=class(Exception);
 
        property NamedGroups:TStringList read NamedGroupStringList;
        property NamedGroupIndices:TFLREStringIntegerPairHashMap read NamedGroupStringIntegerPairHashMap;
+       property NamedGroupStringIndices:TFLREIntegerList read NamedGroupStringIndexList;
 
        property RegularExpressionSource:TFLRERawByteString read OriginalRegularExpression;
 
@@ -13823,6 +13825,7 @@ begin
 
  NamedGroupStringList:=TStringList.Create;
  NamedGroupStringIntegerPairHashMap:=TFLREStringIntegerPairHashMap.Create;
+ NamedGroupStringIndexList:=TFLREIntegerList.Create;
 
  CapturesToSubMatchesMap:=nil;
 
@@ -14000,6 +14003,7 @@ begin
 
  NamedGroupStringList.Free;
  NamedGroupStringIntegerPairHashMap.Free;
+ NamedGroupStringIndexList.Free;
 
  RangeLow:='';
  RangeHigh:='';
@@ -16197,7 +16201,7 @@ var SourcePosition,SourceLength:TFLRESizeInt;
    CapturesToSubMatchesMap[GroupIndex]:=SubMatchIndex;
    NamedGroupStringIntegerPairHashMap.Add(TFLRERawByteString(IntToStr(GroupIndex)),GroupIndex);
    if NamedGroupStringList.IndexOf(IntToStr(GroupIndex))<0 then begin
-    NamedGroupStringList.Add(IntToStr(GroupIndex));
+    NamedGroupStringIndexList.Add(NamedGroupStringList.Add(IntToStr(GroupIndex)));
    end else begin
     raise EFLRE.Create('Duplicate named group');
    end;
@@ -16225,7 +16229,7 @@ var SourcePosition,SourceLength:TFLRESizeInt;
    CapturesToSubMatchesMap[GroupIndex]:=SubMatchIndex;
    NamedGroupStringIntegerPairHashMap.Add(Name,GroupIndex);
    if NamedGroupStringList.IndexOf(String(Name))<0 then begin
-    NamedGroupStringList.Add(String(Name));
+    NamedGroupStringIndexList.Add(NamedGroupStringList.Add(String(Name)));
    end else begin
     raise EFLRE.Create('Duplicate named group');
    end;
@@ -17391,7 +17395,7 @@ begin
  SourceLength:=length(Source);
  begin
   NamedGroupStringIntegerPairHashMap.Add('wholematch',0);
-  NamedGroupStringList.Add('wholematch');
+  NamedGroupStringIndexList.Add(NamedGroupStringList.Add('wholematch'));
   NamedGroupStringIntegerPairHashMap.Add('0',0);
   NamedGroupStringList.Add('0');
   CountCaptures:=1;
