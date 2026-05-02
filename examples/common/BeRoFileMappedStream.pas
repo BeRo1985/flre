@@ -227,6 +227,7 @@ const Access:array[0..4] of longword=(GENERIC_READ,GENERIC_WRITE,GENERIC_READ or
       CreateFlag:array[0..4] of longword=(OPEN_EXISTING,OPEN_EXISTING,OPEN_EXISTING,CREATE_ALWAYS,CREATE_ALWAYS);
 var ModeEx,FileFlags,ShareFlags:longword;
     SystemInfo:TSystemInfo;
+    fSizeH:DWORD;
 begin
  inherited Create;
  GetSystemInfo(SystemInfo);
@@ -261,7 +262,8 @@ begin
  end;
  fFileHandle:=CreateFile(PChar(fFileName),Access[ModeEx],ShareFlags,nil,CreateFlag[ModeEx],FileFlags,0);
  if fFileHandle<>INVALID_HANDLE_VALUE then begin
-  fSize:=GetFileSize(fFileHandle,nil);
+  fSize:=GetFileSize(fFileHandle,@fSizeH);
+  fSize:=fSize+(QWORD(fSizeH) shl 32);
   if fSize<1 then begin
    SetFilePointer(fFileHandle,1,nil,FILE_BEGIN);
    SetEndOfFile(fFileHandle);
@@ -327,9 +329,9 @@ end;
 {$else}
 begin
  if ReadOnly then begin
-  fMapHandle:=CreateFileMapping(fFileHandle,nil,PAGE_READONLY,0,fSize,nil);
+  fMapHandle:=CreateFileMapping(fFileHandle,nil,PAGE_READONLY,Hi(fSize),Lo(fSize),nil);
  end else begin
-  fMapHandle:=CreateFileMapping(fFileHandle,nil,PAGE_READWRITE,0,fSize,nil);
+  fMapHandle:=CreateFileMapping(fFileHandle,nil,PAGE_READWRITE,Hi(fSize),Lo(fSize),nil);
  end;
  if fMapHandle=0 then begin
   raise Exception.Create(SysErrorMessage(GetLastError));
@@ -339,9 +341,9 @@ begin
   fCurrentViewSize:=fSize-fCurrentViewOffset;
  end;
  if ReadOnly then begin
-  fMemory:=MapViewOfFile(fMapHandle,FILE_MAP_READ,longword(fCurrentViewOffset shr 32),longword(fCurrentViewOffset),fCurrentViewSize);
+  fMemory:=MapViewOfFile(fMapHandle,FILE_MAP_READ,Hi(fCurrentViewOffset),Lo(fCurrentViewOffset),fCurrentViewSize);
  end else begin
-  fMemory:=MapViewOfFile(fMapHandle,FILE_MAP_READ or FILE_MAP_WRITE,longword(fCurrentViewOffset shr 32),longword(fCurrentViewOffset),fCurrentViewSize);
+  fMemory:=MapViewOfFile(fMapHandle,FILE_MAP_READ or FILE_MAP_WRITE,Hi(fCurrentViewOffset),Lo(fCurrentViewOffset),fCurrentViewSize);
  end;
  if not assigned(fMemory) then begin
   raise Exception.Create(SysErrorMessage(GetLastError));
@@ -351,8 +353,8 @@ end;
 
 procedure TBeRoFileMappedStream.UpdateMapView;
 begin
- if (fPosition<fCurrentViewOffset) or ((fCurrentViewOffset+fCurrentViewSize)<fPosition) then begin
-  if (fAllocationGranularity and (fAllocationGranularity-1))<>0 then begin
+ if (fPosition<fCurrentViewOffset) or ((fCurrentViewOffset+fCurrentViewSize)<=fPosition) then begin
+  if (fAllocationGranularity and (fAllocationGranularity-1))=0 then begin
    fCurrentViewOffset:=fPosition;
    if (fCurrentViewOffset mod fAllocationGranularity)<>0 then begin
     dec(fCurrentViewOffset,fCurrentViewOffset mod fAllocationGranularity);
@@ -392,9 +394,9 @@ begin
    fMemory:=nil;
   end;
   if ReadOnly then begin
-   fMemory:=MapViewOfFile(fMapHandle,FILE_MAP_READ,longword(fCurrentViewOffset shr 32),longword(fCurrentViewOffset),fCurrentViewSize);
+   fMemory:=MapViewOfFile(fMapHandle,FILE_MAP_READ,Hi(fCurrentViewOffset),Lo(fCurrentViewOffset),fCurrentViewSize);
   end else begin
-   fMemory:=MapViewOfFile(fMapHandle,FILE_MAP_READ or FILE_MAP_WRITE,longword(fCurrentViewOffset shr 32),longword(fCurrentViewOffset),fCurrentViewSize);
+   fMemory:=MapViewOfFile(fMapHandle,FILE_MAP_READ or FILE_MAP_WRITE,Hi(fCurrentViewOffset),Lo(fCurrentViewOffset),fCurrentViewSize);
   end;
   if not assigned(fMemory) then begin
    raise Exception.Create(SysErrorMessage(GetLastError));
