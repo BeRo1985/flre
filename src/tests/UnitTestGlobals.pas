@@ -16,6 +16,9 @@ procedure ExecuteSearchTest(const RegExpString,InputString:TFLRERawByteString;co
 procedure ExecuteSearchFailTest(const RegExpString,InputString:TFLRERawByteString;const RegExpFlags:TFLREFlags=[rfDELIMITERS]);
 procedure ExecuteSearchAnchoredTest(const RegExpString,InputString:TFLRERawByteString;const RegExpFlags:TFLREFlags=[rfDELIMITERS]);
 procedure ExecuteSearchAnchoredFailTest(const RegExpString,InputString:TFLRERawByteString;const RegExpFlags:TFLREFlags=[rfDELIMITERS]);
+procedure ExecuteSearchAnchoredAtTest(const RegExpString,InputString:TFLRERawByteString;const StartPosition:TFLRESizeInt;const RegExpFlags:TFLREFlags=[rfDELIMITERS]);
+procedure ExecuteSearchAnchoredAtFailTest(const RegExpString,InputString:TFLRERawByteString;const StartPosition:TFLRESizeInt;const RegExpFlags:TFLREFlags=[rfDELIMITERS]);
+procedure ExecuteFindTest(const RegExpString,InputString:TFLRERawByteString;const StartPosition,ExpectedPosition:TFLRESizeInt;const RegExpFlags:TFLREFlags=[rfDELIMITERS]);
 
 implementation
 
@@ -163,6 +166,41 @@ begin
  FLREInstance:=TFLRE.Create(RegExpString,RegExpFlags);
  try
   CheckTestResult(not FLREInstance.Test(InputString),'not Test('''+InputString+''','''+RegExpString+''')');
+ finally
+  FLREInstance.Free;
+ end;
+end;
+
+procedure ExecuteSearchAnchoredAtTest(const RegExpString,InputString:TFLRERawByteString;const StartPosition:TFLRESizeInt;const RegExpFlags:TFLREFlags=[rfDELIMITERS]);
+var FLREInstance:TFLRE;
+begin
+ FLREInstance:=TFLRE.Create(RegExpString,RegExpFlags);
+ try
+  CheckTestResult(FLREInstance.Test(InputString,StartPosition),'Test('''+InputString+''','''+RegExpString+''','+IntToStr(StartPosition)+')');
+ finally
+  FLREInstance.Free;
+ end;
+end;
+
+procedure ExecuteSearchAnchoredAtFailTest(const RegExpString,InputString:TFLRERawByteString;const StartPosition:TFLRESizeInt;const RegExpFlags:TFLREFlags=[rfDELIMITERS]);
+var FLREInstance:TFLRE;
+begin
+ FLREInstance:=TFLRE.Create(RegExpString,RegExpFlags);
+ try
+  CheckTestResult(not FLREInstance.Test(InputString,StartPosition),'not Test('''+InputString+''','''+RegExpString+''','+IntToStr(StartPosition)+')');
+ finally
+  FLREInstance.Free;
+ end;
+end;
+
+procedure ExecuteFindTest(const RegExpString,InputString:TFLRERawByteString;const StartPosition,ExpectedPosition:TFLRESizeInt;const RegExpFlags:TFLREFlags=[rfDELIMITERS]);
+var FLREInstance:TFLRE;
+    Position:TFLRESizeInt;
+begin
+ FLREInstance:=TFLRE.Create(RegExpString,RegExpFlags);
+ try
+  Position:=FLREInstance.Find(InputString,StartPosition);
+  CheckTestResult(Position=ExpectedPosition,'Find('''+InputString+''','''+RegExpString+''','+IntToStr(StartPosition)+')='+IntToStr(ExpectedPosition)+' ['+IntToStr(Position)+']');
  finally
   FLREInstance.Free;
  end;

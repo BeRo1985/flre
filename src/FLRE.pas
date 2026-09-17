@@ -20521,8 +20521,9 @@ function TFLRE.SearchMatch(ThreadLocalStorageInstance:TFLREThreadLocalStorageIns
 var MatchBegin,MatchEnd,Offset,Len:TFLRESizeInt;
 begin
 
- // Check the start position
- if (StartPosition<0) and (StartPosition>=UntilExcludingPosition) then begin
+ // Check the start position, where a start position at the end is fine for
+ // regular expressions that can match an empty string there
+ if (StartPosition<0) or (StartPosition>UntilExcludingPosition) then begin
   result:=false;
   exit;
  end;
@@ -20545,7 +20546,8 @@ begin
    exit;
   end else begin
    inc(StartPosition,Offset);
-   if (StartPosition<>0) and not UnanchoredStart then begin
+   // An anchored search has to match right at the given start position
+   if (Offset<>0) and not UnanchoredStart then begin
     result:=false;
     exit;
    end else if FixedStringIsWholeRegExp and (CountCaptures<2) and (CountPrefixCharClasses<=FixedStringLength) and not (rfIGNORECASE in Flags) then begin

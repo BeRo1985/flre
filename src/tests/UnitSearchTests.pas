@@ -300,6 +300,30 @@ begin
  ExecuteSearchTest('^[\p{Nd}\p{Nl}\p{No}\p{Lu}\p{Ll}\p{Lt}\p{Lm}\p{Lo}]$','0',[rfUTF8]);
  ExecuteSearchTest('^(\p{Nd}|\p{Nl}|\p{No}|\p{Lu}|\p{Ll}|\p{Lt}|\p{Lm}|\p{Lo})$','0',[rfUTF8,rfONLYFASTOPTIMIZATIONS]);
 
+ // Anchored searches from a start position other than the first one, which
+ // used to fail whenever the prefix search was involved
+ ExecuteSearchAnchoredAtTest('a','abc',1,[]);
+ ExecuteSearchAnchoredAtTest('b','abc',2,[]);
+ ExecuteSearchAnchoredAtTest('c','abc',3,[]);
+ ExecuteSearchAnchoredAtTest('bc','abc',2,[]);
+ ExecuteSearchAnchoredAtTest('[bc]+','abc',2,[]);
+ ExecuteSearchAnchoredAtFailTest('b','abc',1,[]);
+ ExecuteSearchAnchoredAtFailTest('c','abc',2,[]);
+ ExecuteSearchAnchoredAtFailTest('a','abc',2,[]);
+
+ // An empty match at the very end is still possible
+ ExecuteSearchAnchoredAtTest('x*','abc',4,[]);
+ ExecuteFindTest('$','abc',4,4,[]);
+
+ // Start positions outside of the input, which used to be read from anyway
+ ExecuteSearchAnchoredAtFailTest('b','abc',0,[]);
+ ExecuteSearchAnchoredAtFailTest('b','abc',-100000000,[]);
+ ExecuteSearchAnchoredAtFailTest('b','abc',5,[]);
+ ExecuteFindTest('b','abc',-100000000,0,[]);
+ ExecuteFindTest('b','abc',100000000,0,[]);
+ ExecuteFindTest('b','abc',1,2,[]);
+ ExecuteFindTest('b','abc',3,0,[]);
+
 end;
 
 end.
